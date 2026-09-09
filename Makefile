@@ -24,6 +24,11 @@ LUA_SRC    := vendor/lua-5.5.1/src
 YYJSON_SRC := vendor/yyjson-0.12.0
 HOST_SRC   := src
 OUT        := $(BUILD)/kuu.exe
+OUT_WIN    := $(subst /,\,$(OUT))
+
+# The version, read from src/kuu.h, so the resource and the release tag say
+# what --version says.
+VERSION := $(word 3,$(subst ",,$(shell findstr /B /C:"#define KUU_VERSION " src\kuu.h)))
 
 # Vendored Lua and yyjson compile as C with their own minimal flags, never the
 # authored warning gate.  luaconf.h derives LUA_USE_WINDOWS from _WIN32 itself.
@@ -57,12 +62,28 @@ PAYLOAD_IN := $(wildcard lua/*.lua) $(wildcard lua/cmd/*.lua) $(wildcard lua/fs/
 PAYLOAD_C  := $(BUILD)/gen/payload.c
 PAYLOAD_O  := $(BUILD)/obj/gen/payload.o
 
+# The version resource: tools/versionrc.c reads kuu.h and writes the .rc,
+# windres compiles it, so the file's properties agree with --version.
+WINDRES    := $(TOOLS_WIN)\bin\windres.exe
+VERSIONRC  := $(BUILD)/versionrc.exe
+VERSION_RC := $(BUILD)/gen/version.rc
+VERSION_O  := $(BUILD)/obj/gen/version.o
+
 .PHONY: all test clean
 all: $(OUT)
 
-$(OUT): $(HOST_O) $(LUA_O) $(YYJSON_O) $(PAYLOAD_O)
+$(OUT): $(HOST_O) $(LUA_O) $(YYJSON_O) $(PAYLOAD_O) $(VERSION_O)
 	$(CC) $(LINK_FLAGS) -o $@ $^ $(LINK_LIBS)
 	@echo built $@
+
+$(VERSIONRC): tools/versionrc.c $(HOST_SRC)/kuu.h | $(BUILD)
+	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -I$(HOST_SRC) -o $@ $<
+
+$(VERSION_RC): $(VERSIONRC) | $(BUILD)/gen
+	$(subst /,\,$(VERSIONRC)) $@
+
+$(VERSION_O): $(VERSION_RC) | $(BUILD)/obj/gen
+	$(WINDRES) -O coff -o $@ $<
 
 $(BUILD)/obj/lua/%.o: $(LUA_SRC)/%.c | $(BUILD)/obj/lua
 	$(CC) $(VENDOR_FLAGS) -MMD -MP -c $< -o $@
@@ -104,3 +125,32 @@ SOAK ?= 60
 .PHONY: soak
 soak: $(OUT) $(FIXTURES)
 	$(subst /,\,$(OUT)) test\soak.lua $(SOAK)
+
+# ---- release: sign, hash, publish -- make, cmd, and plain C tools; never kuu --------------
+# The certificate is selected by thumbprint and the signature timestamped by
+# Certum; after signing, the signature is verified and the leaf checked to be
+# issued to the expected name.  The sidecar is written by tools/sha256sum.c.
+# Signing needs the owner's SimplySign session, so the owner runs `make release`.
+SIGNTOOL  ?= C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe
+SIGN_SHA1 ?= fff5468e3b61a5c466fc5a07a7bb9fd2b9975b4b
+SIGN_NAME ?= Open Source Developer Vincent Vercauteren
+TIMESTAMP ?= http://time.certum.pl
+GH        ?= gh
+SHA256SUM := $(BUILD)/sha256sum.exe
+
+$(SHA256SUM): tools/sha256sum.c | $(BUILD)
+	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -o $@ $< -lbcrypt
+
+.PHONY: sign release publish
+sign: $(OUT)
+	"$(SIGNTOOL)" sign /fd sha256 /sha1 $(SIGN_SHA1) /tr $(TIMESTAMP) /td sha256 $(OUT_WIN)
+	"$(SIGNTOOL)" verify /pa /all $(OUT_WIN)
+	"$(SIGNTOOL)" verify /pa /v $(OUT_WIN) | findstr /C:"Issued to: $(SIGN_NAME)" > nul
+	@echo signed $(OUT) as $(SIGN_NAME)
+
+release: sign $(SHA256SUM)
+	$(subst /,\,$(SHA256SUM)) $(OUT_WIN) > $(BUILD)\kuu.exe.sha256
+	@type $(BUILD)\kuu.exe.sha256
+
+publish: release
+	$(GH) release create $(VERSION) $(OUT) $(BUILD)/kuu.exe.sha256 --title "kuu $(VERSION)" --generate-notes

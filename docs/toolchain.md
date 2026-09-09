@@ -64,3 +64,29 @@ winpthreads come with it), then copy as above. About 1.1 GB, 42,000 files.
 kuu's own compiler is not fetched by kuu, by the owner's decision: kuu does not
 build or bootstrap itself, and its repository runs no kuu. The versions above
 are a record.
+
+## Releasing
+
+A release is make, cmd recipes, and two plain C tools, never kuu. Every build
+already carries a version resource: `tools/versionrc.c` reads the version
+from `src/kuu.h` and writes the `.rc`, `windres` compiles it in, so the file's
+properties say what `--version` says.
+
+```bash
+.tools\msys2\ucrt64\bin\mingw32-make.exe release
+```
+
+`release` signs `build\kuu.exe` with the owner's Certum certificate through
+the Windows SDK's signtool, selected by thumbprint and timestamped by Certum,
+then verifies the signature and checks that the leaf was issued to the
+expected name, then writes `build\kuu.exe.sha256` with `tools/sha256sum.c`.
+Signing needs the owner's SimplySign session, so the owner runs it.
+`publish` does all that and creates the GitHub Release named after the
+version, with both files attached and notes generated from the commits.
+`SIGNTOOL`, `SIGN_SHA1`, `SIGN_NAME`, `TIMESTAMP`, and `GH` are make variables
+whose defaults fit the owner's machine; `GH` names the gh executable when it
+is not on `PATH`.
+
+A project takes a release by copying `kuu.exe` into its own `.tools`, after
+checking the download against the sidecar, and states the version it expects
+at the top of its `tasks.lua`.

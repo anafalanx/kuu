@@ -11,9 +11,11 @@ kuu runs on Windows 11 version 25H2 and later, and on the equivalent Windows
 Server releases. Nothing else, on purpose: the process, console, and file
 system features it builds on are used without fallbacks.
 
-This is version 0.3: the runner, the scheduler, processes, files, JSON, HTTP,
-hashing, text encodings, logging, argument parsing, a repository's tasks, and
-a lock for its tools. The
+This is version 0.4: the runner, the scheduler, processes, files, JSON, HTTP,
+archives, hashing, text encodings, logging, argument parsing, a repository's
+tasks, a memory across runs, and the machine's own facts. It is the tool an
+agent holds on a Windows machine instead of PowerShell; the
+[From PowerShell](powershell.md) page maps one to the other. The
 [roadmap](roadmap.md) records what is planned and why, and
 [inheritance](inheritance.md) records what kuu learned from its predecessors.
 
@@ -42,7 +44,7 @@ array of the `rt` module. There is no `arg` global.
 ```lua
 local rt = require("rt")
 print(rt.version, rt.lua, rt.route, rt.exe, rt.program, #rt.args)
--- 0.3  Lua 5.5.1  file  C:\tools\kuu.exe  build.lua  2
+-- 0.4  Lua 5.5.1  file  C:\work\app\.tools\kuu.exe  build.lua  2
 ```
 
 `rt.route` is `"file"`, `"stdin"`, `"eval"`, or `"cmd"` for a verb such as

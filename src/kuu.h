@@ -13,8 +13,8 @@
 #include <stddef.h>
 
 #define KUU_NAME "kuu"
-#define KUU_VERSION "0.3"
-#define KUU_VERSION_W L"0.3"
+#define KUU_VERSION "0.4"
+#define KUU_VERSION_W L"0.4"
 
 /* Exit codes.  2 means kuu never started the program (usage, entry, state);
  * 1 means the program itself failed; anything else is the program's own
