@@ -80,6 +80,10 @@ hashing, and every other organ are behind `require`.
 | [`re`](re.md) | regular expressions on PCRE2, with Unicode and named groups |
 | [`time`](time.md) | instants, zones, ISO 8601, durations |
 | [`net`](net.md) | the network from here: resolve, probe, listeners, addresses |
+| [`csv`](csv.md) | comma-separated values, RFC 4180 and the Windows variants |
+| [`ini`](ini.md) | INI files: read, write, and edit in place |
+| [`reg`](reg.md) | the registry, typed |
+| [`env`](env.md) | environment variables, live and persisted |
 | `rt` | the launch: version, executable, route, program, arguments, the require root |
 
 `require` searches `package.preload`, where these live, and then the program's

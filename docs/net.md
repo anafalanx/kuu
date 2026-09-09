@@ -40,7 +40,7 @@ net.probe(host, port [, timeout])   -- { address, family, elapsed } | nil, err
 Resolves the host, then tries to open a TCP connection to each address in
 turn until one accepts; the connection is closed at once. The result says
 which address answered and how many seconds the whole probe took. A port
-that is closed answers quickly with `nil, NET refused`; one behind a silent
+that is closed answers with `nil, NET refused`; one behind a silent
 firewall, or an address nobody has, ends in `nil, NET timeout`; no route at
 all is `nil, NET unreachable`. The timeout bounds the whole probe, resolution
 included.

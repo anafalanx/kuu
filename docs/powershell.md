@@ -78,7 +78,7 @@ stalls another task.
 | `[regex]::Escape` | `re.escape` | |
 | `Get-Date`, `Get-Date -Format`, `[DateTime]::Parse`, `ToUniversalTime` | `time.now`, `time.format`, `time.parse`, `time.iso` | instants are seconds since the epoch; zones are `utc`, `local`, or an offset |
 | `New-TimeSpan`, `[TimeSpan]::Parse` | `time.duration("1h30m")`, `time.human(seconds)` | |
-| `Import-Csv`, `Export-Csv` | 0.5: `csv` | |
+| `Import-Csv`, `Export-Csv`, `ConvertFrom-Csv` | `csv.decode { header = true }`, `csv.encode` | every field a string; separators, CRLF, and the BOM handled |
 | `Select-Xml`, `[xml]` | deferred | |
 | `Write-Host`, `Write-Verbose` | `print`, `io.stderr:write`, `log` | `log` never raises and never interrupts the work |
 
@@ -88,8 +88,8 @@ stalls another task.
 |---|---|---|
 | `[Environment]::OSVersion`, `Get-ComputerInfo` | `sys.info()` | the truthful build, the display name, elevation, cpus, memory, drives, uptime |
 | `[Security.Principal.WindowsPrincipal]…IsInRole` | `sys.info().elevated` | |
-| `$env:NAME`, `[Environment]::SetEnvironmentVariable(..., 'User')` | `os.getenv` (UTF-8); 0.5: persistent variables with the change broadcast | |
-| `Get-ItemProperty HKLM:\...`, `Set-ItemProperty` | 0.5: `reg.get`, `reg.set`, typed | |
+| `$env:NAME`, `[Environment]::SetEnvironmentVariable(..., 'User')`, `setx` | `env.get`, `env.set`; `env.persist`, `env.forget` with the change broadcast | live and persisted are two different things; see env.md |
+| `Get-ItemProperty HKLM:...`, `Set-ItemProperty`, `New-Item HKCU:...`, `reg.exe` | `reg.get`, `reg.set`, `reg.values`, `reg.keys`, `reg.remove` | typed: dword, qword, string, expandstring, multistring, binary |
 | `Get-Service`, `Start-Service`, `New-Service` | 0.6: `svc` | |
 | `Get-WinEvent` | 0.6: `evt` | |
 | `Register-ScheduledTask` | `schtasks.exe` through `proc.run` | deferred as a module |

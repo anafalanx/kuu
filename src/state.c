@@ -391,6 +391,10 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "time");
     lua_pushcfunction(L, open_net_full);
     lua_setfield(L, -2, "net");
+    lua_pushcfunction(L, ku_open_reg);
+    lua_setfield(L, -2, "reg");
+    lua_pushcfunction(L, ku_open_env);
+    lua_setfield(L, -2, "env");
     lua_pop(L, 2);
     return L;
 }
