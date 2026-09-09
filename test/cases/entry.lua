@@ -25,6 +25,13 @@ return function(T)
   check("a structured exception is reported by name and address and exits 3, never silently", r.code == 3
     and contains(r.err, "kuu: crashed: access violation (0xc0000005) at ") and contains(r.err, "a defect in kuu itself") and r.out == "", describe(r))
 
+  r = kuu { "-e", "print(type(debug.traceback), type(debug.getinfo), debug.sethook, debug.getlocal, debug.setmetatable)" }
+  check("of the debug library only traceback and getinfo survive", r.code == 0 and r.out == "function\tfunction\tnil\tnil\tnil\n", describe(r))
+  r = kuu { "-e", "local ok, tb = xpcall(function() error('deep') end, debug.traceback); io.write(tostring(ok), ' ', tb)" }
+  check("xpcall with debug.traceback gives the message and the stack", r.code == 0 and starts(r.out, "false (command line):1: deep\nstack traceback:"), describe(r))
+  r = kuu { "-e", "local info = debug.getinfo(1, 'Sl'); io.write(info.short_src, ':', info.currentline)" }
+  check("debug.getinfo says where the code is", r.code == 0 and r.out == "(command line):1", describe(r))
+
   r = kuu { "-e" }
   check("-e without a script is a usage error", r.code == 2 and contains(r.err, "-e needs a script"), describe(r))
 
@@ -66,8 +73,8 @@ return function(T)
   check("the main chunk runs as a coroutine", r.out == "true\n", describe(r))
 
   -- hazards removed, loading rules --------------------------------------------
-  r = kuu { "-e", "print(io.popen, os.execute, os.remove, os.rename, os.tmpname, dofile, loadfile, package.loadlib, debug)" }
-  check("hazardous functions are absent", r.out == string.rep("nil\t", 8) .. "nil\n", describe(r))
+  r = kuu { "-e", "print(io.popen, os.execute, os.remove, os.rename, os.tmpname, dofile, loadfile, package.loadlib, debug.sethook, debug.setupvalue, debug.setlocal, debug.debug, debug.getregistry, debug.setmetatable, debug.getupvalue, debug.upvaluejoin, debug.setuservalue)" }
+  check("hazardous functions are absent", r.out == string.rep("nil\t", 16) .. "nil\n", describe(r))
 
   r = kuu { "-e", "print(type(os.getenv), type(os.time), type(os.exit), type(io.read), type(io.stderr), type(utf8.char), type(coroutine.wrap), type(string.pack), type(math.tointeger), type(table.create))" }
   check("the intended standard library is present",

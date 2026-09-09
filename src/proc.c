@@ -25,6 +25,7 @@
 #include "err.h"
 #include "launch.h"
 #include "loop.h"
+#include "procinfo.h"
 #include "values.h"
 #include "wintext.h"
 
@@ -1671,6 +1672,9 @@ int ku_open_proc(lua_State *L)
         {"detach", l_proc_detach},
         {"alive", l_proc_alive},
         {"kill", l_proc_kill},
+        {"list", ku_proc_list},
+        {"find", ku_proc_find},
+        {"tree", ku_proc_tree},
         {NULL, NULL},
     };
     luaL_newlib(L, functions);

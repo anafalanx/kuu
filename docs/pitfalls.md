@@ -39,8 +39,9 @@ refuses to hide. Read it once.
 
 - **Absent by design:** `io.popen`, `os.execute`, `os.remove`, `os.rename`,
   `os.tmpname`, `dofile`, `loadfile`, `package.loadlib`, and the `debug`
-  library. Processes belong to [`proc`](proc.md), files to [`fs`](fs.md).
-  `io.open` remains and takes UTF-8 paths.
+  library except `traceback` and `getinfo`. Processes belong to
+  [`proc`](proc.md), files to [`fs`](fs.md). `io.open` remains and takes
+  UTF-8 paths.
 - **`os.getenv` reads the live environment as UTF-8**; stock Lua returns the C
   runtime's startup copy in the ANSI code page.
 - **No binary chunks.** `load` always uses mode `"t"`.

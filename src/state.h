@@ -4,7 +4,8 @@
  * One state, one thread, Lua 5.5 compiled as C.  The standard library is
  * opened selectively and the hazards a runtime must own are removed:
  * io.popen, os.execute, os.remove, os.rename, os.tmpname, dofile, loadfile,
- * package.loadlib, the debug library, and binary chunks.  `require` searches
+ * package.loadlib, the debug library except traceback and getinfo, and
+ * binary chunks.  `require` searches
  * package.preload and then the program's own directory (`?.lua`,
  * `?/init.lua`), never the environment; package.path and package.cpath are
  * empty strings to make that visible.  The runtime's own modules arrive

@@ -261,4 +261,47 @@ return function(T)
   end
   local ok4, e4b = pcall(proc.wait_any, {})
   check("wait_any refuses an empty list", not ok4 and err.is(e4b, "PROC", "usage"), tostring(e4b))
+  -- list, find, tree --------------------------------------------------------------------------
+  do
+    local sys = require "sys"
+    local fs = require "fs"
+    local me = sys.info().pid
+    local all = proc.list()
+    local mine
+    for _, p in ipairs(all) do if p.pid == me then mine = p end end
+    check("list includes this process and is sorted by pid", mine ~= nil and #all > 1 and all[1].pid < all[#all].pid, tostring(#all))
+    check("an entry names the executable and the parent and, for our own process, carries the details",
+      mine ~= nil and mine.name:lower() == "kuu.exe" and type(mine.parent) == "number" and type(mine.threads) == "number"
+      and type(mine.exe) == "string" and mine.exe:lower():sub(-7) == "kuu.exe"
+      and type(mine.cmdline) == "string" and contains(mine.cmdline:lower(), "run.lua")
+      and type(mine.started) == "number" and mine.started > 1.7e9 and type(mine.cpu) == "number"
+      and type(mine.memory) == "number" and mine.memory > 0 and type(mine.private) == "number" and mine.private > 0,
+      mine and describe(mine))
+    local by_name = proc.find { name = "KUU" }
+    local found = false
+    for _, p in ipairs(by_name) do if p.pid == me then found = true end end
+    check("find by name ignores case and the extension", found, tostring(#by_name))
+    local by_pid = proc.find { pid = me }
+    check("find by pid is the one entry", #by_pid == 1 and by_pid[1].pid == me, tostring(#by_pid))
+    check("find for something absent is an empty list, not an error", #proc.find { pid = 2147483646 } == 0 and #proc.find { name = "no-such-program-kuu" } == 0)
+    local okf, ef = pcall(proc.find, { name = "x", pid = 1 })
+    check("find takes exactly one criterion", not okf and err.is(ef, "PROC", "badvalue"), tostring(ef))
+    local child <close> = proc.start { exe, "-e", "require('sched').sleep('5s')" }
+    local tree = proc.tree(me)
+    local has_child = false
+    for _, c in ipairs(tree and tree.children or {}) do if c.pid == child.pid then has_child = true end end
+    check("tree of this process lists the started child", tree ~= nil and tree.pid == me and has_child, tree and tostring(#tree.children))
+    local none, e = proc.tree(2147483646)
+    check("tree of an unknown pid is nil, PROC notfound", none == nil and err.is(e, "PROC", "notfound"), tostring(e))
+    local fixture = T.root .. "/build/test/http_fixture.exe"
+    if fs.exists(fixture) == "file" then
+      local server <close> = proc.start { fixture, (T.fixtures:gsub("/", "\\")), stream = true }
+      local port = tonumber((server:read("line", "10s") or ""):match("^PORT (%d+)$"))
+      local owners = port and proc.find { port = port } or {}
+      check("find by port names the listener's process", port ~= nil and #owners == 1 and owners[1].pid == server.pid, tostring(port) .. " " .. tostring(#owners))
+      check("find by a closed port is an empty list", #proc.find { port = 1 } == 0)
+      server:kill()
+    end
+  end
+
 end

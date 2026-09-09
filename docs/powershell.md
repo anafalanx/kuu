@@ -21,7 +21,7 @@ stalls another task.
 | `Start-Process -WindowStyle Hidden` for a daemon | `proc.detach { ... }` | the one child that outlives kuu, on purpose |
 | `taskkill /T` | `c:kill()` | the child's whole tree, since every child has its own job |
 | `Stop-Process -Id` | `proc.kill(pid)` | that one process, by id |
-| `Get-Process`, `netstat -o` | 0.5: `proc.list`, `proc.find { name, port }` | |
+| `Get-Process`, `netstat -o`, `tasklist` | `proc.list`, `proc.find { name | pid | port }`, `proc.tree` | the entry carries exe, command line, start, cpu, memory when this user may ask |
 | `Start-Process -Verb RunAs` | deferred | elevation needs a broker; not yet |
 | `cmd /c "a \| b"` | `proc.run { "cmd.exe", "/c", "a | b" }` | explicit; cmd re-parses its argument, see [proc](proc.md) |
 

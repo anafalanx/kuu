@@ -62,7 +62,7 @@ hashing, and every other organ are behind `require`.
 
 | module | gives |
 |---|---|
-| [`proc`](proc.md) | children with decided lifetimes: run, start, wait, kill, detach |
+| [`proc`](proc.md) | children with decided lifetimes: run, start, wait, kill, detach; the other processes: list, find, tree |
 | [`fs`](fs.md) | files, directories, identity, links, walks, watches, with Windows truth |
 | [`http`](http.md) | fetch and post over WinHTTP, with the machine's proxy and certificates |
 | [`sched`](sched.md) | tasks, sleep, a monotonic clock, wall time |

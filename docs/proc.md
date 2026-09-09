@@ -154,6 +154,35 @@ proc.kill(pid)         -- true, or nil, PROC notfound | access | oserror
 For processes kuu did not start. `kill` terminates one process, not a tree;
 use a supervised child when the tree matters.
 
+## proc.list, proc.find, proc.tree
+
+```lua
+proc.list()                    -- every process on the machine, sorted by pid
+proc.find { name = "node" }    -- by executable name, ignoring case and the extension
+proc.find { pid = 4120 }       -- one entry, or none
+proc.find { port = 8080 }      -- the owners of TCP listeners on that port
+proc.tree(pid)                 -- the entry with its `children`, recursively; nil, PROC notfound
+```
+
+An entry:
+
+| field | |
+|---|---|
+| `pid`, `parent`, `name`, `threads` | from the process snapshot; always present |
+| `exe` | the full path of the executable |
+| `cmdline` | the command line as the kernel holds it |
+| `started` | when the process began, an instant for [`time`](time.md) |
+| `cpu` | seconds of kernel plus user time so far |
+| `memory`, `private` | the working set and the private bytes |
+
+The last six need the process opened for querying and are absent when this
+user may not: system processes, another user's, protected ones. `find`
+returns a list, empty when nothing matches; looking for something that is
+not there is not an error. It takes exactly one of `name`, `pid`, `port` and
+raises PROC badvalue otherwise. `tree` answers `nil, PROC notfound` for an
+unknown pid. Process ids are reused, so a `parent` may name a process that
+exited long ago and whose id now belongs to something unrelated.
+
 ## Two things to know
 
 - **`cmd.exe` parses its own line.** Quoting is done for programs that parse

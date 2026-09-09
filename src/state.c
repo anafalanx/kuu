@@ -299,7 +299,25 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     }
     luaL_openselectedlibs(L, LUA_GLIBK | LUA_LOADLIBK | LUA_COLIBK | LUA_IOLIBK |
                                  LUA_MATHLIBK | LUA_OSLIBK | LUA_STRLIBK | LUA_TABLIBK |
-                                 LUA_UTF8LIBK, 0);
+                                 LUA_UTF8LIBK | LUA_DBLIBK, 0);
+
+    /* Of the debug library only traceback and getinfo survive, so that
+     * xpcall(f, debug.traceback) works and a script can say where it is.
+     * The rest rewrites running code or reads private state, which no agent
+     * script needs. */
+    if (lua_getglobal(L, "debug") == LUA_TTABLE) {
+        lua_pushnil(L);
+        while (lua_next(L, -2) != 0) {
+            lua_pop(L, 1); /* the value */
+            const char *key = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : "";
+            if (strcmp(key, "traceback") != 0 && strcmp(key, "getinfo") != 0) {
+                lua_pushvalue(L, -1);
+                lua_pushnil(L);
+                lua_settable(L, -4); /* clearing the current key is allowed mid-traversal */
+            }
+        }
+    }
+    lua_pop(L, 1);
 
     /* Hazards a runtime owns: processes and files belong to the palette, with
      * decided lifetimes and UTF-8 paths; these CRT-backed functions have
