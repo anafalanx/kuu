@@ -24,7 +24,7 @@ kuu FILE [arg ...]        run a Lua program file
 kuu - [arg ...]           run a program read from standard input
 kuu -e SCRIPT [arg ...]   run an inline script
 kuu docs [PAGE | search TEXT]   this manual, from inside the executable
-kuu run [TASK [arg ...]]  a task from the nearest tasks.lua      (see Tasks)
+kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest tasks.lua      (see Tasks)
 kuu list [--json]         those tasks
 kuu check [--json] [PATH ...]   parse, global declarations, requires, without running  (see check)
 kuu --version | --help
@@ -73,6 +73,7 @@ hashing, and every other organ are behind `require`.
 | [`task`](task.md) | a repository's tasks, declared once in `tasks.lua`, run by `kuu run` |
 | [`archive`](archive.md) | zip and tar archives through the tar.exe Windows ships |
 | [`sys`](sys.md) | facts about this machine and this process |
+| [`mem`](mem.md) | a small memory across runs, one JSON file per project |
 | `rt` | the launch: version, executable, route, program, arguments, the require root |
 
 `require` searches `package.preload`, where these live, and then the program's
@@ -105,6 +106,7 @@ closed before exit, whether the program finished or failed.
 | 0 | the program finished |
 | 1 | the program failed: a syntax error, an uncaught error, a stray yield, a deadlock |
 | 2 | kuu did not start the program: usage, a missing or unreadable file, invalid UTF-8, or a program over 16 MiB |
+| 3 | kuu itself crashed: a structured exception was caught, named with its address on standard error, and is a defect in kuu; `kuu --crash-test` exercises the handler |
 | other | the program's own `os.exit(n)` |
 
 Failures kuu detects before the program runs are spelled

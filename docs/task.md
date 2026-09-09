@@ -41,6 +41,7 @@ kuu run                      the default task, after its dependencies
 kuu run test                 test, after build, after gen; each runs once
 kuu run build --release      arguments after the task name go to that task
 kuu run --json test          the same, with one JSON object on stdout at the end
+kuu run --dry-run test       the plan, in order, arguments checked, nothing run
 kuu list [--json]            the tasks, their descriptions, dependencies, and arguments
 ```
 

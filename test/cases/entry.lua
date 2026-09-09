@@ -21,6 +21,10 @@ return function(T)
   r = kuu { "--bogus" }
   check("unknown option is refused", r.code == 2 and contains(r.err, "ENTRY usage: unknown option '--bogus'"), describe(r))
 
+  r = kuu { "--crash-test" }
+  check("a structured exception is reported by name and address and exits 3, never silently", r.code == 3
+    and contains(r.err, "kuu: crashed: access violation (0xc0000005) at ") and contains(r.err, "a defect in kuu itself") and r.out == "", describe(r))
+
   r = kuu { "-e" }
   check("-e without a script is a usage error", r.code == 2 and contains(r.err, "-e needs a script"), describe(r))
 

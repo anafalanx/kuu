@@ -9,14 +9,15 @@ local sched = require "sched"
 local json = require "json"
 local err = require "err"
 
-local USAGE = "usage: kuu run [--json] [TASK [arg ...]]\n  runs TASK, or the default task, after its dependencies; kuu list shows them\n"
+local USAGE = "usage: kuu run [--json] [--dry-run] [TASK [arg ...]]\n  runs TASK, or the default task, after its dependencies; kuu list shows them\n  --dry-run shows the plan, in order, and runs nothing\n"
 
-local want_json = false
+local want_json, dry_run = false, false
 local i = 1
 while rt.args[i] ~= nil and rt.args[i]:sub(1, 2) == "--" do
   local a = rt.args[i]
   i = i + 1
   if a == "--json" then want_json = true
+  elseif a == "--dry-run" then dry_run = true
   elseif a == "--help" then io.write(USAGE) os.exit(0)
   elseif a == "--" then break
   else io.stderr:write("kuu: TASK usage: unknown option '", a, "'\n", USAGE) os.exit(2) end
@@ -87,6 +88,22 @@ for _, entry in ipairs(plan) do
   local opts, e5 = task.arguments(entry, entry.name == name and args or {}, "kuu run " .. entry.name)
   if not opts then finish(false, e5, { root = root, task = name }) end
   opts_for[entry.name] = opts
+end
+
+if dry_run then
+  -- the plan, checked as above, and nothing run
+  if want_json then
+    local steps = json.array {}
+    for _, entry in ipairs(plan) do
+      steps[#steps + 1] = { name = entry.name, desc = entry.desc, deps = json.array(entry.deps) }
+    end
+    io.stdout:write(json.encode { ok = true, result = { root = root, task = name, plan = steps } }, "\n")
+  else
+    for k, entry in ipairs(plan) do
+      io.stdout:write(string.format("%d. %s%s\n", k, entry.name, entry.desc ~= "" and ("  " .. entry.desc) or ""))
+    end
+  end
+  os.exit(0)
 end
 
 for _, entry in ipairs(plan) do

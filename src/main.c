@@ -307,8 +307,62 @@ static char *program_directory_utf8(const wchar_t *program)
     return utf8;
 }
 
+/* A structured exception anywhere in kuu is a defect in kuu.  Windows would
+ * end the process silently, or worse, with a dialog no agent can click; kuu
+ * says what and where on standard error and exits with a code of its own.
+ * Only WriteFile is used here: the C runtime may be the thing that broke. */
+static LONG WINAPI crash_filter(EXCEPTION_POINTERS *info)
+{
+    const EXCEPTION_RECORD *record = info->ExceptionRecord;
+    const char *what = "structured exception";
+    switch (record->ExceptionCode) {
+    case EXCEPTION_ACCESS_VIOLATION:
+        what = "access violation";
+        break;
+    case EXCEPTION_STACK_OVERFLOW:
+        what = "stack overflow";
+        break;
+    case EXCEPTION_INT_DIVIDE_BY_ZERO:
+        what = "integer division by zero";
+        break;
+    case EXCEPTION_ILLEGAL_INSTRUCTION:
+        what = "illegal instruction";
+        break;
+    case EXCEPTION_IN_PAGE_ERROR:
+        what = "in-page error";
+        break;
+    default:
+        break;
+    }
+    HMODULE module = NULL;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCWSTR)record->ExceptionAddress, &module);
+    unsigned long long offset =
+        module != NULL ? (unsigned long long)((const char *)record->ExceptionAddress - (const char *)module) : 0;
+    char text[320];
+    int n = snprintf(text, sizeof text,
+                     "%s: crashed: %s (0x%08lx) at %s+0x%llx; this is a defect in %s itself\n", KUU_NAME, what,
+                     (unsigned long)record->ExceptionCode,
+                     module == NULL ? "an unknown address" : (module == GetModuleHandleW(NULL) ? KUU_NAME : "a system module"),
+                     offset, KUU_NAME);
+    if (n > 0) {
+        DWORD written = 0;
+        WriteFile(GetStdHandle(STD_ERROR_HANDLE), text, (DWORD)n, &written, NULL);
+    }
+    ExitProcess(KUU_EXIT_CRASH);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
 int wmain(int argc, wchar_t **argv)
 {
+    /* No dialog ever: an agent cannot click.  The crash filter reports and
+     * exits; the stack guarantee lets it run even after a stack overflow. */
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    SetUnhandledExceptionFilter(crash_filter);
+    ULONG guarantee = 64 * 1024;
+    SetThreadStackGuarantee(&guarantee);
+
     _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
     _setmode(_fileno(stderr), _O_BINARY);
@@ -347,6 +401,11 @@ int wmain(int argc, wchar_t **argv)
     }
     if (strcmp(first, "docs") == 0) {
         return docs_route(argc - 2, (const char *const *)(words + 2));
+    }
+    if (strcmp(first, "--crash-test") == 0) {
+        /* The crash handler's own test: a real access violation, raised. */
+        RaiseException(EXCEPTION_ACCESS_VIOLATION, EXCEPTION_NONCONTINUABLE, 0, NULL);
+        return KUU_EXIT_ENTRY;
     }
     /* Verbs are Lua programs carried in the payload under lua/cmd; they run
      * like any program, with the arguments after the verb. */

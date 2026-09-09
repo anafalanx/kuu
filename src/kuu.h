@@ -22,6 +22,7 @@
 #define KUU_EXIT_OK 0
 #define KUU_EXIT_PROGRAM 1
 #define KUU_EXIT_ENTRY 2
+#define KUU_EXIT_CRASH 3   /* a structured exception inside kuu: a defect in kuu itself */
 
 /* A failure the host describes before or outside Lua: a closed domain, a
  * closed code within it, and one line of text.  Functions that can fail take
