@@ -46,7 +46,7 @@ array of the `rt` module. There is no `arg` global.
 ```lua
 local rt = require("rt")
 print(rt.version, rt.lua, rt.route, rt.exe, rt.program, #rt.args)
--- 0.4  Lua 5.5.1  file  C:\work\app\.tools\kuu.exe  build.lua  2
+-- 0.5  Lua 5.5.1  file  C:\work\app\.tools\kuu.exe  build.lua  2
 ```
 
 `rt.route` is `"file"`, `"stdin"`, `"eval"`, or `"cmd"` for a verb such as
