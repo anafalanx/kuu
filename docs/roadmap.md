@@ -159,6 +159,78 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
    verdict.
 
+## To do: the 0.5 review
+
+The external review of 0.5 (commit 3811edf, 2026-09-09) found the items
+below, listed in its priority order with the fix each is to get. Work on
+them was started and is parked in a git stash named "review 0.5 fixes, in
+progress" (`git stash list`); nothing here is in a release yet. Each fix
+lands with the regression test named, and the two native defects go first.
+
+1. **`re`: a callback that matches with the same pattern clobbers the outer
+   match (P1).** One match block per compiled pattern is shared by every
+   operation on it, so a `gsub` callback that calls `re.match` with the
+   same pattern overwrites the outer offsets; a nil-returning callback then
+   copies from bounds that belong to another subject, past the end of its
+   own. Fix: one match block per operation, held on the stack as a
+   userdata so a raise frees it; the fallback copies bounds taken before
+   Lua runs. Tests: nested gsub and match, nested gmatch, a nil-returning
+   callback after an inner match of a longer subject, a table replacement
+   whose metamethod matches.
+2. **`proc.tree`: a deep chain overruns the Lua stack (P1).** The recursion
+   pushes two tables per level without growing the stack; a chain of 41
+   processes crashed kuu with exit 3. Fix: `luaL_checkstack` per level, and
+   the native snapshot owned by the stack (a holder userdata, `hold.c`) so
+   an error frees it. Test: a chain of 31 kuu processes from a fixture,
+   inspected, then killed through its root.
+3. **`re`: an unmatched suffix is rescanned per character (P2).** The retry
+   after an empty match was recognised as `options == 0`, which the
+   `PCRE2_NO_UTF_CHECK` flag breaks, so `gsub("a" .. ("b"):rep(n), "a", "x")`
+   is quadratic. Fix: a separate retry flag. Test: a 400 KB suffix well
+   under a second.
+4. **`csv`: a quoted empty field is dropped as a blank line (P2).** Fix: a
+   blank line is one empty field with no quotes and no separator; a row
+   that is one empty field encodes as `""`. Tests: `name\r\n""\r\nbob` gives
+   two records; `decode(encode{{""}})` gives one row.
+5. **`ini`: editing does not follow last-key-wins (P2).** `set` changed the
+   first occurrence, `remove` left the effective value, both stopped at the
+   first same-named section; a BOM defeated editing; a value with literal
+   surrounding quotes lost them on decode. Fix: `set` changes the last
+   occurrence across every same-named section, `remove` drops them all,
+   the BOM is kept, such a value is quoted once more. Tests:
+   `decode(set(...))` with duplicate keys and sections, removal, a BOM
+   file, the `"hello"` round trip.
+6. **`reg`, `env`, `net`: a name with an embedded NUL acts on another name
+   (P2).** The Win32 calls stop at the NUL. Fix: a shared check that
+   refuses a NUL in keys, value names, text values, variable names, and
+   host names with badvalue. Tests: each raises.
+7. **`reg`: a text value that is not valid UTF-16 reads as `""` (P2).** Fix:
+   `get` answers `nil, REG encoding`; `values` carries `bytes` in place of
+   `value`. Test: a fixture writes an unpaired surrogate as REG_SZ.
+8. **`env`: an empty variable reads as unset (P2).** The second Win32 call
+   returns zero characters for an empty value and was taken as failure.
+   Fix: tell ERROR_ENVVAR_NOT_FOUND from an empty value, in `env.get` and
+   in kuu's `os.getenv`. Test: set `""`, get `""`.
+9. **`cli` and `sync`: the duration grammar differs from `time`'s (P2).**
+   Fix: `cli.duration` delegates to the C parser, so sums and days work in
+   typed arguments and lock timeouts. Tests: `"1h30m"`, `"2d"`,
+   `sync.lock(name, "1m30s")`.
+10. **`time.parse`: negative fields accepted, a bad offset raises (P2).**
+    Fix: fields are digits only; the offset is parsed in place with a
+    14:00 bound; every malformed text is `nil, err`. Tests: the three
+    negative forms, `+99:00`.
+11. **adopting.md: the example does not compile (P2).** `error` is missing
+    from its globals. Fix: add it; the suite extracts the page's example
+    and runs `kuu check` over it.
+12. **`net`: a scoped IPv6 address loses its scope (low confidence).** Fix:
+    `%scope` in the text from `resolve` and `addresses`, accepted by
+    `probe`. Test: `"fe80::1%1"` resolves to itself.
+
+After the twelve: a `make analyze` target running gcc's static analyzer
+over the host, a fuzz case feeding random bytes to the C parsers
+(durations, paths, dates, command lines) and expecting a value or an error
+and never exit 3, and a release under the next version.
+
 ## Open decisions
 
 - **1.0 criteria.** The proposal above stands until the owner sets them.
