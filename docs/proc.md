@@ -74,12 +74,59 @@ c:kill()                 -- terminate the tree now; wait then reports "killed"
 c:close()                -- kill if still running, release everything
 ```
 
-`start` accepts the same table as `run`. The `timeout` is the child's, counted
-from launch and enforced whether or not anyone waits; a `wait` timeout only
-bounds the wait. The handle is also closed by `<close>` at the end of its block
-and by garbage collection, and either closing kills a tree that still runs.
-After `close`, every method raises `PROC closed`. Repeated waits on a finished
-child return the same result.
+`start` accepts the same table as `run`, plus `stream = true` and
+`inherit = true`. The `timeout` is the child's, counted from launch and
+enforced whether or not anyone waits; a `wait` timeout only bounds the wait.
+The handle is also closed by `<close>` at the end of its block and by garbage
+collection, and either closing kills a tree that still runs. After `close`,
+every method raises `PROC closed`. Repeated waits on a finished child return
+the same result.
+
+## Streams
+
+```lua
+local c <close> = proc.start { "tool.exe", stream = true }
+c:write("first line\n")          -- queued to the child's stdin; true, or nil, PROC closed | toobig
+c:close_stdin()                  -- EOF for the child once the queue has drained
+c:read("line", "5s")             -- the next stdout line without its ending; nil at EOF
+c:read(4096)                     -- up to that many bytes, once at least one is there
+c:read("some")                   -- whatever has arrived, once anything has
+c:read("all")                    -- everything to EOF
+c:read_err("line")               -- the same for stderr
+for line in c:lines() do ... end -- stdout lines to EOF; c:err_lines() likewise
+```
+
+In stream mode the program reads the pipes itself, so `wait` reports the exit
+with empty `out` and `err`. Reads that must wait park the calling task and
+accept a timeout, returning `nil, err` with `PROC timeout` while the data stays
+buffered. One task at a time may read a given stream; a second raises
+`PROC busy`. `maxout` becomes the backpressure point: when that much is unread,
+kuu stops reading and the child blocks on its write until the program catches
+up, so nothing is ever truncated. Closing the child wakes a parked reader with
+`PROC closed`. A child that does not read its stdin is not an error; a child
+that never gets its stdin closed may never exit, so `close_stdin` when you are
+done.
+
+## The console
+
+```lua
+proc.run { "vim", "notes.md", inherit = true }
+```
+
+With `inherit = true` the child receives kuu's own standard handles: colours,
+pagers, prompts, and Ctrl-C reach it as if it had been started from the
+terminal, with every supervision guarantee intact. Nothing is captured; `out`
+and `err` are empty. It cannot be combined with `stdin` or `stream`.
+
+## Waiting on several children
+
+```lua
+local first, result = proc.wait_any({ a, b, c }, "1m")   -- the handle and its result
+local results = proc.wait_all({ a, b, c }, "10m")        -- results in the order given
+```
+
+Both return `nil, err` with `PROC timeout` when the duration passes; the
+children keep running. Children that already finished answer at once.
 
 ## proc.detach
 

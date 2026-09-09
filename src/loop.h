@@ -118,6 +118,7 @@ struct ku_waiter {
     void *owner;
     ku_push_fn push;
     void (*on_timeout)(ku_waiter *w); /* owner hook: forget this waiter */
+    void (*on_wake)(ku_waiter *w);    /* owner hook: called by ku_wake before any resume */
     ku_waiter *next;                  /* for the owner's list */
     int done;
     int timed_out;
@@ -126,6 +127,7 @@ struct ku_waiter {
      * never needs the owner to still exist */
     void *data;
     int data_ref; /* a registry reference released after the push */
+    void *tag;    /* the owner's own bookkeeping, untouched by the loop */
     /* private to the loop */
     lua_State *co;
     int ref;

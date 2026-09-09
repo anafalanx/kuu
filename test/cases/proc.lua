@@ -173,4 +173,92 @@ return function(T)
   -- waiting where yielding is impossible ----------------------------------------------------
   local via_gsub = ("x"):gsub("x", function() return proc.run { "cmd.exe", "/c", "echo inner" }.out end)
   check("run works inside a non-yieldable callback", via_gsub == "inner\r\n", via_gsub)
+
+  -- streams ------------------------------------------------------------------------------------
+  -- an echo child: uppercases each stdin line, reports on stderr, exits when stdin ends
+  local echo = { exe, "-e", "for line in io.lines() do io.write('> ', line:upper(), '\\n') io.stdout:flush() io.stderr:write('got ', #line, '\\n') io.stderr:flush() end io.write('bye\\n')" }
+  do
+    local c <close> = proc.start { exe, echo[2], echo[3], stream = true }
+    check("write queues bytes to stdin", c:write("hello\n") == true)
+    check("read returns the next line without its ending", c:read("line", "5s") == "> HELLO")
+    check("read_err reads the other stream", c:read_err("line", "5s") == "got 5")
+    c:write("two\r\n")
+    check("CRLF line endings are stripped too", c:read("line", "5s") == "> TWO")
+    local none, e = c:read("line", "100ms")
+    check("a read with nothing available times out", none == nil and err.is(e, "PROC", "timeout"), tostring(e))
+    c:write("abcdef\n")
+    check("read n bytes returns at most n", c:read(4, "5s") == "> AB")
+    check("read some returns what is buffered", c:read("some", "5s") == "CDEF\n")
+    check("close_stdin lets the child finish", c:close_stdin() == true and c:read("all", "5s") == "bye\n")
+    check("read at EOF returns nil", c:read("line", "5s") == nil and c:read("some") == nil)
+    local r = c:wait("5s")
+    check("wait in stream mode reports status with empty out and err", r and r.status == "exit" and r.code == 0 and r.out == "" and r.err == "", r and describe(r))
+  end
+
+  do
+    local c <close> = proc.start { exe, echo[2], echo[3], stream = true }
+    c:write("a\nb\nc\n")
+    c:close_stdin()
+    local got = {}
+    for line in c:lines() do got[#got + 1] = line end
+    check("lines() iterates stdout to EOF", table.concat(got, "|") == "> A|> B|> C|bye", table.concat(got, "|"))
+    local errs = {}
+    for line in c:err_lines() do errs[#errs + 1] = line end
+    check("err_lines() iterates stderr to EOF", table.concat(errs, "|") == "got 1|got 1|got 1", table.concat(errs, "|"))
+    local none, e = c:write("late\n")
+    check("writing after close_stdin is nil, PROC closed", none == nil and err.is(e, "PROC", "closed"), tostring(e))
+  end
+
+  -- backpressure: 20 MiB through a 1 MiB window, nothing truncated
+  do
+    local c <close> = proc.start { exe, "-e", "local chunk = string.rep('y', 1 << 20) for i = 1, 20 do io.write(chunk) end", stream = true, maxout = "1M" }
+    c:close_stdin()
+    local total = 0
+    while true do
+      local piece = c:read(1 << 18, "10s")
+      if piece == nil then break end
+      total = total + #piece
+    end
+    check("stream mode delivers everything with backpressure, never truncating", total == 20 * 1024 * 1024, tostring(total))
+    check("the child finished normally", c:wait("5s").status == "exit")
+  end
+
+  do
+    local c <close> = proc.start { exe, "-e", "require('sched').sleep('30s')", stream = true }
+    local reader = sched.spawn(function() return c:read("line", "10s") end)
+    sched.sleep("50ms")
+    local ok2, e2b = pcall(c.read, c, "line", "10ms")
+    check("a second reader on the same stream is refused as PROC busy", not ok2 and err.is(e2b, "PROC", "busy"), tostring(e2b))
+    c:close()
+    local r1, r2 = reader:join()
+    check("a parked reader wakes with PROC closed when the child is closed", r1 == nil and err.is(r2, "PROC", "closed"), tostring(r2))
+  end
+
+  local ok3, e3b = pcall(proc.run, { exe, "-e", "print(1)", stream = true })
+  check("run refuses stream mode", not ok3 and err.is(e3b, "PROC", "usage"), tostring(e3b))
+  ok3, e3b = pcall(proc.start, { exe, stream = true, stdin = "x" })
+  check("stream and stdin cannot be combined", not ok3 and err.is(e3b, "PROC", "usage"), tostring(e3b))
+  ok3, e3b = pcall(proc.start, { exe, stream = true, inherit = true })
+  check("stream and inherit cannot be combined", not ok3 and err.is(e3b, "PROC", "usage"), tostring(e3b))
+
+  -- inherit: the child shares kuu's console; nothing is captured
+  local inherited = proc.run { "cmd.exe", "/c", "exit 5", inherit = true }
+  check("inherit runs with kuu's own handles and reports the code", inherited and inherited.status == "exit" and inherited.code == 5 and inherited.out == "", inherited and describe(inherited))
+
+  -- wait_any / wait_all --------------------------------------------------------------------------
+  do
+    local fast <close> = proc.start { exe, "-e", "require('sched').sleep('100ms') io.write('fast')" }
+    local slow <close> = proc.start { exe, "-e", "require('sched').sleep('1500ms') io.write('slow')" }
+    local winner, result = proc.wait_any({ slow, fast }, "10s")
+    check("wait_any returns the first child to finish with its result", winner == fast and result and result.out == "fast", tostring(result and result.out))
+    check("the other child is still running", slow:running() == true)
+    local none, e = proc.wait_all({ slow, fast }, "200ms")
+    check("wait_all with a short timeout is nil, PROC timeout", none == nil and err.is(e, "PROC", "timeout"), tostring(e))
+    local results = proc.wait_all({ slow, fast }, "10s")
+    check("wait_all returns results in the order given", results and results[1].out == "slow" and results[2].out == "fast", tostring(results and #results))
+    local again, again_result = proc.wait_any({ slow, fast })
+    check("wait_any on finished children answers at once", again ~= nil and again_result.status == "exit")
+  end
+  local ok4, e4b = pcall(proc.wait_any, {})
+  check("wait_any refuses an empty list", not ok4 and err.is(e4b, "PROC", "usage"), tostring(e4b))
 end

@@ -12,3 +12,6 @@
 *.gz binary
 *.cmd text eol=crlf
 *.bat text eol=crlf
+
+# Conformance corpora are byte-exact evidence; never normalise them.
+test/fixtures/jsontestsuite/** binary

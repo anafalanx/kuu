@@ -35,7 +35,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `fs` (read, atomic write, stat, exists, mkdir, remove, rename, copy, list, dirs, canon, same, link, watch, cwd, temp, absolute) | 0.2 |
 | `json` on yyjson, `hash` on CNG, `text`, `log`, `cli` | 0.2 |
 | the manual and kuu's own Lua inside the executable; `kuu docs [page | search]` | 0.2 |
-| live child streams (`child:read`, `child:write`), `proc.wait_any`, output callbacks, inherited console | 0.2 remaining |
+| live child streams with backpressure (`read`, `read_err`, `lines`, `write`, `close_stdin`), `inherit = true`, `proc.wait_any`, `proc.wait_all` | 0.2 |
 | `http` via WinHTTP, `toolchain` hydrate/verify/path, `task` and `run`/`list` | 0.3 |
 | `check` (parse, `global none`, palette arity before running), `--json` envelopes | 0.3 |
 | `pty` over ConPTY with `expect`; `re` via PCRE2; worker processes; `serve` | later |
@@ -48,8 +48,10 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 2. **0.2, the palette core.** The loop and scheduler, `proc`, `fs`, `text`,
    `json`, `hash`, `log`, `cli`, `err`, with hostile fixtures: orphans,
    timeouts, NUL bytes, invalid UTF-8, dozens of children, junctions inside,
-   outside, looped, and dangling, paths beyond 260 characters. Landed
-   2026-09-09 with about 300 checks; live child streams remain.
+   outside, looped, and dangling, paths beyond 260 characters. Done
+   2026-09-09 with 322 checks. Output callbacks were considered and dropped:
+   a task reading a stream is the same thing without a second calling
+   convention.
 3. **0.3, the repository runtime.** `http`, hydrate and verify from a lock,
    tasks, `check`, `docs`. Done when another repository is driven end to end
    by a `tasks.lua`.

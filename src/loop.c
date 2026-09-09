@@ -281,6 +281,9 @@ void ku_wake(ku_waiter *w)
     }
     w->done = 1;
     ku_timer_cancel(w->loop, &w->timer);
+    if (w->on_wake != NULL) {
+        w->on_wake(w); /* an aggregate may wake its real waiter here */
+    }
     if (w->co != NULL) {
         enqueue(w->loop, w->driver, 0);
     }
