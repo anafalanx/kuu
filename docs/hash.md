@@ -10,6 +10,7 @@ hash.sum("sha256", bytes, { raw = true })    -- the digest bytes
 hash.file("sha256", "build/kuu.exe")         -- streamed in 64 KiB chunks; nil, err
 hash.hmac("sha256", key, bytes)
 hash.random(32)                              -- bytes from the system RNG, 1 to 1048576
+hash.uuid()                                  -- "5f3a…-…-4…-…", a random version 4 UUID, lower case
 hash.algorithms()                            -- { "md5", "sha1", "sha256", "sha384", "sha512" }
 
 local h = hash.start("sha256")

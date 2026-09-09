@@ -72,6 +72,7 @@ hashing, and every other organ are behind `require`.
 | [`err`](err.md) | the one error shape and how to test it |
 | [`task`](task.md) | a repository's tasks, declared once in `tasks.lua`, run by `kuu run` |
 | [`archive`](archive.md) | zip and tar archives through the tar.exe Windows ships |
+| [`sys`](sys.md) | facts about this machine and this process |
 | `rt` | the launch: version, executable, route, program, arguments, the require root |
 
 `require` searches `package.preload`, where these live, and then the program's

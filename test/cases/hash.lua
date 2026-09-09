@@ -41,4 +41,9 @@ return function(T)
   ok, e = pcall(hash.sum, "sha3-256", "x")
   check("an unknown algorithm is refused by name", not ok and err.is(e, "HASH", "badvalue") and contains(tostring(e), "sha3-256"), tostring(e))
   check("algorithms lists the five", table.concat(hash.algorithms(), ",") == "md5,sha1,sha256,sha384,sha512")
+
+  local u1, u2 = hash.uuid(), hash.uuid()
+  check("uuid is a lower-case version 4 UUID with the variant bits set",
+    u1:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%-4%x%x%x%-[89ab]%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") ~= nil, u1)
+  check("two uuids differ", u1 ~= u2)
 end

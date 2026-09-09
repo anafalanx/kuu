@@ -345,6 +345,8 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "fs");
     lua_pushcfunction(L, ku_open_http);
     lua_setfield(L, -2, "http");
+    lua_pushcfunction(L, ku_open_sys);
+    lua_setfield(L, -2, "sys");
     lua_pop(L, 2);
     return L;
 }

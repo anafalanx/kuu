@@ -30,4 +30,26 @@ return function(T)
   check("cpNNN names work", text.decode("\130", "cp850") == "é")
   check("ansi and oem resolve", type(text.decode("abc", "ansi")) == "string" and type(text.decode("abc", "oem")) == "string")
   check("valid reports strict UTF-8", text.valid("héllo") == true and text.valid("\255") == false and text.valid("") == true)
+
+  -- base64 and hex ---------------------------------------------------------------------------
+  check("tobase64 follows the published vectors", text.tobase64("") == "" and text.tobase64("f") == "Zg==" and text.tobase64("fo") == "Zm8="
+    and text.tobase64("foo") == "Zm9v" and text.tobase64("foobar") == "Zm9vYmFy", text.tobase64("foobar"))
+  check("the url alphabet swaps the two symbols and drops padding", text.tobase64("\255\254\253") == "//79" and text.tobase64("\255\254\253", { url = true }) == "__79"
+    and text.tobase64("f", { url = true }) == "Zg", text.tobase64("f", { url = true }))
+  check("frombase64 inverts both alphabets, with or without padding", text.frombase64("Zm9vYmFy") == "foobar" and text.frombase64("Zg==") == "f"
+    and text.frombase64("Zg") == "f" and text.frombase64("__79") == "\255\254\253")
+  check("frombase64 ignores whitespace, as in PEM", text.frombase64("Zm9v\r\nYmFy\n") == "foobar")
+  local none, e = text.frombase64("Zm9v*mFy")
+  check("a byte outside the alphabet is TEXT invalid with its position", none == nil and err.is(e, "TEXT", "invalid") and tostring(e):find("at 5", 1, true) ~= nil, tostring(e))
+  none, e = text.frombase64("Z")
+  check("a lone trailing character is TEXT invalid", none == nil and err.is(e, "TEXT", "invalid"), tostring(e))
+  none, e = text.frombase64("Zg==Zg")
+  check("data after padding is TEXT invalid", none == nil and err.is(e, "TEXT", "invalid"), tostring(e))
+  local bytes = "\0\1\127\128\255"
+  check("tohex is lower case and fromhex accepts either case and whitespace", text.tohex(bytes) == "00017f80ff" and text.fromhex("00017F80FF") == bytes
+    and text.fromhex("00 01\n7f 80 ff") == bytes and text.tohex("") == "")
+  none, e = text.fromhex("abc")
+  check("an odd number of hex digits is TEXT invalid", none == nil and err.is(e, "TEXT", "invalid"), tostring(e))
+  none, e = text.fromhex("zz")
+  check("a non-hex byte is TEXT invalid", none == nil and err.is(e, "TEXT", "invalid"), tostring(e))
 end

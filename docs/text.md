@@ -8,6 +8,12 @@ text.decode(bytes, "cp1252")      -- UTF-8, or nil, err TEXT invalid
 text.encode(str, "utf-16le")      -- bytes, or nil, err TEXT unencodable
 text.valid(bytes)                 -- true when the bytes are strict UTF-8
 text.encodings()                  -- the accepted names
+
+text.tobase64(bytes)              -- standard alphabet, padded
+text.tobase64(bytes, { url = true })   -- the url alphabet, no padding
+text.frombase64(s)                -- bytes, or nil, err TEXT invalid; either alphabet, padding optional, whitespace ignored
+text.tohex(bytes)                 -- lower case
+text.fromhex(s)                   -- bytes, or nil, err TEXT invalid; either case, whitespace ignored
 ```
 
 Encodings: `utf-8`, `utf-16le`, `utf-16be`, `latin1`, `ansi` (the system code
@@ -23,7 +29,7 @@ bytes and paired surrogates; byte-order marks are not interpreted or produced.
 
 | TEXT code | when |
 |---|---|
-| `invalid` | the input is not valid in the named encoding |
+| `invalid` | the input is not valid in the named encoding, or is not base64 or hex |
 | `unencodable` | the string has characters the target encoding lacks |
 | `unsupported` | the code page is not available on this system |
 | `badvalue` | raised: an unknown encoding name |

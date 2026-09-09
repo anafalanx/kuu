@@ -308,6 +308,159 @@ static int l_text_valid(lua_State *L)
     return 1;
 }
 
+/* ---- base64 and hex ------------------------------------------------------------------ */
+
+static const char B64_STANDARD[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static const char B64_URL[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/* text.tobase64(bytes [, { url = true }]) -> text.  The url alphabet uses
+ * '-' and '_' and carries no padding. */
+static int l_text_tobase64(lua_State *L)
+{
+    size_t n = 0;
+    const unsigned char *in = (const unsigned char *)luaL_checklstring(L, 1, &n);
+    int url = 0;
+    if (lua_istable(L, 2)) {
+        lua_getfield(L, 2, "url");
+        url = lua_toboolean(L, -1);
+        lua_pop(L, 1);
+    }
+    const char *alphabet = url ? B64_URL : B64_STANDARD;
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
+    size_t i = 0;
+    for (; i + 3 <= n; i += 3) {
+        unsigned v = ((unsigned)in[i] << 16) | ((unsigned)in[i + 1] << 8) | in[i + 2];
+        char quad[4] = {alphabet[v >> 18], alphabet[(v >> 12) & 63], alphabet[(v >> 6) & 63], alphabet[v & 63]};
+        luaL_addlstring(&b, quad, 4);
+    }
+    if (i < n) {
+        int two = i + 1 < n;
+        unsigned v = (unsigned)in[i] << 16;
+        if (two) {
+            v |= (unsigned)in[i + 1] << 8;
+        }
+        char quad[4] = {alphabet[v >> 18], alphabet[(v >> 12) & 63], two ? alphabet[(v >> 6) & 63] : '=', '='};
+        luaL_addlstring(&b, quad, url ? (size_t)(two ? 3 : 2) : 4);
+    }
+    luaL_pushresult(&b);
+    return 1;
+}
+
+static int b64_value(unsigned char c)
+{
+    if (c >= 'A' && c <= 'Z') {
+        return c - 'A';
+    }
+    if (c >= 'a' && c <= 'z') {
+        return c - 'a' + 26;
+    }
+    if (c >= '0' && c <= '9') {
+        return c - '0' + 52;
+    }
+    if (c == '+' || c == '-') {
+        return 62;
+    }
+    if (c == '/' || c == '_') {
+        return 63;
+    }
+    return -1;
+}
+
+/* text.frombase64(text) -> bytes | nil, err.  Either alphabet, padding
+ * optional, whitespace ignored; anything else is TEXT invalid. */
+static int l_text_frombase64(lua_State *L)
+{
+    size_t n = 0;
+    const unsigned char *in = (const unsigned char *)luaL_checklstring(L, 1, &n);
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
+    unsigned acc = 0;
+    int bits = 0;
+    int padded = 0;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = in[i];
+        if (c == '\r' || c == '\n' || c == ' ' || c == '\t') {
+            continue;
+        }
+        if (c == '=') {
+            padded = 1;
+            continue;
+        }
+        if (padded) {
+            return ku_err_fail(L, "TEXT", "invalid", "base64 has data after its padding, at byte %zu", i + 1);
+        }
+        int v = b64_value(c);
+        if (v < 0) {
+            return ku_err_fail(L, "TEXT", "invalid", "not base64: byte %u at %zu", (unsigned)c, i + 1);
+        }
+        acc = (acc << 6) | (unsigned)v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            luaL_addchar(&b, (char)((acc >> bits) & 0xff));
+        }
+    }
+    if (bits >= 6) {
+        return ku_err_fail(L, "TEXT", "invalid", "base64 ends with a lone character");
+    }
+    luaL_pushresult(&b);
+    return 1;
+}
+
+/* text.tohex(bytes) -> lower-case hex; text.fromhex(text) -> bytes | nil, err */
+static int l_text_tohex(lua_State *L)
+{
+    size_t n = 0;
+    const unsigned char *in = (const unsigned char *)luaL_checklstring(L, 1, &n);
+    static const char digits[] = "0123456789abcdef";
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
+    for (size_t i = 0; i < n; i++) {
+        luaL_addchar(&b, digits[in[i] >> 4]);
+        luaL_addchar(&b, digits[in[i] & 15]);
+    }
+    luaL_pushresult(&b);
+    return 1;
+}
+
+static int l_text_fromhex(lua_State *L)
+{
+    size_t n = 0;
+    const unsigned char *in = (const unsigned char *)luaL_checklstring(L, 1, &n);
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
+    int have = 0;
+    unsigned value = 0;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = in[i];
+        unsigned digit;
+        if (c == '\r' || c == '\n' || c == ' ' || c == '\t') {
+            continue;
+        }
+        if (c >= '0' && c <= '9') {
+            digit = c - '0';
+        } else if (c >= 'a' && c <= 'f') {
+            digit = c - 'a' + 10;
+        } else if (c >= 'A' && c <= 'F') {
+            digit = c - 'A' + 10;
+        } else {
+            return ku_err_fail(L, "TEXT", "invalid", "not hex: byte %u at %zu", (unsigned)c, i + 1);
+        }
+        value = (value << 4) | digit;
+        if (++have == 2) {
+            luaL_addchar(&b, (char)value);
+            have = 0;
+            value = 0;
+        }
+    }
+    if (have != 0) {
+        return ku_err_fail(L, "TEXT", "invalid", "hex has an odd number of digits");
+    }
+    luaL_pushresult(&b);
+    return 1;
+}
+
 static int l_text_encodings(lua_State *L)
 {
     static const char *const names[] = {"utf-8", "utf-16le", "utf-16be", "latin1", "ansi", "oem", "cpNNN", NULL};
@@ -326,6 +479,10 @@ int ku_open_text(lua_State *L)
         {"encode", l_text_encode},
         {"valid", l_text_valid},
         {"encodings", l_text_encodings},
+        {"tobase64", l_text_tobase64},
+        {"frombase64", l_text_frombase64},
+        {"tohex", l_text_tohex},
+        {"fromhex", l_text_fromhex},
         {NULL, NULL},
     };
     luaL_newlib(L, functions);
