@@ -22,6 +22,7 @@ kuu -e SCRIPT [arg ...]   run an inline script
 kuu run [TASK [arg ...]]  a task from the nearest tasks.lua
 kuu list [--json]         those tasks
 kuu hydrate | verify      the tools lock
+kuu check [PATH ...]      parse, global declarations, requires, without running
 kuu docs [PAGE | search TEXT]   the manual
 kuu --version | --help
 ```

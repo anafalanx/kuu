@@ -27,6 +27,7 @@ kuu docs [PAGE | search TEXT]   this manual, from inside the executable
 kuu run [TASK [arg ...]]  a task from the nearest tasks.lua      (see Tasks)
 kuu list [--json]         those tasks
 kuu hydrate | verify [--deep] [--lock FILE] [--root DIR] [--json]   the tools lock  (see Toolchain)
+kuu check [--json] [PATH ...]   parse, global declarations, requires, without running  (see check)
 kuu --version | --help
 ```
 
@@ -116,6 +117,7 @@ Failures kuu detects before the program runs are spelled
   [json](json.md), [hash](hash.md), [text](text.md), [log](log.md),
   [cli](cli.md), [err](err.md): the modules.
 - [Tasks](task.md): `tasks.lua`, `kuu run`, `kuu list`, and the exit codes.
+- [check](check.md): what `kuu check` finds without running a file.
 - [Toolchain](toolchain.md): the lock, `kuu hydrate`, `kuu verify`, and what
   kuu's own `.tools` holds.
 - [Roadmap](roadmap.md): decisions taken and milestones ahead.

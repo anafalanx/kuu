@@ -39,7 +39,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `http` on WinHTTP: get, post, request, streaming to a file, a wall-clock deadline of kuu's own | 0.3 |
 | `toolchain` hydrate/verify/path from a prescriptive lock; `kuu hydrate`, `kuu verify` | 0.3 |
 | `task`, `tasks.lua`, `kuu run`, `kuu list`, `--json` envelopes on every verb; `fs.chdir`, `rt.root`, `rt.source` | 0.3 |
-| `check` (parse, `global none`, palette arity before running) | 0.3, next |
+| `kuu check`: parse, global declarations, `require` resolution, without running; no arity checking, by design | 0.3 |
 | `pty` over ConPTY with `expect`; `re` via PCRE2; worker processes; `serve` | later |
 | version resource, signing, release | with the first palette release |
 
@@ -60,8 +60,11 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    server that accepts and stays silent. The lock and the tasks landed the
    same day: hydrate and verify are one pass, stamps are keyed on the lock
    entry and the hydrating code, `kuu run` passes a child's exit code
-   through. The suite drives a synthetic project end to end (441 checks);
-   `check` and a real second repository remain.
+   through. `check` parses, wants a global declaration, and resolves every
+   `require`; palette arity checking was dropped, because a checker that
+   promises more than it runs is not a gate. The suite drives a synthetic
+   project end to end (457 checks). A real second repository remains the
+   owner's to pick.
 4. **0.4, the agent's console.** `pty`, then a signed release and the first
    other repository bootstrapped by a ten-line script that fetches `kuu.exe`
    by hash.
