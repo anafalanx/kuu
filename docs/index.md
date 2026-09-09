@@ -11,10 +11,12 @@ kuu runs on Windows 11 version 25H2 and later, and on the equivalent Windows
 Server releases. Nothing else, on purpose: the process, console, and file
 system features it builds on are used without fallbacks.
 
-This is version 0.4: the runner, the scheduler, processes, files, JSON, HTTP,
-archives, hashing, text encodings, logging, argument parsing, a repository's
-tasks, a memory across runs, and the machine's own facts. It is the tool an
-agent holds on a Windows machine instead of PowerShell; the
+This is version 0.5: the runner, the scheduler, processes (its own children
+and the others on the machine), files, JSON, CSV, INI, HTTP, archives,
+hashing, text encodings, regular expressions, time, logging, argument
+parsing, a repository's tasks, a memory across runs, the machine's own facts,
+the registry, the environment, and the network as seen from here. It is the
+tool an agent holds on a Windows machine instead of PowerShell; the
 [From PowerShell](powershell.md) page maps one to the other. The
 [roadmap](roadmap.md) records what is planned and why, and
 [inheritance](inheritance.md) records what kuu learned from its predecessors.
@@ -129,9 +131,14 @@ Failures kuu detects before the program runs are spelled
   kuu call that replaces it.
 - [Pitfalls](pitfalls.md): what differs from the Lua an agent already knows,
   and the Windows facts kuu refuses to hide.
-- [proc](proc.md), [fs](fs.md), [http](http.md), [sched](sched.md),
-  [json](json.md), [hash](hash.md), [text](text.md), [log](log.md),
-  [cli](cli.md), [err](err.md): the modules.
+- [Adopting kuu](adopting.md): a repository gets its own kuu.exe, a
+  tasks.lua, and prerequisites by hash; nothing on the machine.
+- [proc](proc.md), [fs](fs.md), [http](http.md), [net](net.md),
+  [sched](sched.md), [json](json.md), [csv](csv.md), [ini](ini.md),
+  [re](re.md), [time](time.md), [hash](hash.md), [text](text.md),
+  [reg](reg.md), [env](env.md), [sys](sys.md), [sync](sync.md),
+  [mem](mem.md), [archive](archive.md), [log](log.md), [cli](cli.md),
+  [err](err.md): the modules.
 - [Tasks](task.md): `tasks.lua`, `kuu run`, `kuu list`, and the exit codes.
 - [check](check.md): what `kuu check` finds without running a file.
 - [Toolchain](toolchain.md): what kuu's own `.tools` holds and where it comes

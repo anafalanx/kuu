@@ -54,9 +54,9 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `kuu run --dry-run`; a crash handler so kuu never dies silently; soak and stress tests on demand | 0.4 |
 | the from-PowerShell page of the manual: each cmdlet an agent reaches for, and the kuu call | 0.4 onward |
 | a version resource, Certum signing, a GitHub Release, by make; `kuu-test-project` under the released kuu | 0.4 |
-| `pty` over ConPTY with `expect`; VT processing and size on kuu's own console | 0.5 |
-| `re` on PCRE2; `time`; `debug.traceback` and `debug.getinfo` only; `csv`, `ini` | 0.5 |
-| `reg`; persistent environment variables with the change broadcast | 0.5 |
+| `pty` over ConPTY with `expect`; VT processing and size on kuu's own console | 0.6 |
+| `re` on PCRE2; `time`; `debug.traceback` and `debug.getinfo` only; `csv`, `ini`; the adopting page of the manual | 0.5 |
+| `reg`; `env`: the live environment and the persisted one, with the change broadcast | 0.5 |
 | `proc.list`, `proc.find`, `proc.tree`; `net.probe`, `net.listeners`, `net.resolve`, `net.addresses` | 0.5 |
 | `svc` via the Service Control Manager; `evt`, the event logs; `worker` processes; `serve`; `check` learns the palette's names | 0.6 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
@@ -126,20 +126,30 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      0.4 release; `kuu-test-project` fetches make and its two runtime
      packages by hash with `http` and `archive`, counts its runs in `mem`,
      and runs its tasks under the released kuu.
-5. **0.5, the console, the language, the machine.** `pty`: a child on a
-   ConPTY, born in a job like every other child, its pipes overlapped on the
-   one port, no threads; `read`, `write`, `resize`, `wait`, `kill`, and
-   `expect(patterns, timeout)` against both the raw bytes and the plain text
-   a terminal would show; done when the suite drives an interactive prompt
-   and a REPL through it. `re` on PCRE2, because the ledger says Lua
-   patterns may prove decisive; `time` with zones and ISO 8601;
-   `debug.traceback` and `debug.getinfo` and nothing else of that library;
-   `csv` and `ini`. `reg` with typed values and persistent environment
-   variables with the change broadcast, reads and writes. `proc.list`,
-   `proc.find`, `proc.tree`; `net.probe`, `net.listeners`, `net.resolve`,
-   `net.addresses`; `sync.lock`, a named mutex across processes.
-6. **0.6, control and keeping in check.** `svc` via the Service Control
-   Manager: query, start, stop, create, delete; `evt`, the event logs read
+5. **0.5, the language, the machine, the network.** `re` on PCRE2, because
+   the ledger says Lua patterns may prove decisive; `time` with zones and
+   ISO 8601; `debug.traceback` and `debug.getinfo` and nothing else of that
+   library; `csv` and `ini`; `reg` with typed values; `env`, the live
+   environment and the persisted one with the change broadcast;
+   `proc.list`, `proc.find`, `proc.tree`; `net.resolve`, `net.probe`,
+   `net.listeners`, `net.addresses`, none of them blocking the loop; the
+   manual page on adopting kuu in a repository.
+   - Done 2026-09-09. 729 checks. `pty` with `expect` moved to 0.6, to be
+     shaped by the first real repository driven with kuu rather than
+     guessed at. Found on the way: a refused TCP connect takes two seconds
+     on Windows, loopback included, so a probe given less reports timeout
+     instead of refused (recorded in net.md); `GetAddrInfoExCancel` is
+     missing from the MinGW header and is resolved at run time; a megabyte
+     `gsub` took a minute until PCRE2 was told the subject was already
+     checked as UTF-8.
+6. **0.6, the console, control, and a real repository.** `pty`: a child on
+   a ConPTY, born in a job like every other child, its pipes overlapped on
+   the one port, no threads; `read`, `write`, `resize`, `wait`, `kill`, and
+   `expect(patterns, timeout)` against both the raw bytes and the plain
+   text a terminal would show; done when the suite drives an interactive
+   prompt and a REPL through it. One real repository converted to kuu
+   (candidate: els), its findings driving the palette. `svc` via the
+   Service Control Manager: query, start, stop, create, delete; `evt`, the event logs read
    with filters; `worker` processes, Lua in a child kuu with JSON messages
    over pipes on the port; `serve`, a local HTTP listener on the loop;
    `check` learns the palette's exported names, so `fs.exist` is an error

@@ -5,14 +5,18 @@ program and, milestone by milestone, gives it correct native control over
 processes, files, and the network. Kuu is Finnish for moon, as Lua is
 Portuguese for it.
 
-Version 0.4 makes kuu the tool an agent holds on a Windows machine instead of
+Version 0.5 makes kuu the tool an agent holds on a Windows machine instead of
 PowerShell: to set up, configure, run, test, script, control, and keep in
-check. Programs run as coroutines on
-one event loop; `proc` gives them children with decided lifetimes under
-Windows Job Objects; `fs` tells the truth about paths, identity, junctions,
-and long names, and watches directories; `http` fetches over WinHTTP with a
-deadline of kuu's own; `archive` unpacks, `sys` knows the machine, `mem`
-remembers between runs; `json`, `hash`, `text`, `log`, and `cli` round it out.
+check. Programs run as coroutines on one event loop; `proc` gives them
+children with decided lifetimes under Windows Job Objects and finds the
+processes already running; `fs` tells the truth about paths, identity,
+junctions, and long names, and watches directories; `http` fetches over
+WinHTTP with a deadline of kuu's own; `net` resolves, probes, and lists
+listeners and addresses without blocking; `reg` reads and writes the
+registry typed; `env` keeps the live and the persisted environment apart;
+`re` brings PCRE2, `time` zones and ISO 8601; `archive` unpacks, `sys` knows
+the machine, `mem` remembers between runs, `sync` takes turns; `json`, `csv`,
+`ini`, `hash`, `text`, `log`, and `cli` round it out.
 A repository declares its tasks once in `tasks.lua` and runs them with
 `kuu run`, and fetches its own prerequisites by url and hash with `http` and
 `archive`. The manual rides inside the executable: `kuu docs`. kuu runs on

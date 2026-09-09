@@ -89,7 +89,7 @@ stalls another task.
 | `[Environment]::OSVersion`, `Get-ComputerInfo` | `sys.info()` | the truthful build, the display name, elevation, cpus, memory, drives, uptime |
 | `[Security.Principal.WindowsPrincipal]…IsInRole` | `sys.info().elevated` | |
 | `$env:NAME`, `[Environment]::SetEnvironmentVariable(..., 'User')`, `setx` | `env.get`, `env.set`; `env.persist`, `env.forget` with the change broadcast | live and persisted are two different things; see env.md |
-| `Get-ItemProperty HKLM:...`, `Set-ItemProperty`, `New-Item HKCU:...`, `reg.exe` | `reg.get`, `reg.set`, `reg.values`, `reg.keys`, `reg.remove` | typed: dword, qword, string, expandstring, multistring, binary |
+| `Get-ItemProperty HKLM:\...`, `Set-ItemProperty`, `New-Item HKCU:\...`, `reg.exe` | `reg.get`, `reg.set`, `reg.values`, `reg.keys`, `reg.remove` | typed: dword, qword, string, expandstring, multistring, binary |
 | `Get-Service`, `Start-Service`, `New-Service` | 0.6: `svc` | |
 | `Get-WinEvent` | 0.6: `evt` | |
 | `Register-ScheduledTask` | `schtasks.exe` through `proc.run` | deferred as a module |
