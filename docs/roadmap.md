@@ -22,6 +22,11 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
 | process lifetime | the no-orphans law, first thing in the palette | every child is born into a kill-on-close job; only `detach`, and a child's own deliberate breakaway, step outside it |
 | what stays out | `store` (SQLite), publishing, Tk, a wrap verb, any Tcl, PATH lookup, `io.popen`, `os.execute` | tools or hazards, not organs |
+| projects share nothing | every project carries its own `kuu.exe` in its own `.tools`, copied in by hand; nothing on `PATH`, no machine changes, no bootstrap scripts | the owner ended estate-wide management; a small executable is copied, not fetched by glue |
+| what a lock may point at | upstream downloads only, into the project's own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger hydrates from the same public sources |
+| kuu's own repository | free of kuu: build and release are make, gcc, and cmd recipes; no `tasks.lua` there | self-reference is unwelcome, for release steps too |
+| releases | anafalanx/kuu public; GitHub Releases carry `kuu.exe` and its `.sha256`; signed with the owner's existing Certum certificate through the Windows SDK's signtool | the estate already signs this way, and public releases need no credentials to fetch |
+| the second project | `C:\dev\kuu-test-project`, local, no remote, tailored to test kuu features | a project built to exercise the runtime, before any existing one is converted |
 
 ## Inventory
 
@@ -41,8 +46,9 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `task`, `tasks.lua`, `kuu run`, `kuu list`, `--json` envelopes on every verb; `fs.chdir`, `rt.root`, `rt.source` | 0.3 |
 | `kuu check`: parse, global declarations, `require` resolution, without running; no arity checking, by design | 0.3 |
 | `examples/hello`: a lock that pins Zig by hash, a `tasks.lua` that hydrates it and builds one C file with it | 0.3 |
-| `pty` over ConPTY with `expect`; a version resource, signing, `get-kuu.cmd`, `kuu init`; the second repository | 0.4 |
-| `re` on PCRE2; `worker` processes; `serve`; `check` learns the palette's names | 0.5 |
+| `kuu-test-project` driven from its own `.tools/kuu.exe`; tools made of several archives in the lock, so an MSYS2 gcc assembles from upstream packages; `kuu run --dry-run`; a version resource and a signed, published release, by make | 0.4 |
+| `pty` over ConPTY with `expect`; `re` on PCRE2; `fs.glob` | 0.5 |
+| `worker` processes; `serve`; `check` learns the palette's names | 0.6 |
 
 ## Milestones
 
@@ -71,50 +77,54 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    after), and tests the result. `kuu verify --deep` passes, a second
    `kuu run` costs a stamp check, and editing the lock makes the tool stale
    and re-installs it from the cache.
-4. **0.4, the agent's console and the first release.**
-   - `pty`: a child on a ConPTY, born in a job like every other child, its
-     pipes overlapped on the one port, no threads. `read`, `write`, `resize`,
-     `wait`, `kill`, and `expect(patterns, timeout)` against both the raw
-     bytes and the plain text a terminal would show. Done when the suite
-     drives an interactive prompt and a REPL through it.
-   - The release: a version resource so the file's properties say what
-     `--version` says; Authenticode signing; `kuu.exe` published with a
-     `.sha256` beside it; and `get-kuu.cmd`, ten lines of batch on the
-     `curl.exe` and `certutil.exe` every supported Windows ships, that fetch
-     a named version by hash into `.tools/kuu/`. Batch, because it is the
-     only script that can exist before kuu does; no PowerShell.
-   - `kuu init`: writes `tasks.lua`, `tools/lock.json`, the `.gitignore`
-     lines, and `get-kuu.cmd` into a repository, so adoption is one command.
+4. **0.4, the test project and the first release.**
+   - `kuu-test-project`, at `C:\dev\kuu-test-project`, local and without a
+     remote, is where kuu meets a project: its own `kuu.exe` in `.tools`, a
+     `tasks.lua` that refuses any other kuu version, a lock of upstream
+     downloads only. Created 2026-09-09 with a smoke task over the palette,
+     a `check` task that runs the project's own kuu, and MSYS2's `make` from
+     `mirror.msys2.org` as the first pinned tool. It grows until a C program
+     builds there from scratch, and whatever it teaches goes into the
+     runtime before the release.
+   - The lock learns tools made of several archives: an MSYS2 gcc is some
+     twenty `.pkg.tar.zst` packages from the mirror, each pinned by hash,
+     unpacked into one tree, checked by `gcc --version`. The same mechanism
+     serves any tool upstream ships in parts.
    - `kuu run --dry-run`: the plan, in order, without running it.
-   - The second repository, the owner's pick, driven by a `tasks.lua` and
-     bootstrapped by `get-kuu.cmd`. Done when a fresh clone on a clean
-     Windows 11 goes from nothing to a passing `kuu run` with one command.
-5. **0.5, text and workers.** `re` on PCRE2 (UTF-8, named groups, `find`,
+   - The release, by make and cmd recipes in kuu's own repository, which
+     stays free of kuu: a version resource from `windres` so the file's
+     properties say what `--version` says; Authenticode signing with the
+     owner's Certum certificate through the Windows SDK's signtool, verified
+     after signing against the pinned leaf certificate and a timestamp, the
+     discipline els already has in Tcl; `kuu.exe` and its `.sha256`
+     published as a GitHub Release of the public repository. Done when the
+     test project runs its tasks end to end under the released `kuu.exe`
+     copied into its `.tools`.
+5. **0.5, the agent's console and text.** `pty`: a child on a ConPTY, born
+   in a job like every other child, its pipes overlapped on the one port, no
+   threads; `read`, `write`, `resize`, `wait`, `kill`, and
+   `expect(patterns, timeout)` against both the raw bytes and the plain text
+   a terminal would show; done when the suite drives an interactive prompt
+   and a REPL through it. `re` on PCRE2 (UTF-8, named groups, `find`,
    `match`, `gmatch`, `gsub`, `split`), because the ledger says Lua patterns
-   may prove decisive; `fs.glob`; `worker` processes, Lua in a child kuu with
-   JSON messages over pipes on the port, for CPU-bound and isolated work;
-   `serve`, a local HTTP listener on the loop for tooling and webhooks;
-   `check` learns the palette's exported names, so `fs.exist` is an error
-   before a run, still without arity.
-6. **1.0.** Criteria for the owner to set. Proposed: three repositories
-   driven for a month without a runtime defect, a manual page for every
-   module, a signed release cadence, and the Lua-versus-Tcl ledger closed
-   with a verdict.
+   may prove decisive. `fs.glob`.
+6. **0.6, workers.** `worker` processes, Lua in a child kuu with JSON
+   messages over pipes on the port, for CPU-bound and isolated work; `serve`,
+   a local HTTP listener on the loop for tooling and webhooks; `check` learns
+   the palette's exported names, so `fs.exist` is an error before a run,
+   still without arity.
+7. **1.0.** Criteria for the owner to set. Proposed: three projects driven
+   for a month without a runtime defect, a manual page for every module, a
+   signed release cadence, and the Lua-versus-Tcl ledger closed with a
+   verdict.
 
 ## Open decisions
 
-- **The second repository.** The best fit is one with a build-and-test cycle
-  that PowerShell and Tcl scripts drive today.
-- **Where releases live.** The repository is private, and `get-kuu.cmd` needs
-  an anonymous url: a public repository, a public bucket, or a token in the
-  script, which is the one to avoid.
-- **Signing.** Which certificate, and whether releases are signed only from
-  the owner's machine.
-- **kuu's own compiler.** Three honest options: MSYS2 by hand, as now; Zig
-  fetched by hash with a `get-zig.cmd` that needs no kuu, so no
-  self-reference; or Zig through kuu's own lock, hydrated by the previous
-  release, which is self-referential across versions. `examples/hello` shows
-  a hash-pinned `zig cc` building C in seconds.
+- **1.0 criteria.** The proposal above stands until the owner sets them.
+- **`examples/hello`.** It pins Zig because a compiler in one archive made
+  the smallest demonstration of the lock. The test project is the vehicle
+  from here on; the example stays as the manual's worked example until the
+  test project builds C from MSYS2 packages, then retires or switches.
 
 ## Backlog
 
@@ -155,5 +165,6 @@ Tcl for this job. The ledger so far:
   lines to get it, and an agent that forgets them gets stock Lua's silent
   globals.
 
-Nothing decisive yet. The coroutine model, the byte strings, and the C API have
-been strengths at every step so far.
+Nothing decisive yet, though the pattern entry is the one to watch. The
+coroutine model, the byte strings, and the C API have been strengths at every
+step so far.

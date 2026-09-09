@@ -184,6 +184,8 @@ MSYS2, run `pacman -S mingw-w64-ucrt-x86_64-gcc` (binutils, crt, headers, and
 winpthreads come with it), then copy as above. About 1.1 GB, 42,000 files.
 
 kuu's own compiler is not in a lock, by the owner's decision: kuu does not
-build or bootstrap itself, and no snapshot archive of this tree is hosted
-anywhere. The versions above are a record. The lock is for the repositories
-kuu drives.
+build or bootstrap itself, and its repository runs no kuu. The versions above
+are a record. The lock is for the repositories kuu drives, and there the rule
+is that nothing is shared between projects: a lock points only at upstream
+downloads, each project fetches them into its own `.tools`, and each project
+carries its own `kuu.exe` there too, copied in by hand.
