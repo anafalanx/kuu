@@ -117,6 +117,15 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      published as a GitHub Release of the public repository. Done when
      `kuu-test-project` runs its tasks end to end under the released
      `kuu.exe` copied into its `.tools`.
+   - Done 2026-09-09, the same day it was decided. 509 checks. The soak test
+     found a handle leak on its first run and a standalone probe traced it
+     to WinHTTP itself, one handle per session opened and closed; kuu now
+     holds one session per process and a 45 second soak stays flat on
+     handles and memory. `kuu.exe` carries its version resource, is signed
+     by thumbprint and timestamped, verified, hashed, and published as the
+     0.4 release; `kuu-test-project` fetches make and its two runtime
+     packages by hash with `http` and `archive`, counts its runs in `mem`,
+     and runs its tasks under the released kuu.
 5. **0.5, the console, the language, the machine.** `pty`: a child on a
    ConPTY, born in a job like every other child, its pipes overlapped on the
    one port, no threads; `read`, `write`, `resize`, `wait`, `kill`, and

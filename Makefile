@@ -141,16 +141,25 @@ SHA256SUM := $(BUILD)/sha256sum.exe
 $(SHA256SUM): tools/sha256sum.c | $(BUILD)
 	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -o $@ $< -lbcrypt
 
-.PHONY: sign release publish
-sign: $(OUT)
+SIGNED    := $(BUILD)/kuu.exe.signed
+
+# The stamp makes signing idempotent: a signed executable is not signed again
+# until it is rebuilt.
+$(SIGNED): $(OUT)
 	"$(SIGNTOOL)" sign /fd sha256 /sha1 $(SIGN_SHA1) /tr $(TIMESTAMP) /td sha256 $(OUT_WIN)
 	"$(SIGNTOOL)" verify /pa /all $(OUT_WIN)
 	"$(SIGNTOOL)" verify /pa /v $(OUT_WIN) | findstr /C:"Issued to: $(SIGN_NAME)" > nul
-	@echo signed $(OUT) as $(SIGN_NAME)
+	@echo signed $(OUT) as $(SIGN_NAME)> $@
+	@type $@
 
-release: sign $(SHA256SUM)
-	$(subst /,\,$(SHA256SUM)) $(OUT_WIN) > $(BUILD)\kuu.exe.sha256
-	@type $(BUILD)\kuu.exe.sha256
+.PHONY: sign release publish
+sign: $(SIGNED)
+
+$(BUILD)/kuu.exe.sha256: $(SIGNED) $(SHA256SUM)
+	$(subst /,\,$(SHA256SUM)) $(OUT_WIN) > $@
+	@type $@
+
+release: $(BUILD)/kuu.exe.sha256
 
 publish: release
 	$(GH) release create $(VERSION) $(OUT) $(BUILD)/kuu.exe.sha256 --title "kuu $(VERSION)" --generate-notes
