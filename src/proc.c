@@ -1469,6 +1469,15 @@ static void read_timeout(ku_waiter *w)
     }
 }
 
+/* Abandoned without a push: forget the reader and free the request, which
+ * only read_push would have freed. */
+static void read_abandon(ku_waiter *w)
+{
+    read_timeout(w);
+    free(w->data);
+    w->data = NULL;
+}
+
 static int stream_read(lua_State *L, ku_child *c, ku_stream *s, int what_index, int timeout_index)
 {
     if (!c->stream) {
@@ -1517,6 +1526,7 @@ static int stream_read(lua_State *L, ku_child *c, ku_stream *s, int what_index, 
     w->data = heap;
     w->tag = s;
     w->on_timeout = read_timeout;
+    w->on_abandon = read_abandon;
     s->reader = w;
     return ku_wait(L, w, timeout_ms);
 }
