@@ -77,12 +77,18 @@ function toolchain.read(path)
   for k in pairs(lock) do
     if k ~= "schema" and k ~= "tools" then return fail("badlock", "'" .. path .. "': unknown top-level key '" .. tostring(k) .. "'") end
   end
-  local names = {}
+  local names, folded = {}, {}
   for name, entry in pairs(lock.tools) do
     local where = "tool '" .. tostring(name) .. "'"
     if type(name) ~= "string" or not name:match("^%w[%w%._%-]*$") then
       return fail("badlock", where .. ": the name must be a plain word starting with a letter or digit")
     end
+    -- names become directories and files, and Windows cannot tell Foo from foo
+    local lowered = name:lower()
+    if folded[lowered] ~= nil then
+      return fail("badlock", string.format("tools '%s' and '%s' differ only in case, which the file system cannot tell apart", folded[lowered], name))
+    end
+    folded[lowered] = name
     if type(entry) ~= "table" or json.is_array(entry) then return fail("badlock", where .. " must be an object") end
     for k in pairs(entry) do
       if not KEYS[k] then return fail("badlock", where .. ": unknown key '" .. tostring(k) .. "'") end
