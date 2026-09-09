@@ -85,6 +85,12 @@ return function(T)
   local rr = kuu { "-e", "local s = require('sched'); local t; t = s.spawn(function() s.sleep(0); return t:join() end); t:join()" }
   check("a wait nothing can satisfy is reported as SCHED deadlock", rr.code == 1 and contains(rr.err, "SCHED deadlock"), describe(rr))
 
+  -- a join on itself from inside a gsub callback cannot yield, so the wait pumps
+  -- in place, finds nothing, and raises; the waiter must leave the task's list
+  -- before it is freed, or the task's own finish would wake freed memory
+  rr = kuu { "-e", "local s = require('sched'); local t; t = s.spawn(function() local ok, e = pcall(function() return (('x'):gsub('x', function() return t:join() end)) end); return ok, tostring(e) end); print(t:join()); local u = s.spawn(function() s.sleep('5ms'); return 'later' end); print(u:join())" }
+  check("a caught in-place deadlock leaves no dangling waiter behind", rr.code == 0 and rr.out == "false\tSCHED deadlock: nothing can wake this wait\nlater\n", describe(rr))
+
   rr = kuu { "-e", "local s = require('sched'); s.spawn(function() s.sleep('10s') end); print('main done')" }
   check("the program ends when the main chunk returns, whatever tasks remain", rr.code == 0 and rr.out == "main done\n" and rr.elapsed < 5, describe(rr))
 

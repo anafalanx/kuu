@@ -300,7 +300,15 @@ static int wait_finish(lua_State *L, int status, lua_KContext ctx)
         w->ref = LUA_NOREF;
     }
     if (!w->done) {
-        /* The in-place pump found nothing that could wake this waiter. */
+        /* The in-place pump found nothing that could wake this waiter.  Its
+         * owner still lists it: it must be forgotten there before it is
+         * freed, or the owner would wake freed memory when it finishes. */
+        ku_timer_cancel(w->loop, &w->timer);
+        if (w->on_abandon != NULL) {
+            w->on_abandon(w);
+        } else if (w->on_timeout != NULL) {
+            w->on_timeout(w);
+        }
         if (w->data_ref != LUA_NOREF) {
             luaL_unref(L, LUA_REGISTRYINDEX, w->data_ref);
         }

@@ -74,11 +74,11 @@ return function(T)
     and fs.exists(root .. "/fake/LICENSE") == "file")
   check("the report paths are absolute and point at the executables", report and report.tools[1].path == fs.absolute(root .. "/fake/bin/fake.exe"), report and report.tools[1].path)
   check("hydrate went missing, download, unpack, check for the zip tool", table.concat(steps, " "):find("missing:fake download:fake unpack:fake check:fake", 1, true) ~= nil, table.concat(steps, " "))
-  local stamp_text = fs.read(root .. "/fake.json", { encoding = "utf-8" })
+  local stamp_text = fs.read(root .. "/.stamps/fake.json", { encoding = "utf-8" })
   local stamp = stamp_text and json.decode(stamp_text) or nil
   check("the stamp records the inputs, the executable's hash, the notice's hash, and the kuu that hydrated",
-    stamp and stamp.sha256 == zip_sha and stamp.binSha256 == exe_sha and stamp.noticeSha256 == notice_sha and #stamp.key == 64 and stamp.kuu == require("rt").version, fs.read(root .. "/fake.json"))
-  check("no temporary directory is left behind", not fs.exists(root .. "/fake.partial") and not fs.exists(root .. "/plain.partial"))
+    stamp and stamp.sha256 == zip_sha and stamp.binSha256 == exe_sha and stamp.noticeSha256 == notice_sha and #stamp.key == 64 and stamp.kuu == require("rt").version, fs.read(root .. "/.stamps/fake.json"))
+  check("no temporary directory is left behind", not fs.exists(root .. "/.partial/fake") and not fs.exists(root .. "/.partial/plain"))
   check("the downloads are cached under the root", fs.exists(root .. "/.downloads/fake-" .. zip_sha:sub(1, 16) .. ".zip") == "file")
   check("each archive was fetched once", hits("/files/fake.zip") == 1 and hits("/files/plain.exe") == 1)
 
@@ -111,7 +111,7 @@ return function(T)
   check("a deep verify covers the notice too", report == nil and e2.report.tools[1].status == "corrupt", tostring(e2))
   toolchain.hydrate(lock_path, root, { deep = true })
 
-  fs.remove(root .. "/plain.json")
+  fs.remove(root .. "/.stamps/plain.json")
   report, e2 = toolchain.verify(lock_path, root)
   check("a tool without a stamp is missing", report == nil and e2.report.tools[2].status == "missing", tostring(e2))
   path, e3 = toolchain.path(lock_path, "plain", root)
@@ -132,7 +132,7 @@ return function(T)
   write_lock(lock)
   report, e2 = toolchain.hydrate(lock_path, root)
   check("a tool that reports the wrong version is refused and not installed", report == nil and err.is(e2, "TOOLCHAIN", "mismatch") and contains(e2.message, "did not report")
-    and not fs.exists(root .. "/fake.partial"), tostring(e2))
+    and not fs.exists(root .. "/.partial/fake"), tostring(e2))
   report, e2 = toolchain.verify(lock_path, root)
   check("after a refused replace the old install stands and reads as stale, never ok", report == nil and e2.report.tools[1].status == "stale"
     and hash.file("sha256", root .. "/fake/bin/fake.exe") == exe_sha, tostring(e2))
@@ -201,11 +201,24 @@ return function(T)
   check("a missing lock is TOOLCHAIN nolock", none == nil and err.is(e5, "TOOLCHAIN", "nolock"), tostring(e5))
   write_lock(lock)
 
+  -- names that could collide with kuu's own files under the root ---------------------------
+  local twin_lock = work .. "/tools/twins.json"
+  fs.write(twin_lock, json.encode { schema = 1, tools = {
+    foo = { url = base .. "/files/plain.exe", sha256 = exe_sha },
+    ["foo.json"] = { url = base .. "/files/plain.exe", sha256 = exe_sha },
+  } })
+  local twin_root = work .. "/.tools-twins"
+  report, e2 = toolchain.hydrate(twin_lock, twin_root)
+  check("tools named foo and foo.json both hydrate", report and report.ok and #report.tools == 2, tostring(e2))
+  report, e2 = toolchain.verify(twin_lock, twin_root, { deep = true })
+  check("and both verify, since stamps live apart from the tools", report and report.ok and fs.exists(twin_root .. "/.stamps/foo.json") == "file"
+    and fs.exists(twin_root .. "/.stamps/foo.json.json") == "file" and fs.exists(twin_root .. "/foo.json/plain.exe") == "file", tostring(e2))
+
   -- the verbs ------------------------------------------------------------------------------
   local r = T.kuu({ "verify", "--lock", lock_path, "--root", root, "--json" })
   local envelope = r.code == 0 and json.decode(r.out) or nil
   check("kuu verify --json reports ok with every tool", envelope and envelope.ok == true and #envelope.result.tools == 2 and envelope.result.tools[1].status == "ok", T.describe(r))
-  fs.remove(root .. "/fake.json")
+  fs.remove(root .. "/.stamps/fake.json")
   r = T.kuu({ "verify", "--lock", lock_path, "--root", root })
   check("kuu verify exits 1 and names what is wrong", r.code == 1 and contains(r.out, "missing   fake") and contains(r.err, "fake is missing; kuu hydrate repairs this"), T.describe(r))
   r = T.kuu({ "hydrate", "--lock", lock_path, "--root", root })

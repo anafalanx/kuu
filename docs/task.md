@@ -82,7 +82,10 @@ A task succeeds by returning nothing. It fails by raising, or by returning
 `nil, err`. The runner prints one line per task on standard error when it
 finishes, `kuu: build 1.2s`, and on failure names the task and the error.
 Dependencies that already ran are not run again, and nothing after a failed
-task runs.
+task runs. Every argument is checked before anything runs: the named task's
+against its spec, and each dependency's spec against no arguments. So
+`--help`, a wrong argument, or a dependency that requires an argument exits 2
+with nothing started.
 
 ```lua
 run = function(opts)
@@ -106,9 +109,12 @@ out or was killed is `TASK failed`. To capture output instead, use
 
 ## JSON
 
-`kuu run --json` (the flag before the task name) prints nothing on standard
-error and one JSON object on standard output when it ends. Task output still
-goes wherever the tasks send it.
+`kuu run --json` (the flag before the task name) prints one JSON object on
+standard output when it ends, and nothing else there: `print` and `io.write`
+from tasks are redirected to standard error, and the output of a `task.exec`
+child is captured and relayed to standard error when the child finishes.
+Only a direct `io.stdout:write` bypasses this, and then the task itself has
+broken the contract.
 
 ```json
 {"ok":true,"result":{"root":"C:/work/app","task":"test",
@@ -132,8 +138,9 @@ local task = require "task"
 task.all()                 -- the declared tasks, in declaration order
 task.get("build")          -- one entry: name, desc, deps, args, run, hidden
 task.default_task()        -- the default's name, or nil
-task.plan("test")          -- the entries to run, in order | nil, err
-task.execute(entry, args)  -- parse args against its spec, run it: true | nil, err
+task.plan("test")             -- the entries to run, in order | nil, err
+task.arguments(entry, args)   -- the arguments parsed against its spec: opts | nil, err
+task.execute(entry, opts)     -- run it with parsed arguments: true | nil, err
 ```
 
 | code | meaning |

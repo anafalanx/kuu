@@ -18,7 +18,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | self-hosting | none, by owner decision | kuu is not required to bootstrap or build itself; a person with `.tools` populated runs `make` |
 | versions | `Major.Minor`, both natural numbers | 0.1, 0.2, ...; no patch component |
 | dependency pinning | a prescriptive lock for the repositories kuu drives (0.3); kuu's own compiler stays unpinned, by owner decision | `tools/lock.json` names url, hash, size, unpacking, a version check, and the license notice; kuu's `.tools` is populated by hand because kuu does not bootstrap itself |
-| the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has no machine authority, and a static check can list what a file asks for |
+| the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has only stock Lua's `io` and `os`, and a static check can list what else a file asks for |
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
 | process lifetime | the no-orphans law, first thing in the palette | every child is born into a kill-on-close job; only `detach`, and a child's own deliberate breakaway, step outside it |
 | what stays out | `store` (SQLite), publishing, Tk, a wrap verb, any Tcl, PATH lookup, `io.popen`, `os.execute` | tools or hazards, not organs |

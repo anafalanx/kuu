@@ -55,7 +55,9 @@ one of kuu's own Lua modules.
 ## Modules
 
 A program gets capabilities by naming them: `require` is the gate. A Lua file
-that requires nothing has no authority over the machine.
+that requires nothing has only what stock Lua's `io` and `os` give it: files
+by path, the environment, the clock, and exit. Processes, the network,
+hashing, and every other organ are behind `require`.
 
 | module | gives |
 |---|---|

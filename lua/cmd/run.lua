@@ -1,6 +1,6 @@
 -- run.lua -- `kuu run [--json] [TASK [arg ...]]`: a task from the nearest tasks.lua.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, table, io, os, select
+global <const> require, ipairs, pairs, tostring, type, string, table, io, os, select, rawset, _G
 
 local rt = require "rt"
 local project = require "project"
@@ -25,6 +25,18 @@ local name = rt.args[i]
 local args = {}
 for k = i + 1, #rt.args do args[#args + 1] = rt.args[k] end
 
+if want_json then
+  -- Standard output carries the envelope and nothing else: what tasks print
+  -- goes to standard error, and so does the output of task.exec children.
+  io.output(io.stderr)
+  rawset(_G, "print", function(...)
+    local parts = table.pack(...)
+    for k = 1, parts.n do parts[k] = tostring(parts[k]) end
+    io.stderr:write(table.concat(parts, "\t"), "\n")
+  end)
+  task.relay = io.stderr
+end
+
 local ran = json.array {}
 
 local function exit_code_for(e)
@@ -38,7 +50,7 @@ local function finish(ok, e, extra)
     local envelope = { ok = ok, result = { tasks = ran } }
     if extra ~= nil then for k, v in pairs(extra) do envelope.result[k] = v end end
     if not ok then envelope.error = { domain = e.domain, code = e.code, message = e.message, exit = e.exit } end
-    io.write(json.encode(envelope), "\n")
+    io.stdout:write(json.encode(envelope), "\n")
   elseif not ok then
     io.stderr:write("kuu: ", tostring(e), "\n")
   end
@@ -65,9 +77,21 @@ end
 
 local plan, e4 = task.plan(name)
 if not plan then finish(false, e4, { root = root }) end
+
+-- Every argument is checked before anything runs: the named task's against
+-- its spec, each dependency's spec against no arguments.  So --help, a wrong
+-- argument, or a dependency that needs an argument exits 2 with nothing
+-- started.
+local opts_for = {}
+for _, entry in ipairs(plan) do
+  local opts, e5 = task.arguments(entry, entry.name == name and args or {}, "kuu run " .. entry.name)
+  if not opts then finish(false, e5, { root = root, task = name }) end
+  opts_for[entry.name] = opts
+end
+
 for _, entry in ipairs(plan) do
   local started = sched.clock()
-  local ok, e5 = task.execute(entry, entry.name == name and args or {}, "kuu run " .. entry.name)
+  local ok, e6 = task.execute(entry, opts_for[entry.name])
   local elapsed = sched.clock() - started
   ran[#ran + 1] = { name = entry.name, seconds = elapsed, ok = ok == true }
   if not ok then
@@ -76,8 +100,8 @@ for _, entry in ipairs(plan) do
     end
     -- a failed task's own error is not a usage mistake of the runner: only
     -- argument errors exit 2, a child's code passes through, the rest is 1
-    if not (type(e5.exit) == "number" or err.is(e5, "CLI", "usage")) then e5.exit = 1 end
-    finish(false, e5, { root = root, task = name })
+    if not (type(e6.exit) == "number" or err.is(e6, "CLI", "usage")) then e6.exit = 1 end
+    finish(false, e6, { root = root, task = name })
   end
   if not want_json then io.stderr:write(string.format("kuu: %s %.1fs\n", entry.name, elapsed)) end
 end

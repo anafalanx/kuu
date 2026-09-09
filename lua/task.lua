@@ -110,23 +110,29 @@ function task.plan(name)
   return order
 end
 
--- task.execute(entry [, args [, program_name]]) -> true | nil, err
--- Parses the task's arguments, calls run, and normalises the outcome.
--- Dependencies are the caller's business (see task.plan).
-function task.execute(entry, args, program_name)
+-- task.arguments(entry [, args [, program_name]]) -> opts | nil, err
+-- The task's arguments parsed against its spec; `--help` and every mistake
+-- are CLI usage.  A task without a spec accepts no arguments.  The runner
+-- calls this for every task in a plan before anything runs.
+function task.arguments(entry, args, program_name)
   args = args or {}
   program_name = program_name or ("kuu run " .. entry.name)
-  local opts = {}
-  if entry.args ~= nil then
-    local cli = require "cli"
-    local parsed, e = cli.parse(args, entry.args, program_name)
-    if not parsed then return nil, e end
-    if parsed.help then return nil, err.new("CLI", "usage", cli.usage(entry.args, program_name)) end
-    opts = parsed
-  elseif #args > 0 then
-    return nil, err.new("CLI", "usage", "task '" .. entry.name .. "' takes no arguments")
+  if entry.args == nil then
+    if #args > 0 then return nil, err.new("CLI", "usage", "task '" .. entry.name .. "' takes no arguments") end
+    return {}
   end
-  local ok, result, e = pcall(entry.run, opts)
+  local cli = require "cli"
+  local parsed, e = cli.parse(args, entry.args, program_name)
+  if not parsed then return nil, e end
+  if parsed.help then return nil, err.new("CLI", "usage", cli.usage(entry.args, program_name)) end
+  return parsed
+end
+
+-- task.execute(entry [, opts]) -> true | nil, err
+-- Calls run with parsed arguments and normalises the outcome.  Dependencies
+-- are the caller's business (see task.plan).
+function task.execute(entry, opts)
+  local ok, result, e = pcall(entry.run, opts or {})
   if not ok then
     if err.is(result) then return nil, result end
     return nil, err.new("TASK", "failed", tostring(result))
@@ -138,6 +144,12 @@ function task.execute(entry, args, program_name)
   return true
 end
 
+-- task.relay: nil, or a file such as io.stderr.  When set, task.exec captures
+-- its child's output and writes it there when the child finishes, instead of
+-- letting the child write to kuu's own console.  `kuu run --json` sets it so
+-- standard output carries only the envelope.
+task.relay = nil
+
 -- task.exec { "gcc", ..., cwd = , env = , timeout = } -> true | nil, err
 -- Runs a child on kuu's own console, so its output streams through.  A
 -- non-zero exit is TASK exit with `exit` set to the code, which `kuu run`
@@ -146,8 +158,17 @@ function task.exec(spec)
   if type(spec) ~= "table" or type(spec[1]) ~= "string" then
     error(err.new("TASK", "badvalue", "task.exec needs an argv table"), 2)
   end
-  spec.inherit = true
-  local r, e = proc.run(spec)
+  local r, e
+  if task.relay ~= nil then
+    r, e = proc.run(spec)
+    if r ~= nil then
+      task.relay:write(r.out)
+      task.relay:write(r.err)
+    end
+  else
+    spec.inherit = true
+    r, e = proc.run(spec)
+  end
   if not r then return nil, e end
   if r.status ~= "exit" then
     return nil, err.new("TASK", "failed", spec[1] .. ": " .. r.status)

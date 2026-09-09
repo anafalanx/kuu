@@ -83,26 +83,29 @@ tool or nothing, and never a half-installed one:
    cache. A cached download is re-hashed every time and replaced when wrong,
    so a damaged file heals on the next run. The cache is keyed by the hash,
    so a url that moves without its bytes changing costs no download.
-2. Unpack into `.tools/<name>.partial` with the `tar.exe` every supported
+2. Unpack into `.tools/.partial/<name>` with the `tar.exe` every supported
    Windows ships (zip, tar.gz, tar.xz, tar.zst), which refuses entries that
    would climb out of the directory. An exe is copied into place.
 3. Check that `bin` exists, that `notice` exists and hashes as pinned, and
    run `bin check…`, whose output must contain `expect`. A tool that reports
    the wrong version is refused and the old install, if any, stands.
 4. Remove the old stamp, remove the old directory, rename the new one in.
-5. Write the stamp `.tools/<name>.json` last: the lock entry's fields, the
-   executable's and notice's hashes, the time, and the kuu version.
+5. Write the stamp `.tools/.stamps/<name>.json` last: the lock entry's
+   fields, the executable's and notice's hashes, the time, and the kuu
+   version.
 
 The stamp's key is a hash over the lock entry, the layout format, and the
 source of the hydrating code itself. Upgrading kuu therefore makes every tool
 stale, and the next `hydrate` re-installs them from the cache without a
-download. Every write stays under the tools root.
+download. Every write stays under the tools root, and everything kuu owns
+there lives in a dot-directory; a tool name may not start with a dot, so no
+tool, whatever it is called, can collide with a stamp or a download.
 
 ```text
 .tools/
   .downloads/zig-3f2b0c4e1a2b3c4d.zip     the cache, by hash
+  .stamps/zig.json                        the stamp
   zig/                                    the tool, exactly as unpacked
-  zig.json                                its stamp
 ```
 
 Progress goes to standard error (`kuu: download zig: https://…`), the report

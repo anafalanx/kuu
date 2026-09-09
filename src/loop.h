@@ -124,7 +124,11 @@ struct ku_waiter {
     ku_loop *loop;
     void *owner;
     ku_push_fn push;
-    void (*on_timeout)(ku_waiter *w); /* owner hook: forget this waiter */
+    void (*on_timeout)(ku_waiter *w); /* owner hook: forget this waiter, its timeout fired */
+    /* owner hook: the wait is abandoned unfinished (a deadlock raised into an
+     * in-place wait); forget the waiter and free what only the push would
+     * have freed.  on_timeout stands in when this is NULL. */
+    void (*on_abandon)(ku_waiter *w);
     void (*on_wake)(ku_waiter *w);    /* owner hook: called by ku_wake before any resume */
     ku_waiter *next;                  /* for the owner's list */
     int done;

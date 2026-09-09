@@ -1217,6 +1217,16 @@ static void multi_timeout(ku_waiter *w)
     (void)w; /* the subs are unlinked in multi_cleanup when the push runs */
 }
 
+/* Abandoned without a push (a deadlock raised into an in-place wait): the
+ * subs must leave their children now, and everything but the main waiter,
+ * which the loop frees, goes with them. */
+static void multi_abandon(ku_waiter *w)
+{
+    multi_wait *m = (multi_wait *)w->tag;
+    m->main = NULL;
+    multi_cleanup(m);
+}
+
 static int multi_wait_call(lua_State *L, int need_all)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -1247,6 +1257,7 @@ static int multi_wait_call(lua_State *L, int need_all)
     }
     m->main->tag = m;
     m->main->on_timeout = multi_timeout;
+    m->main->on_abandon = multi_abandon;
     for (int i = 0; i < count; i++) {
         lua_rawgeti(L, 1, i + 1);
         ku_child_box *box = (ku_child_box *)luaL_testudata(L, -1, KU_CHILD_META);

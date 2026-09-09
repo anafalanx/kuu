@@ -41,7 +41,7 @@ local rt = require "rt"
 
 local toolchain = {}
 
-toolchain.FORMAT = 1 -- the layout under the tools root; bumping it re-hydrates everything
+toolchain.FORMAT = 2 -- the layout under the tools root; bumping it re-hydrates everything
 
 local KINDS = { zip = true, tar = true, exe = true }
 local KEYS = { version = true, url = true, sha256 = true, bytes = true, kind = true, strip = true, bin = true,
@@ -161,14 +161,18 @@ local function key_of(entry)
   return hash.sum("sha256", table.concat(parts, "\n"))
 end
 
+-- Everything kuu owns under the root lives in dot-directories, and a tool name
+-- may not start with a dot, so no tool can collide with a stamp, a download,
+-- or a temporary directory, whatever it is called.
 local function places(root, name, entry)
   local dir = root .. "/" .. name
   return {
     dir = dir,
     bin = dir .. "/" .. entry.bin,
     notice = entry.notice and (dir .. "/" .. entry.notice) or nil,
-    stamp = root .. "/" .. name .. ".json",
-    temp = root .. "/" .. name .. ".partial",
+    stamps = root .. "/.stamps",
+    stamp = root .. "/.stamps/" .. name .. ".json",
+    temp = root .. "/.partial/" .. name,
     cache = root .. "/.downloads",
   }
 end
@@ -349,8 +353,10 @@ local function install(p, name, entry, key, options, progress)
     bin = entry.bin, binSha256 = hash.file("sha256", p.bin), notice = entry.notice, noticeSha256 = notice_sha,
     key = key, kuu = rt.version, hydrated = os.date("!%Y-%m-%dT%H:%M:%SZ"),
   }
-  local written, e6 = fs.write(p.stamp, json.encode(stamp, { pretty = true }) .. "\n")
-  if not written then return nil, e6 end
+  local made_stamps, e6 = fs.mkdir(p.stamps)
+  if not made_stamps then return nil, e6 end
+  local written, e7 = fs.write(p.stamp, json.encode(stamp, { pretty = true }) .. "\n")
+  if not written then return nil, e7 end
   return true
 end
 

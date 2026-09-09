@@ -37,6 +37,9 @@ task "loop_a" { deps = { "loop_b" }, run = function() end }
 task "loop_b" { deps = { "loop_a" }, run = function() end }
 task "needs_ghost" { deps = { "ghost" }, run = function() end }
 task "secret" { hidden = true, run = function() end }
+task "needy" { desc = "needs an argument", args = { { "target", required = true } }, run = function(opts) note("needy " .. opts.target) end }
+task "uses_needy" { desc = "depends on needy", deps = { "needy" }, run = function() note("uses") end }
+task "talk" { desc = "prints", run = function() print("spoken") io.write("written\n") end }
 task.default "build"
 ]])
 
@@ -55,7 +58,7 @@ task.default "build"
   r = T.kuu({ "list", "--json" }, { cwd = project })
   local listing = r.code == 0 and json.decode(r.out) or nil
   check("kuu list --json is an envelope with root, default, and tasks", listing and listing.ok == true and listing.result.root == project
-    and listing.result.default == "build" and #listing.result.tasks == 10, T.describe(r))
+    and listing.result.default == "build" and #listing.result.tasks == 13, T.describe(r))
   if listing then
     local build
     for _, t in ipairs(listing.result.tasks) do if t.name == "build" then build = t end end
@@ -78,10 +81,20 @@ task.default "build"
   reset()
   r = T.kuu({ "run", "build", "--release", "lib" }, { cwd = project })
   check("arguments after the task name reach it through its spec", r.code == 0 and order() == "gen helped\nbuild true lib\n", order())
+  reset()
   r = T.kuu({ "run", "build", "--bogus" }, { cwd = project })
-  check("a wrong task argument exits 2 with the task's usage", r.code == 2 and contains(r.err, "unknown option '--bogus'") and contains(r.err, "usage: kuu run build"), T.describe(r))
+  check("a wrong task argument exits 2 with the task's usage, before anything runs", r.code == 2 and contains(r.err, "unknown option '--bogus'")
+    and contains(r.err, "usage: kuu run build") and order() == "", T.describe(r) .. order())
   r = T.kuu({ "run", "build", "--help" }, { cwd = project })
-  check("--help after the task name prints its usage and exits 2", r.code == 2 and contains(r.err, "--release"), T.describe(r))
+  check("--help after the task name prints its usage and exits 2 without running dependencies", r.code == 2 and contains(r.err, "--release") and order() == "", T.describe(r) .. order())
+  r = T.kuu({ "run", "uses_needy" }, { cwd = project })
+  check("a dependency that needs an argument is refused before anything runs", r.code == 2 and contains(r.err, "missing required argument <target>") and order() == "", T.describe(r) .. order())
+  r = T.kuu({ "run", "talk" }, { cwd = project })
+  check("without --json a task's print and io.write reach standard output", r.code == 0 and contains(r.out, "spoken") and contains(r.out, "written"), T.describe(r))
+  r = T.kuu({ "run", "--json", "talk" }, { cwd = project })
+  local spoken = json.decode(r.out)
+  check("under --json a task's print and io.write are redirected to standard error", r.code == 0 and spoken and spoken.ok == true
+    and contains(r.err, "spoken") and contains(r.err, "written"), T.describe(r))
   r = T.kuu({ "run", "gen", "extra" }, { cwd = project })
   check("arguments to a task without a spec exit 2", r.code == 2 and contains(r.err, "takes no arguments"), T.describe(r))
   r = T.kuu({ "run", "fail" }, { cwd = project })
@@ -105,9 +118,9 @@ task.default "build"
     and #envelope.result.tasks == 3 and envelope.result.tasks[1].name == "gen" and type(envelope.result.tasks[1].seconds) == "number"
     and r.err == "", T.describe(r))
   r = T.kuu({ "run", "--json", "child" }, { cwd = project })
-  envelope = json.decode(r.out:match("{.*}") or "null")
-  check("a failing task under --json still exits with the child's code and reports the error", r.code == 7 and envelope
-    and envelope.ok == false and envelope.error.code == "exit" and envelope.error.exit == 7, T.describe(r))
+  envelope = json.decode(r.out)
+  check("under --json standard output is only the envelope, the child's output is relayed to stderr, and its code passes through", r.code == 7 and envelope
+    and envelope.ok == false and envelope.error.code == "exit" and envelope.error.exit == 7 and contains(r.err, "from-child"), T.describe(r))
 
   -- a project without a default, and broken declarations ----------------------------------
   local bare = T.work .. "/project-bare"

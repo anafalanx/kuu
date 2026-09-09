@@ -25,8 +25,9 @@ Three things are checked, and only these:
 - **Its requires resolve.** Every literal `require "name"` is listed. A name
   that is neither one of kuu's modules nor a file under the root
   (`name.lua` or `name/init.lua`, dots as directories) is a warning with its
-  line. A program with no requires has no authority over the machine, and this
-  listing is how an agent sees what a file asks for before running it.
+  line. A program with no requires has only stock Lua's `io` and `os`, and
+  this listing is how an agent sees what else a file asks for before running
+  it.
 
 Nothing is executed, and no call is type-checked: a wrong argument count to a
 palette function still surfaces as a raise at run time, by design, rather
