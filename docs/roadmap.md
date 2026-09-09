@@ -40,8 +40,9 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `toolchain` hydrate/verify/path from a prescriptive lock; `kuu hydrate`, `kuu verify` | 0.3 |
 | `task`, `tasks.lua`, `kuu run`, `kuu list`, `--json` envelopes on every verb; `fs.chdir`, `rt.root`, `rt.source` | 0.3 |
 | `kuu check`: parse, global declarations, `require` resolution, without running; no arity checking, by design | 0.3 |
-| `pty` over ConPTY with `expect`; `re` via PCRE2; worker processes; `serve` | later |
-| version resource, signing, release | with the first palette release |
+| `examples/hello`: a lock that pins Zig by hash, a `tasks.lua` that hydrates it and builds one C file with it | 0.3 |
+| `pty` over ConPTY with `expect`; a version resource, signing, `get-kuu.cmd`, `kuu init`; the second repository | 0.4 |
+| `re` on PCRE2; `worker` processes; `serve`; `check` learns the palette's names | 0.5 |
 
 ## Milestones
 
@@ -63,11 +64,64 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    through. `check` parses, wants a global declaration, and resolves every
    `require`; palette arity checking was dropped, because a checker that
    promises more than it runs is not a gate. The suite drives a synthetic
-   project end to end (457 checks). A real second repository remains the
-   owner's to pick.
-4. **0.4, the agent's console.** `pty`, then a signed release and the first
-   other repository bootstrapped by a ten-line script that fetches `kuu.exe`
-   by hash.
+   project end to end. Done 2026-09-09 with `examples/hello`: a lock that
+   pins Zig 0.16.0 by hash, and a `tasks.lua` that hydrates it (97 MB, 14 s
+   including the hash, the unpack, and `zig version`), compiles one C file
+   with it (67 s the first time, while Zig builds its C runtime; 0.2 s
+   after), and tests the result. `kuu verify --deep` passes, a second
+   `kuu run` costs a stamp check, and editing the lock makes the tool stale
+   and re-installs it from the cache.
+4. **0.4, the agent's console and the first release.**
+   - `pty`: a child on a ConPTY, born in a job like every other child, its
+     pipes overlapped on the one port, no threads. `read`, `write`, `resize`,
+     `wait`, `kill`, and `expect(patterns, timeout)` against both the raw
+     bytes and the plain text a terminal would show. Done when the suite
+     drives an interactive prompt and a REPL through it.
+   - The release: a version resource so the file's properties say what
+     `--version` says; Authenticode signing; `kuu.exe` published with a
+     `.sha256` beside it; and `get-kuu.cmd`, ten lines of batch on the
+     `curl.exe` and `certutil.exe` every supported Windows ships, that fetch
+     a named version by hash into `.tools/kuu/`. Batch, because it is the
+     only script that can exist before kuu does; no PowerShell.
+   - `kuu init`: writes `tasks.lua`, `tools/lock.json`, the `.gitignore`
+     lines, and `get-kuu.cmd` into a repository, so adoption is one command.
+   - `kuu run --dry-run`: the plan, in order, without running it.
+   - The second repository, the owner's pick, driven by a `tasks.lua` and
+     bootstrapped by `get-kuu.cmd`. Done when a fresh clone on a clean
+     Windows 11 goes from nothing to a passing `kuu run` with one command.
+5. **0.5, text and workers.** `re` on PCRE2 (UTF-8, named groups, `find`,
+   `match`, `gmatch`, `gsub`, `split`), because the ledger says Lua patterns
+   may prove decisive; `fs.glob`; `worker` processes, Lua in a child kuu with
+   JSON messages over pipes on the port, for CPU-bound and isolated work;
+   `serve`, a local HTTP listener on the loop for tooling and webhooks;
+   `check` learns the palette's exported names, so `fs.exist` is an error
+   before a run, still without arity.
+6. **1.0.** Criteria for the owner to set. Proposed: three repositories
+   driven for a month without a runtime defect, a manual page for every
+   module, a signed release cadence, and the Lua-versus-Tcl ledger closed
+   with a verdict.
+
+## Open decisions
+
+- **The second repository.** The best fit is one with a build-and-test cycle
+  that PowerShell and Tcl scripts drive today.
+- **Where releases live.** The repository is private, and `get-kuu.cmd` needs
+  an anonymous url: a public repository, a public bucket, or a token in the
+  script, which is the one to avoid.
+- **Signing.** Which certificate, and whether releases are signed only from
+  the owner's machine.
+- **kuu's own compiler.** Three honest options: MSYS2 by hand, as now; Zig
+  fetched by hash with a `get-zig.cmd` that needs no kuu, so no
+  self-reference; or Zig through kuu's own lock, hydrated by the previous
+  release, which is self-referential across versions. `examples/hello` shows
+  a hash-pinned `zig cc` building C in seconds.
+
+## Backlog
+
+Small things, unscheduled: patches pinned by before-and-after hashes in the
+lock, for vendored sources; `kuu hydrate --prune` for downloads no lock names;
+a per-tool download `timeout`; cancellation and a streaming body reader in
+`http`; `kuu docs` as a searchable single page.
 
 ## The Lua-versus-Tcl ledger
 
@@ -87,6 +141,15 @@ Tcl for this job. The ledger so far:
   spec could be a mapping; in Lua a spec must be an array of entries, and
   `pairs` order is undefined, so `log` sorts fields and `json` objects come
   out in arbitrary key order. Minor, but felt three times in one day.
+- **Lua patterns are not regular expressions.** No alternation, no counted
+  repetition, no grouping of a repeated sequence, no Unicode classes. Tcl's
+  `regexp` had all of it, and an agent's first instinct in any language is a
+  regex. In kuu's own Lua this shows already: `check` resolves module names
+  with two patterns because one cannot say `a|a.b`, and `cli` and `values`
+  each parse durations by hand. `re` on PCRE2 is planned for 0.5; until it
+  lands, string-heavy work is where an agent will most often fall back to C or
+  to a clumsy loop. This is the first entry that may prove decisive rather
+  than minor.
 - **`global none` is opt-in boilerplate.** Tcl has no equivalent check at all,
   so this is a Lua advantage in the end, but every file must start with two
   lines to get it, and an agent that forgets them gets stock Lua's silent

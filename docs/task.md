@@ -37,6 +37,10 @@ task "test" {
 task.default "build"
 ```
 
+A complete, runnable one is `examples/hello` in kuu's repository: a lock that
+pins Zig by hash, a `tasks.lua` that hydrates it, compiles one C file with it,
+and tests the result.
+
 ```text
 kuu run                      the default task, after its dependencies
 kuu run test                 test, after build, after gen; each runs once
