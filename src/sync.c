@@ -233,15 +233,27 @@ int ku_open_sync(lua_State *L)
         lua_setfield(L, -2, "__gc");
     }
     lua_pop(L, 1);
-    static const char *const tables[] = {KU_LOCK_HELD, KU_LOCK_HANDLES, NULL};
-    for (int i = 0; tables[i] != NULL; i++) {
-        lua_getfield(L, LUA_REGISTRYINDEX, tables[i]);
-        if (lua_isnil(L, -1)) {
-            lua_newtable(L);
-            lua_setfield(L, LUA_REGISTRYINDEX, tables[i]);
-        }
-        lua_pop(L, 1);
+    /* The held table holds its locks weakly: it exists to refuse a second
+     * acquisition while a lock is alive, not to keep one alive.  A lock that
+     * is dropped without release is collected, and collection releases it. */
+    lua_getfield(L, LUA_REGISTRYINDEX, KU_LOCK_HELD);
+    if (lua_isnil(L, -1)) {
+        lua_newtable(L);
+        lua_newtable(L);
+        lua_pushliteral(L, "v");
+        lua_setfield(L, -2, "__mode");
+        lua_setmetatable(L, -2);
+        lua_setfield(L, LUA_REGISTRYINDEX, KU_LOCK_HELD);
     }
+    lua_pop(L, 1);
+    /* The handle table holds strongly: the handles are meant to live as long
+     * as the process does. */
+    lua_getfield(L, LUA_REGISTRYINDEX, KU_LOCK_HANDLES);
+    if (lua_isnil(L, -1)) {
+        lua_newtable(L);
+        lua_setfield(L, LUA_REGISTRYINDEX, KU_LOCK_HANDLES);
+    }
+    lua_pop(L, 1);
     static const luaL_Reg functions[] = {
         {"try", l_sync_try},
         {NULL, NULL},

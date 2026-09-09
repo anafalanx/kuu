@@ -24,7 +24,9 @@ locks as its state closes, so only a killed holder abandons.
 `lock` waits on the loop, so other tasks keep running while it waits, and
 gives up with `SYNC busy` after the timeout, 30 seconds by default. A lock
 is released by `release`, by the end of a `<close>` block, or when it is
-collected. It is exclusive within one kuu as well: a second `try` from the
+collected; kuu's own bookkeeping holds it weakly, so dropping the last
+reference is enough, though only `release` and `<close>` are prompt. It is
+exclusive within one kuu as well: a second `try` from the
 same process is `busy`, although Windows would have let the same thread in
 again. Names are 1 to 200 bytes without backslashes or control characters,
 and are the same across every kuu on the machine.

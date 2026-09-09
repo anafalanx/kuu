@@ -1,7 +1,7 @@
 -- sync.lua -- one at a time across processes: try, lock with a timeout,
 -- release, the <close> idiom, a holder in another process, abandonment.
 global none
-global <const> require, tostring, type, string, assert, pcall
+global <const> require, tostring, type, string, assert, pcall, collectgarbage, select
 
 return function(T)
   local check, contains = T.check, T.contains
@@ -32,6 +32,16 @@ return function(T)
   local d = sync.try(name)
   check("and released when the block ends", d ~= nil)
   d:release()
+
+  -- a lock dropped without release is released when it is collected
+  ;(function() local dropped = assert(sync.try(name)) end)()
+  local still_held = sync.try(name) == nil
+  collectgarbage()
+  collectgarbage()
+  local collected = sync.try(name)
+  check("a dropped lock is held until collected, and released by collection", still_held and collected ~= nil,
+    tostring(still_held) .. " " .. tostring(select(2, sync.try(name))))
+  if collected then collected:release() end
 
   -- another task holds it for a while; lock waits on the loop, other tasks run
   local holder = sched.spawn(function()
