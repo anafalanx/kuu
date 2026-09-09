@@ -37,19 +37,13 @@
 typedef LONG(NTAPI *nt_query_fn)(HANDLE, int, PVOID, ULONG, PULONG);
 #define PROCESS_COMMAND_LINE_INFORMATION 60
 
-typedef struct ku_pentry {
-    DWORD pid, parent, threads;
-    wchar_t name[MAX_PATH];
-} ku_pentry;
-
 static int compare_pid(const void *a, const void *b)
 {
     DWORD x = ((const ku_pentry *)a)->pid, y = ((const ku_pentry *)b)->pid;
     return x < y ? -1 : x > y ? 1 : 0;
 }
 
-/* The snapshot as a sorted array; NULL with GetLastError set. */
-static ku_pentry *snapshot(size_t *count)
+ku_pentry *ku_proc_snapshot(size_t *count)
 {
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE) {
@@ -182,7 +176,7 @@ static int fail_snapshot(lua_State *L)
 int ku_proc_list(lua_State *L)
 {
     size_t count = 0;
-    ku_pentry *list = snapshot(&count);
+    ku_pentry *list = ku_proc_snapshot(&count);
     if (list == NULL) {
         return fail_snapshot(L);
     }
@@ -241,7 +235,7 @@ int ku_proc_find(lua_State *L)
     }
     lua_pop(L, 3);
     size_t count = 0;
-    ku_pentry *list = snapshot(&count);
+    ku_pentry *list = ku_proc_snapshot(&count);
     if (list == NULL) {
         free(wanted);
         return fail_snapshot(L);
@@ -302,7 +296,7 @@ int ku_proc_tree(lua_State *L)
         return ku_err_raise(L, "PROC", "badvalue", "pid out of range");
     }
     size_t count = 0;
-    ku_pentry *list = snapshot(&count);
+    ku_pentry *list = ku_proc_snapshot(&count);
     if (list == NULL) {
         return fail_snapshot(L);
     }
@@ -315,4 +309,21 @@ int ku_proc_tree(lua_State *L)
     }
     free(list);
     return ku_err_fail(L, "PROC", "notfound", "no process %lld", (long long)v);
+}
+
+const ku_pentry *ku_proc_lookup(const ku_pentry *list, size_t count, DWORD pid)
+{
+    size_t lo = 0, hi = count;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        if (list[mid].pid == pid) {
+            return &list[mid];
+        }
+        if (list[mid].pid < pid) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return NULL;
 }

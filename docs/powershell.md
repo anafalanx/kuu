@@ -58,7 +58,7 @@ stalls another task.
 | `Invoke-RestMethod -Method Post -Body` | `http.post(url, body, { type = "application/json" })` | |
 | `Expand-Archive`, `tar -xf` | `archive.unpack(file, dir, { strip = 1 })` | zip and the tar family, through the tar.exe Windows ships |
 | `Compress-Archive` | `archive.pack(file, dir)` | |
-| `Test-NetConnection -Port`, `Resolve-DnsName`, `Get-NetTCPConnection` | 0.5: `net.probe`, `net.resolve`, `net.listeners` | |
+| `Test-NetConnection -Port`, `Resolve-DnsName`, `Get-NetTCPConnection`, `Get-NetIPAddress`, `ipconfig` | `net.probe`, `net.resolve`, `net.listeners`, `net.addresses` | probe reports the address that answered and the elapsed time; nothing blocks the loop |
 
 ## Data and text
 

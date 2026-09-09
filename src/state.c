@@ -290,6 +290,11 @@ static int open_sync_full(lua_State *L)
     return open_hybrid(L, ku_open_sync, "lua/sync/wait.lua");
 }
 
+static int open_net_full(lua_State *L)
+{
+    return open_hybrid(L, ku_open_net, "lua/net/probe.lua");
+}
+
 lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
 {
     lua_State *L = luaL_newstate();
@@ -384,6 +389,8 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "re");
     lua_pushcfunction(L, ku_open_time);
     lua_setfield(L, -2, "time");
+    lua_pushcfunction(L, open_net_full);
+    lua_setfield(L, -2, "net");
     lua_pop(L, 2);
     return L;
 }

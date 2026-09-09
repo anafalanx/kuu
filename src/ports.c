@@ -1,6 +1,7 @@
 /* ports.c -- TCP listeners with their owning processes; see ports.h. */
 #include "ports.h"
 
+#include <ws2tcpip.h>
 #include <iphlpapi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,13 +14,19 @@ static unsigned short host_port(DWORD network_order)
 
 static void ipv4_text(DWORD address, char *out, size_t cap)
 {
+    if (inet_ntop(AF_INET, &address, out, cap) != NULL) {
+        return;
+    }
     const unsigned char *b = (const unsigned char *)&address;
     snprintf(out, cap, "%u.%u.%u.%u", b[0], b[1], b[2], b[3]);
 }
 
 static void ipv6_text(const UCHAR *address, char *out, size_t cap)
 {
-    /* eight groups, uncompressed; "::" would be prettier and is not needed */
+    if (inet_ntop(AF_INET6, address, out, cap) != NULL) {
+        return;
+    }
+    /* the uncompressed form, should the formatter refuse */
     snprintf(out, cap, "%x:%x:%x:%x:%x:%x:%x:%x", (address[0] << 8) | address[1], (address[2] << 8) | address[3],
              (address[4] << 8) | address[5], (address[6] << 8) | address[7], (address[8] << 8) | address[9],
              (address[10] << 8) | address[11], (address[12] << 8) | address[13], (address[14] << 8) | address[15]);

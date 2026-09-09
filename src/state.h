@@ -41,5 +41,6 @@ int ku_open_sys(lua_State *L);
 int ku_open_sync(lua_State *L);
 int ku_open_re(lua_State *L);
 int ku_open_time(lua_State *L);
+int ku_open_net(lua_State *L);
 
 #endif /* KUU_STATE_H */

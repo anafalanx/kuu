@@ -79,6 +79,7 @@ hashing, and every other organ are behind `require`.
 | [`sync`](sync.md) | one at a time across processes: a named lock |
 | [`re`](re.md) | regular expressions on PCRE2, with Unicode and named groups |
 | [`time`](time.md) | instants, zones, ISO 8601, durations |
+| [`net`](net.md) | the network from here: resolve, probe, listeners, addresses |
 | `rt` | the launch: version, executable, route, program, arguments, the require root |
 
 `require` searches `package.preload`, where these live, and then the program's
