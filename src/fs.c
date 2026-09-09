@@ -966,6 +966,35 @@ static int l_fs_cwd(lua_State *L)
     return push_shown_directory(L, GetCurrentDirectoryW, "current directory");
 }
 
+/* fs.chdir(path) -> true | nil, err.  Process-wide: every task and every
+ * child started afterwards sees it. */
+static int l_fs_chdir(lua_State *L)
+{
+    ku_wpath path;
+    path_arg(L, 1, &path);
+    const char *shown = lua_tostring(L, 1);
+    /* SetCurrentDirectoryW wants an ordinary path, not a \\?\ one. */
+    const wchar_t *plain = path.text + (path.unc ? 8 : 4);
+    wchar_t *target = path.unc ? (wchar_t *)malloc((wcslen(plain) + 3) * sizeof(wchar_t)) : NULL;
+    if (path.unc) {
+        if (target == NULL) {
+            ku_wpath_free(&path);
+            return ku_err_raise(L, "FS", "oserror", "out of memory");
+        }
+        wcscpy(target, L"\\\\");
+        wcscat(target, plain);
+    }
+    BOOL ok = SetCurrentDirectoryW(path.unc ? target : plain);
+    DWORD error = ok ? 0 : GetLastError();
+    free(target);
+    ku_wpath_free(&path);
+    if (!ok) {
+        return fail_win(L, error, "change directory to", shown);
+    }
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 static int l_fs_temp(lua_State *L)
 {
     return push_shown_directory(L, GetTempPathW, "temporary directory");
@@ -1005,6 +1034,7 @@ int ku_open_fs(lua_State *L)
         {"link", l_fs_link},
         {"watch", ku_fs_watch},
         {"cwd", l_fs_cwd},
+        {"chdir", l_fs_chdir},
         {"temp", l_fs_temp},
         {"absolute", l_fs_absolute},
         {NULL, NULL},

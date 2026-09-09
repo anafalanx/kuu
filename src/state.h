@@ -18,8 +18,8 @@
 
 typedef struct ku_launch {
     const char *exe;          /* UTF-8 absolute path of the running kuu.exe */
-    const char *route;        /* "file", "stdin", or "eval" */
-    const char *program;      /* file route: the path as given; else NULL */
+    const char *route;        /* "file", "stdin", "eval", or "cmd" (a verb) */
+    const char *program;      /* file route: the path as given; cmd: the verb; else NULL */
     const char *root;         /* UTF-8 directory `require` searches */
     int argc;                 /* program arguments, UTF-8 */
     const char *const *argv;

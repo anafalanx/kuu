@@ -17,7 +17,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | build | GNU make from the same `.tools`, recipes under `cmd.exe` | no PowerShell in the repository, and kuu never builds kuu: the build is make and gcc, the tests are Lua run by the built kuu |
 | self-hosting | none, by owner decision | kuu is not required to bootstrap or build itself; a person with `.tools` populated runs `make` |
 | versions | `Major.Minor`, both natural numbers | 0.1, 0.2, ...; no patch component |
-| dependency pinning | none yet, by owner decision | "wing it": the toolchain is whatever `.tools` holds; a lock with URLs and hashes comes when the runtime can hydrate it |
+| dependency pinning | a prescriptive lock for the repositories kuu drives (0.3); kuu's own compiler stays unpinned, by owner decision | `tools/lock.json` names url, hash, size, unpacking, a version check, and the license notice; kuu's `.tools` is populated by hand because kuu does not bootstrap itself |
 | the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has no machine authority, and a static check can list what a file asks for |
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
 | process lifetime | the no-orphans law, first thing in the palette | every child is born into a kill-on-close job; only `detach`, and a child's own deliberate breakaway, step outside it |
@@ -37,8 +37,9 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | the manual and kuu's own Lua inside the executable; `kuu docs [page | search]` | 0.2 |
 | live child streams with backpressure (`read`, `read_err`, `lines`, `write`, `close_stdin`), `inherit = true`, `proc.wait_any`, `proc.wait_all` | 0.2 |
 | `http` on WinHTTP: get, post, request, streaming to a file, a wall-clock deadline of kuu's own | 0.3 |
-| `toolchain` hydrate/verify/path from a prescriptive lock, `task` and `run`/`list` | 0.3, in progress |
-| `check` (parse, `global none`, palette arity before running), `--json` envelopes | 0.3 |
+| `toolchain` hydrate/verify/path from a prescriptive lock; `kuu hydrate`, `kuu verify` | 0.3 |
+| `task`, `tasks.lua`, `kuu run`, `kuu list`, `--json` envelopes on every verb; `fs.chdir`, `rt.root`, `rt.source` | 0.3 |
+| `check` (parse, `global none`, palette arity before running) | 0.3, next |
 | `pty` over ConPTY with `expect`; `re` via PCRE2; worker processes; `serve` | later |
 | version resource, signing, release | with the first palette release |
 
@@ -54,8 +55,13 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    a task reading a stream is the same thing without a second calling
    convention.
 3. **0.3, the repository runtime.** `http`, hydrate and verify from a lock,
-   tasks, `check`, `docs`. Done when another repository is driven end to end
-   by a `tasks.lua`.
+   tasks, `check`, `docs`. `http` landed 2026-09-09 with a deadline of kuu's
+   own, after measuring that WinHTTP's receive timers never fire against a
+   server that accepts and stays silent. The lock and the tasks landed the
+   same day: hydrate and verify are one pass, stamps are keyed on the lock
+   entry and the hydrating code, `kuu run` passes a child's exit code
+   through. The suite drives a synthetic project end to end (441 checks);
+   `check` and a real second repository remain.
 4. **0.4, the agent's console.** `pty`, then a signed release and the first
    other repository bootstrapped by a ten-line script that fetches `kuu.exe`
    by hash.
@@ -71,7 +77,9 @@ Tcl for this job. The ledger so far:
   runtime, which meant an ANSI code page until kuu switched the CRT to UTF-8;
   everything else had to be written as `fs`. Real cost: about 1,700 lines of
   C that Tcl had for free. Real gain: `fs` tells the truth about junctions,
-  identity, and long paths, which Tcl's portable `file` never did.
+  identity, and long paths, which Tcl's portable `file` never did. The same
+  gap shows in small ways: `file dirname` and `file join` are string patterns
+  written by hand in `project.lua`, and `info script` became `rt.source`.
 - **No insertion-ordered table.** Tcl's dict remembers order, so a `cli`
   spec could be a mapping; in Lua a spec must be an array of entries, and
   `pairs` order is undefined, so `log` sorts fields and `json` objects come

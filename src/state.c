@@ -77,10 +77,52 @@ static int module_relative(const char *name, char *out, size_t capacity)
     return 1;
 }
 
+#define KU_ROOT_KEY "kuu.root"
+
+/* rt.root([dir]) -> the directory `require` searches after kuu's own modules;
+ * with an argument, sets it.  Runners point it at a project root. */
+static int l_rt_root(lua_State *L)
+{
+    if (!lua_isnoneornil(L, 1)) {
+        luaL_checkstring(L, 1);
+        lua_pushvalue(L, 1);
+        lua_setfield(L, LUA_REGISTRYINDEX, KU_ROOT_KEY);
+    }
+    lua_getfield(L, LUA_REGISTRYINDEX, KU_ROOT_KEY);
+    return 1;
+}
+
+/* rt.source(name) -> the text of one of kuu's own Lua modules, or nil.  The
+ * toolchain keys its stamps on the hydrating code itself, per the lesson that
+ * a stamp must cover every input. */
+static int l_rt_source(lua_State *L)
+{
+    const char *name = luaL_checkstring(L, 1);
+    char relative[KU_PATH_MAX];
+    char embedded[KU_PATH_MAX];
+    if (!module_relative(name, relative, sizeof relative) ||
+        snprintf(embedded, sizeof embedded, "lua/%s.lua", relative) >= (int)sizeof embedded) {
+        lua_pushnil(L);
+        return 1;
+    }
+    const ku_payload_entry *entry = ku_payload_find(embedded);
+    if (entry == NULL) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushlstring(L, (const char *)entry->bytes, entry->length);
+    return 1;
+}
+
 static int ku_searcher(lua_State *L)
 {
     const char *name = luaL_checkstring(L, 1);
-    const char *root = lua_tostring(L, lua_upvalueindex(1));
+    lua_getfield(L, LUA_REGISTRYINDEX, KU_ROOT_KEY);
+    const char *root = lua_tostring(L, -1);
+    lua_pop(L, 1);
+    if (root == NULL) {
+        root = ".";
+    }
     char relative[KU_PATH_MAX];
     if (!module_relative(name, relative, sizeof relative)) {
         lua_pushfstring(L, "\n\tmodule name '%s' is not a plain dotted name", name);
@@ -210,6 +252,10 @@ static void push_rt_table(lua_State *L, const ku_launch *launch)
         lua_rawseti(L, -2, i + 1);
     }
     lua_setfield(L, -2, "args");
+    lua_pushcfunction(L, l_rt_root);
+    lua_setfield(L, -2, "root");
+    lua_pushcfunction(L, l_rt_source);
+    lua_setfield(L, -2, "source");
 }
 
 lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
@@ -250,9 +296,10 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "cpath");
     lua_pushnil(L);
     lua_setfield(L, -2, "loadlib");
-    lua_getfield(L, -1, "searchers"); /* [preload, lua, c, croot] */
     lua_pushstring(L, launch->root);
-    lua_pushcclosure(L, ku_searcher, 1);
+    lua_setfield(L, LUA_REGISTRYINDEX, KU_ROOT_KEY);
+    lua_getfield(L, -1, "searchers"); /* [preload, lua, c, croot] */
+    lua_pushcfunction(L, ku_searcher);
     lua_rawseti(L, -2, 2);
     lua_pushnil(L);
     lua_rawseti(L, -2, 4);

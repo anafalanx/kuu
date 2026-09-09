@@ -45,6 +45,9 @@ static void usage(FILE *to)
           "       kuu - [arg ...]           run a program read from standard input\n"
           "       kuu -e SCRIPT [arg ...]   run an inline script\n"
           "       kuu docs [PAGE | search TEXT]   the manual, from inside the executable\n"
+          "       kuu run [TASK [arg ...]]  run a task from the nearest tasks.lua\n"
+          "       kuu list [--json]         list those tasks\n"
+          "       kuu hydrate | verify [--lock FILE] [--root DIR] [--json]   the toolchain lock\n"
           "       kuu --version | --help\n",
           to);
 }
@@ -344,6 +347,34 @@ int wmain(int argc, wchar_t **argv)
     }
     if (strcmp(first, "docs") == 0) {
         return docs_route(argc - 2, (const char *const *)(words + 2));
+    }
+    /* Verbs are Lua programs carried in the payload under lua/cmd; they run
+     * like any program, with the arguments after the verb. */
+    char verb_name[128];
+    if (first[0] != '-' && strlen(first) < 100) {
+        snprintf(verb_name, sizeof verb_name, "lua/cmd/%s.lua", first);
+        const ku_payload_entry *verb = ku_payload_find(verb_name);
+        if (verb != NULL) {
+            ku_launch launch;
+            memset(&launch, 0, sizeof launch);
+            launch.exe = executable_path_utf8();
+            launch.route = "cmd";
+            launch.program = first;
+            launch.root = current_directory_utf8();
+            launch.argc = argc - 2;
+            launch.argv = (const char *const *)(words + 2);
+            if (launch.exe == NULL || launch.root == NULL) {
+                fprintf(stderr, "%s: ENTRY oserror: cannot determine the executable or current directory\n", KUU_NAME);
+                return KUU_EXIT_ENTRY;
+            }
+            ku_program program;
+            program.owned = NULL;
+            program.text = (const char *)verb->bytes;
+            program.length = verb->length;
+            char chunkname[160];
+            snprintf(chunkname, sizeof chunkname, "=kuu/%s", verb_name);
+            return run_program(&launch, &program, chunkname);
+        }
     }
 
     ku_launch launch;

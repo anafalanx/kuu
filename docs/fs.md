@@ -109,6 +109,7 @@ change: reconcile from `fs.list` or `fs.dirs`.
 
 ```lua
 fs.cwd()          -- the current directory
+fs.chdir(p)       -- change it, for the whole process: every task and every child started afterwards
 fs.temp()         -- the temporary directory
 fs.absolute(p)    -- the normalised absolute spelling of p
 ```
