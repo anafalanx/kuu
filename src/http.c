@@ -72,7 +72,27 @@ typedef struct http_request {
     /* `sha256` given: the body is hashed as it arrives and must match */
     int want_hash;
     unsigned char expected[32];
+    HINTERNET session; /* the process-wide session; the worker never closes it */
 } http_request;
+
+/* One WinHTTP session for the whole process, as WinHTTP intends.  A session
+ * per request was measured to leave roughly one handle behind per request,
+ * inside WinHTTP, never reclaimed; one shared session stays flat.  Made on
+ * the loop thread at first use; workers only open connections under it. */
+static HINTERNET shared_session;
+
+static HINTERNET session_get(void)
+{
+    if (shared_session == NULL) {
+        shared_session = WinHttpOpen(L"kuu/" KUU_VERSION_W, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
+                                     WINHTTP_NO_PROXY_BYPASS, 0);
+        if (shared_session != NULL) {
+            DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
+            WinHttpSetOption(shared_session, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof protocols);
+        }
+    }
+    return shared_session;
+}
 
 /* ---- the worker ------------------------------------------------------------------ */
 
@@ -204,21 +224,8 @@ static DWORD WINAPI http_worker(LPVOID arg)
     BCRYPT_ALG_HANDLE alg = NULL;
     BCRYPT_HASH_HANDLE hash = NULL;
 
-    session = WinHttpOpen(L"kuu/" KUU_VERSION_W, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
-                          WINHTTP_NO_PROXY_BYPASS, 0);
-    if (session == NULL) {
-        worker_fail(q, "oserror", "cannot open a WinHTTP session", GetLastError());
-        goto done;
-    }
-    /* Every phase gets the timeout; the response-header wait has its own
-     * setting that WinHttpSetTimeouts does not cover. */
-    int t = (int)q->timeout_ms;
-    WinHttpSetTimeouts(session, t, t, t, t);
+    session = q->session; /* the process-wide session; not ours to close */
     DWORD response_timeout = q->timeout_ms;
-    WinHttpSetOption(session, WINHTTP_OPTION_RECEIVE_RESPONSE_TIMEOUT, &response_timeout, sizeof response_timeout);
-    DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
-    WinHttpSetOption(session, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof protocols);
-
     connection = WinHttpConnect(session, q->host, q->port, 0);
     if (connection == NULL) {
         worker_fail(q, code_for(GetLastError()), "cannot connect", GetLastError());
@@ -230,6 +237,11 @@ static DWORD WINAPI http_worker(LPVOID arg)
         worker_fail(q, code_for(GetLastError()), "cannot open the request", GetLastError());
         goto done;
     }
+    /* Every phase gets the timeout, on the request since the session is
+     * shared; the response-header wait has its own setting below that
+     * WinHttpSetTimeouts does not cover. */
+    int t = (int)q->timeout_ms;
+    WinHttpSetTimeouts(request, t, t, t, t);
     /* Publish the handle so the loop's deadline can cancel us; if the deadline
      * already passed, it is our job to notice. */
     InterlockedExchangePointer(&q->cancel_handle, request);
@@ -373,9 +385,6 @@ done:
     }
     if (connection != NULL) {
         WinHttpCloseHandle(connection);
-    }
-    if (session != NULL) {
-        WinHttpCloseHandle(session);
     }
     ku_loop_post(q->loop, &q->src, q, 0);
     return 0;
@@ -855,6 +864,12 @@ static int build_request(lua_State *L, int idx)
         }
     }
 
+    q->session = session_get();
+    if (q->session == NULL) {
+        DWORD error = GetLastError();
+        request_free(q);
+        return ku_err_raise(L, "HTTP", "oserror", "cannot open a WinHTTP session (error %lu)", (unsigned long)error);
+    }
     ku_waiter *w = ku_waiter_new(q->loop, q, request_push);
     if (w == NULL) {
         request_free(q);
@@ -884,12 +899,13 @@ static int l_http_request(lua_State *L)
 static int l_http_get(lua_State *L)
 {
     luaL_checkstring(L, 1);
-    if (lua_isnoneornil(L, 2)) {
+    lua_settop(L, 2); /* an absent options table and an explicit nil are the same thing */
+    if (lua_isnil(L, 2)) {
+        lua_pop(L, 1);
         lua_newtable(L);
     } else {
         luaL_checktype(L, 2, LUA_TTABLE);
     }
-    lua_settop(L, 2);
     lua_pushvalue(L, 1);
     lua_setfield(L, 2, "url");
     lua_pushliteral(L, "GET");
@@ -902,12 +918,13 @@ static int l_http_post(lua_State *L)
 {
     luaL_checkstring(L, 1);
     luaL_checkstring(L, 2);
-    if (lua_isnoneornil(L, 3)) {
+    lua_settop(L, 3);
+    if (lua_isnil(L, 3)) {
+        lua_pop(L, 1);
         lua_newtable(L);
     } else {
         luaL_checktype(L, 3, LUA_TTABLE);
     }
-    lua_settop(L, 3);
     lua_pushvalue(L, 1);
     lua_setfield(L, 3, "url");
     lua_pushvalue(L, 2);

@@ -23,6 +23,9 @@ return function(T)
   check("drives list C: as a fixed drive with letter and type", has_c, tostring(#i.drives))
   check("uptime is seconds, pid is this process, codepage is an integer", type(i.uptime) == "number" and i.uptime > 0
     and math.type(i.pid) == "integer" and i.pid > 0 and math.type(i.codepage) == "integer")
+  check("process reports handles and memory of this process", type(i.process) == "table" and i.process.handles > 0
+    and i.process.working_set > 0 and i.process.peak_working_set >= i.process.working_set and i.process.private > 0,
+    tostring(i.process and i.process.handles))
   local j = sys.info()
   check("each call is a fresh table", j ~= i and j.pid == i.pid)
 end

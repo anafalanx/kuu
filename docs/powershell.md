@@ -1,0 +1,103 @@
+# From PowerShell
+
+kuu is the tool an agent holds on a Windows machine instead of PowerShell:
+to set up, configure, run, test, script, control, and keep in check. This page
+maps what an agent reaches for in PowerShell to the kuu call that does it,
+with the differences that matter. Where kuu has nothing yet, it says so, and
+when. Everything below runs on the one event loop, so a waiting call never
+stalls another task.
+
+## Processes
+
+| PowerShell | kuu | the difference |
+|---|---|---|
+| `& tool.exe args`, `Start-Process -Wait` | `proc.run { "tool.exe", "arg" }` | the child and its whole tree die when kuu does, or when `timeout` passes; exit codes are results, not exceptions |
+| `$LASTEXITCODE`, `$?` | `r.code`, `r.status` | `"exit"`, `"timeout"`, or `"killed"`, never a guess |
+| `tool 2>&1 \| Out-String` | `r.out`, `r.err` | bytes, captured separately, refused beyond `maxout` rather than truncated |
+| `Start-Process` without `-Wait` | `proc.start { ... }` then `c:wait()` | one child per handle, closed with it |
+| `Start-Process -NoNewWindow` for an interactive tool | `proc.run { ..., inherit = true }` | the child gets kuu's own console |
+| `tool \| ForEach-Object { }` | `for line in c:lines() do` | live, with backpressure, no thread |
+| `Start-Job`, `Wait-Job -Any` | `sched.spawn`, `proc.wait_any` | tasks are coroutines, not processes |
+| `Start-Process -WindowStyle Hidden` for a daemon | `proc.detach { ... }` | the one child that outlives kuu, on purpose |
+| `Stop-Process -Id`, `taskkill /T` | `proc.kill(pid)`, `c:kill()` | kills the tree, since every child has its own job |
+| `Get-Process`, `netstat -o` | 0.5: `proc.list`, `proc.find { name, port }` | |
+| `Start-Process -Verb RunAs` | deferred | elevation needs a broker; not yet |
+| `cmd /c "a \| b"` | `proc.run { "cmd.exe", "/c", "a | b" }` | explicit; cmd re-parses its argument, see [proc](proc.md) |
+
+## Files
+
+| PowerShell | kuu | the difference |
+|---|---|---|
+| `Get-Content -Raw`, `-Encoding` | `fs.read(p)`, `fs.read(p, { encoding = "cp1252" })` | bytes by default; a named encoding is decoded strictly, never repaired |
+| `Set-Content`, `Out-File` | `fs.write(p, data)` | atomic: a temporary beside, then a rename; never a torn file |
+| `Add-Content` | `fs.write(p, data, { append = true })` | |
+| `Test-Path` | `fs.exists(p)` | says what it is: `"file"`, `"directory"`, `"link"`, `"other"`, or `false` |
+| `Get-Item`, `Get-ItemProperty` | `fs.stat(p)` | identity too: volume and file ids |
+| `New-Item -ItemType Directory -Force` | `fs.mkdir(p)` | parents made, existing fine |
+| `Remove-Item -Recurse -Force` | `fs.remove(p, { recursive = true })` | never follows a junction or symlink into its target |
+| `Move-Item`, `Copy-Item` | `fs.rename(a, b, { replace = true })`, `fs.copy(a, b)` | |
+| `Get-ChildItem -Recurse -Filter *.c` | `fs.glob("src/**/*.c")` | sorted, case-insensitive, links matched but never entered |
+| `Get-ChildItem -Directory` | `fs.list(dir)`, `fs.dirs(root, { depth, prune })` | the walk tells the truth about junctions and depth |
+| `Join-Path`, `Split-Path -Parent`, `Split-Path -Leaf` | `fs.join`, `fs.dirname`, `fs.basename` | `fs.ext`, `fs.stem`, `fs.relative` too |
+| `Resolve-Path` | `fs.absolute(p)`, `fs.canon(p)` | `canon` follows links and gives identity |
+| `New-TemporaryFile` | `fs.tempfile { dir, prefix, suffix }`, `fs.tempdir { }` | created exclusively |
+| `Get-PSDrive`, `Get-Volume` | `fs.space(p)`, `sys.info().drives` | |
+| `Get-FileHash` | `hash.file("sha256", p)` | |
+| `Register-ObjectEvent` on a FileSystemWatcher | `fs.watch(dir)` then `w:read()` | on the loop, batched as Windows delivers |
+| `Set-Location`, `Get-Location` | `fs.chdir(p)`, `fs.cwd()` | process-wide, as in PowerShell |
+| `Get-Acl`, `Set-Acl` | deferred | icacls through `proc.run` until a real need |
+
+## Network and downloads
+
+| PowerShell | kuu | the difference |
+|---|---|---|
+| `Invoke-WebRequest -OutFile` | `http.get(url, { to = p })` | streamed through a temporary; the previous file survives a failure |
+| `Invoke-WebRequest` then `Get-FileHash` | `http.get(url, { to = p, sha256 = "..." })` | hashed as it arrives; a mismatch leaves no file |
+| `Invoke-RestMethod` | `http.get(url)` then `json.decode(r.body)` | status codes are results; no insecure switch exists |
+| `Invoke-RestMethod -Method Post -Body` | `http.post(url, body, { type = "application/json" })` | |
+| `Expand-Archive`, `tar -xf` | `archive.unpack(file, dir, { strip = 1 })` | zip and the tar family, through the tar.exe Windows ships |
+| `Compress-Archive` | `archive.pack(file, dir)` | |
+| `Test-NetConnection -Port`, `Resolve-DnsName`, `Get-NetTCPConnection` | 0.5: `net.probe`, `net.resolve`, `net.listeners` | |
+
+## Data and text
+
+| PowerShell | kuu | the difference |
+|---|---|---|
+| `ConvertFrom-Json`, `ConvertTo-Json` | `json.decode`, `json.encode` | strict, exact integers, duplicate keys refused |
+| `[Convert]::ToBase64String`, `FromBase64String` | `text.tobase64`, `text.frombase64` | |
+| `[BitConverter]::ToString`, `-replace '-'` | `text.tohex`, `text.fromhex` | |
+| `[Text.Encoding]::GetEncoding(1252).GetString` | `text.decode(bytes, "cp1252")` | strict both ways |
+| `New-Guid` | `hash.uuid()` | |
+| `-match`, `-replace`, `Select-String` | Lua patterns now; 0.5: `re` on PCRE2 | patterns have no alternation, see [Pitfalls](pitfalls.md) |
+| `Get-Date -Format`, time zones | `os.date`, `os.time`; 0.5: `time` | |
+| `Import-Csv`, `Export-Csv` | 0.5: `csv` | |
+| `Select-Xml`, `[xml]` | deferred | |
+| `Write-Host`, `Write-Verbose` | `print`, `io.stderr:write`, `log` | `log` never raises and never interrupts the work |
+
+## The machine
+
+| PowerShell | kuu | the difference |
+|---|---|---|
+| `[Environment]::OSVersion`, `Get-ComputerInfo` | `sys.info()` | the truthful build, the display name, elevation, cpus, memory, drives, uptime |
+| `[Security.Principal.WindowsPrincipal]…IsInRole` | `sys.info().elevated` | |
+| `$env:NAME`, `[Environment]::SetEnvironmentVariable(..., 'User')` | `os.getenv` (UTF-8); 0.5: persistent variables with the change broadcast | |
+| `Get-ItemProperty HKLM:\...`, `Set-ItemProperty` | 0.5: `reg.get`, `reg.set`, typed | |
+| `Get-Service`, `Start-Service`, `New-Service` | 0.6: `svc` | |
+| `Get-WinEvent` | 0.6: `evt` | |
+| `Register-ScheduledTask` | `schtasks.exe` through `proc.run` | deferred as a module |
+| `New-Object -ComObject WScript.Shell` for shortcuts | no | desktop plumbing, not an agent's tool |
+| `Enable-WindowsOptionalFeature`, `New-NetFirewallRule`, `Set-MpPreference` | no | security settings stay with the person |
+
+## The script itself
+
+| PowerShell | kuu | the difference |
+|---|---|---|
+| `param()` | `cli.parse(rt.args, spec)` | declared once; `--help` is a value, not an exit |
+| `$PSScriptRoot` | `rt.root()` | |
+| `Start-Sleep` | `sched.sleep("2s")` | other tasks run meanwhile |
+| a `.ps1` per job, `Invoke-Build` | `tasks.lua`, `kuu run`, `kuu list` | dependencies once, in order; `--dry-run` shows the plan |
+| `Export-Clixml` for state between runs | `mem.set`, `mem.get` | a JSON notebook per project, 1 MiB at most |
+| `Set-StrictMode -Version Latest` | `global none` at the top of the file | the compiler refuses an undeclared global |
+| `try { } catch { }` | `nil, err` for expected failures, `pcall` for mistakes | see [err](err.md) |
+| `-WhatIf` | `kuu run --dry-run` | |
+| `Test-ModuleManifest`, `PSScriptAnalyzer` | `kuu check` | parse, global declarations, `require` resolution |

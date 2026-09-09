@@ -7,6 +7,7 @@
  *     memory   = { total, available },
  *     drives   = { { letter, type }, ... },
  *     uptime, pid, codepage,
+ *     process  = { handles, working_set, peak_working_set, private },
  *   }
  *
  * The first thing an agent asks a machine.  Everything is read fresh on each
@@ -23,6 +24,8 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#define PSAPI_VERSION 2
+#include <psapi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -172,6 +175,26 @@ static int l_sys_info(lua_State *L)
     lua_setfield(L, -2, "pid");
     lua_pushinteger(L, (lua_Integer)GetACP());
     lua_setfield(L, -2, "codepage");
+
+    /* this process, for keeping an eye on itself: a soak test watches these */
+    lua_createtable(L, 0, 4);
+    DWORD handles = 0;
+    if (GetProcessHandleCount(GetCurrentProcess(), &handles)) {
+        lua_pushinteger(L, (lua_Integer)handles);
+        lua_setfield(L, -2, "handles");
+    }
+    PROCESS_MEMORY_COUNTERS_EX counters;
+    memset(&counters, 0, sizeof counters);
+    counters.cb = sizeof counters;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS *)&counters, sizeof counters)) {
+        lua_pushinteger(L, (lua_Integer)counters.WorkingSetSize);
+        lua_setfield(L, -2, "working_set");
+        lua_pushinteger(L, (lua_Integer)counters.PeakWorkingSetSize);
+        lua_setfield(L, -2, "peak_working_set");
+        lua_pushinteger(L, (lua_Integer)counters.PrivateUsage);
+        lua_setfield(L, -2, "private");
+    }
+    lua_setfield(L, -2, "process");
     return 1;
 }
 

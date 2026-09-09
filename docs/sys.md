@@ -20,7 +20,11 @@ local i = sys.info()
 -- i.uptime             84213.5          seconds since boot
 -- i.pid                4120
 -- i.codepage           1252             the ANSI code page programs without UTF-8 use
+-- i.process            { handles = 61, working_set = 9437184, peak_working_set = 9502720, private = 5242880 }
 ```
+
+`process` is this kuu, in bytes and handles, for a program that keeps an eye
+on itself; the soak test watches it across rounds.
 
 Drive types are `fixed`, `removable`, `remote`, `cdrom`, `ramdisk`, or
 `unknown`. The version comes from `RtlGetVersion`, which tells the truth

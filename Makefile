@@ -98,3 +98,9 @@ clean:
 	@if exist $(BUILD) rmdir /s /q $(BUILD)
 
 -include $(LUA_O:.o=.d) $(HOST_O:.o=.d)
+
+# Soak: kuu under volume for SOAK seconds (default 60), on demand, with the fixture.
+SOAK ?= 60
+.PHONY: soak
+soak: $(OUT) $(FIXTURES)
+	$(subst /,\,$(OUT)) test\soak.lua $(SOAK)

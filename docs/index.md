@@ -115,6 +115,8 @@ Failures kuu detects before the program runs are spelled
 
 ## Pages
 
+- [From PowerShell](powershell.md): each cmdlet an agent reaches for, and the
+  kuu call that replaces it.
 - [Pitfalls](pitfalls.md): what differs from the Lua an agent already knows,
   and the Windows facts kuu refuses to hide.
 - [proc](proc.md), [fs](fs.md), [http](http.md), [sched](sched.md),

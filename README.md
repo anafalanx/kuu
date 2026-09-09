@@ -38,7 +38,8 @@ end
 
 The manual starts at [docs/index.md](docs/index.md). Agents should read
 [docs/pitfalls.md](docs/pitfalls.md) once; it is the only page about the
-language. [docs/roadmap.md](docs/roadmap.md) records the decisions.
+language. [docs/powershell.md](docs/powershell.md) maps each PowerShell habit
+to the kuu call that replaces it. [docs/roadmap.md](docs/roadmap.md) records the decisions.
 
 ## Building
 
