@@ -4,6 +4,7 @@
 --   mem.set("last_build", { at = os.time(), ok = true })   -- any value JSON can hold
 --   mem.get("last_build")                                   -- nil when absent
 --   mem.get("runs", 0)                                      -- with a default
+--   mem.update("runs", function(n) return (n or 0) + 1 end) -- read-modify-write as one step
 --   mem.forget("last_build")
 --   mem.keys()                                              -- sorted
 --   mem.all()                                               -- a copy of everything
@@ -12,18 +13,21 @@
 --
 -- The file is .kuu/memory.json under the project root, the nearest tasks.lua
 -- upward from the current directory, or under the directory `require`
--- searches when there is no project.  Every read goes to the file and every
--- set reads, merges, and writes it atomically, so two kuu processes take
--- turns rather than overwrite each other.  The whole file may not exceed
--- 1 MiB: this is a notebook, never a database.
+-- searches when there is no project.  Every read goes to the file, and every
+-- set holds a machine-wide lock named after the file while it reads, merges,
+-- and writes atomically, so two kuu processes take turns and neither loses
+-- the other's keys.  The whole file may not exceed 1 MiB: this is a
+-- notebook, never a database.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, table, error, pcall
+global <const> require, ipairs, pairs, tostring, type, string, table, error, pcall, assert
 
 local fs = require "fs"
 local json = require "json"
 local err = require "err"
 local rt = require "rt"
 local project = require "project"
+local sync = require "sync"
+local hash = require "hash"
 
 local mem = {}
 
@@ -85,17 +89,44 @@ function mem.get(key, default)
   return value
 end
 
+-- The read-merge-write is one critical section, machine-wide, under a lock
+-- named after the file; a holder that dies hands the lock over abandoned.
+local function locked()
+  return sync.lock("mem." .. hash.sum("sha256", mem.path():lower()), "10s")
+end
+
 -- mem.set(key, value) -> true | nil, err.  A nil value forgets the key.
 function mem.set(key, value)
   check_key(key)
+  local lock <close>, e = locked()
+  if not lock then return nil, e end
   local data = load()
   data[key] = value
   return store(data)
 end
 
+-- mem.update(key, fn) -> the new value | nil, err
+-- fn(old) runs under the lock, so a read-modify-write is one step and two
+-- processes counting at once lose nothing:
+--   mem.update("runs", function(n) return (n or 0) + 1 end)
+function mem.update(key, fn)
+  check_key(key)
+  if type(fn) ~= "function" then error(err.new("MEM", "badvalue", "update needs a function of the old value"), 2) end
+  local lock <close>, e = locked()
+  if not lock then return nil, e end
+  local data = load()
+  local value = fn(data[key])
+  data[key] = value
+  local ok, e2 = store(data)
+  if not ok then return nil, e2 end
+  return value
+end
+
 -- mem.forget(key) -> true | nil, err
 function mem.forget(key)
   check_key(key)
+  local lock <close>, e = locked()
+  if not lock then return nil, e end
   local data = load()
   if data[key] == nil then return true end
   data[key] = nil

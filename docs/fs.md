@@ -125,8 +125,9 @@ local paths, errors = fs.glob("src/**/*.c")           -- sorted; relative when t
 fs.glob("C:/work/**", { kind = "directory" })         -- or "file"
 ```
 
-`*` and `?` match within one name, ignoring case as the file system does;
-`**` as a whole component matches any number of directories, including none.
+`*` and `?` match within one name, `?` one character, and case is folded the
+way Windows folds file names, so `É*.TXT` finds `é.txt`; `**` as a whole
+component matches any number of directories, including none.
 Links are matched by name but never entered. Each directory that could not be
 listed is one entry of `errors`, with `path` and `message`, and the rest of
 the results stand.
@@ -145,6 +146,9 @@ fs.space("C:/")   -- { total, free, available } in bytes; available is what this
 
 Temporary names are created exclusively, so two callers never receive the
 same one. Both default to the temporary directory and to the prefix `kuu-`.
+A prefix or suffix with a separator, and a suffix ending in a dot or a space,
+which Windows would create and then never name the same way again, are
+refused before anything is created.
 
 ## Errors
 

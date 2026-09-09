@@ -13,13 +13,14 @@ stalls another task.
 |---|---|---|
 | `& tool.exe args`, `Start-Process -Wait` | `proc.run { "tool.exe", "arg" }` | the child and its whole tree die when kuu does, or when `timeout` passes; exit codes are results, not exceptions |
 | `$LASTEXITCODE`, `$?` | `r.code`, `r.status` | `"exit"`, `"timeout"`, or `"killed"`, never a guess |
-| `tool 2>&1 \| Out-String` | `r.out`, `r.err` | bytes, captured separately, refused beyond `maxout` rather than truncated |
+| `tool 2>&1 \| Out-String` | `r.out`, `r.err` | bytes, captured separately; beyond `maxout` the rest is dropped and `r.truncated` says so |
 | `Start-Process` without `-Wait` | `proc.start { ... }` then `c:wait()` | one child per handle, closed with it |
 | `Start-Process -NoNewWindow` for an interactive tool | `proc.run { ..., inherit = true }` | the child gets kuu's own console |
 | `tool \| ForEach-Object { }` | `for line in c:lines() do` | live, with backpressure, no thread |
 | `Start-Job`, `Wait-Job -Any` | `sched.spawn`, `proc.wait_any` | tasks are coroutines, not processes |
 | `Start-Process -WindowStyle Hidden` for a daemon | `proc.detach { ... }` | the one child that outlives kuu, on purpose |
-| `Stop-Process -Id`, `taskkill /T` | `proc.kill(pid)`, `c:kill()` | kills the tree, since every child has its own job |
+| `taskkill /T` | `c:kill()` | the child's whole tree, since every child has its own job |
+| `Stop-Process -Id` | `proc.kill(pid)` | that one process, by id |
 | `Get-Process`, `netstat -o` | 0.5: `proc.list`, `proc.find { name, port }` | |
 | `Start-Process -Verb RunAs` | deferred | elevation needs a broker; not yet |
 | `cmd /c "a \| b"` | `proc.run { "cmd.exe", "/c", "a | b" }` | explicit; cmd re-parses its argument, see [proc](proc.md) |
@@ -68,6 +69,8 @@ stalls another task.
 | `[BitConverter]::ToString`, `-replace '-'` | `text.tohex`, `text.fromhex` | |
 | `[Text.Encoding]::GetEncoding(1252).GetString` | `text.decode(bytes, "cp1252")` | strict both ways |
 | `New-Guid` | `hash.uuid()` | |
+| `.ToUpper()`, `.ToLower()` | `text.upper`, `text.lower` | Unicode, by the rules file names fold by; Lua's own are ASCII only |
+| `New-Object Threading.Mutex`, `Wait-Handle` | `sync.lock(name, timeout)`, `sync.try(name)` | a named mutex across processes; a dead holder hands it over as `abandoned` |
 | `-match`, `-replace`, `Select-String` | Lua patterns now; 0.5: `re` on PCRE2 | patterns have no alternation, see [Pitfalls](pitfalls.md) |
 | `Get-Date -Format`, time zones | `os.date`, `os.time`; 0.5: `time` | |
 | `Import-Csv`, `Export-Csv` | 0.5: `csv` | |

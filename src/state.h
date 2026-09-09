@@ -37,5 +37,6 @@ int ku_open_json(lua_State *L);
 int ku_open_fs(lua_State *L);
 int ku_open_http(lua_State *L);
 int ku_open_sys(lua_State *L);
+int ku_open_sync(lua_State *L);
 
 #endif /* KUU_STATE_H */

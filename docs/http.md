@@ -44,6 +44,11 @@ matters. URL fragments are client-side and are not sent. Each request runs on
 its own worker thread and posts one completion to the loop, so a slow download
 stalls no other task and no timer.
 
+Requests are independent of each other: kuu keeps one WinHTTP session for the
+process, because a session per request was measured to leak a handle each
+time, but cookies are disabled on every request, so nothing set by one answer
+is sent with the next. A caller who wants a cookie sends the `Cookie` header.
+
 ## Errors
 
 | HTTP code | when |

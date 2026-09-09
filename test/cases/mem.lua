@@ -33,6 +33,25 @@ return function(T)
   check("another process can write the same memory", r.code == 0 and mem.get("from_child") == 42, T.describe(r))
   check("and the earlier keys survived its write", mem.get("build").ok == true)
 
+  -- two processes writing different keys at once: both must survive
+  local proc = require "proc"
+  local function writer(key)
+    return "local m = require('mem'); m.open([[" .. path .. "]]); for i = 1, 30 do assert(m.set('" .. key .. "', i)) end"
+  end
+  local one <close> = proc.start { T.exe, "-e", writer("left") }
+  local two <close> = proc.start { T.exe, "-e", writer("right") }
+  local r1, r2 = one:wait("60s"), two:wait("60s")
+  check("concurrent writers of different keys take turns under the lock and both keys survive", r1 and r1.code == 0 and r2 and r2.code == 0
+    and mem.get("left") == 30 and mem.get("right") == 30, tostring(mem.get("left")) .. " " .. tostring(mem.get("right")) .. " " .. tostring(r1 and r1.err) .. tostring(r2 and r2.err))
+  -- two processes counting the same key at once: update makes the read-modify-write one step
+  local counter = "local m = require('mem'); m.open([[" .. path .. "]]); for i = 1, 40 do assert(m.update('n', function(n) return (n or 0) + 1 end)) end"
+  local three <close> = proc.start { T.exe, "-e", counter }
+  local four <close> = proc.start { T.exe, "-e", counter }
+  local r3, r4 = three:wait("60s"), four:wait("60s")
+  check("concurrent counters through update lose nothing", r3 and r3.code == 0 and r4 and r4.code == 0 and mem.get("n") == 80,
+    tostring(mem.get("n")) .. " " .. tostring(r3 and r3.err) .. tostring(r4 and r4.err))
+  check("update returns the new value", mem.update("n", function(n) return n + 1 end) == 81)
+
   -- refusals
   local none
   none, e = mem.set("big", string.rep("x", 1024 * 1024))

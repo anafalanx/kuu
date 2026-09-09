@@ -461,6 +461,62 @@ static int l_text_fromhex(lua_State *L)
     return 1;
 }
 
+/* ---- case ---------------------------------------------------------------------------- */
+
+/* text.upper(s), text.lower(s) -> the string case-mapped by Windows' invariant
+ * rules, which are the rules the file system folds names with; Lua's own
+ * string.upper knows ASCII only.  Invalid UTF-8 is nil, err TEXT invalid. */
+static int case_map(lua_State *L, DWORD flag)
+{
+    size_t n = 0;
+    const char *s = luaL_checklstring(L, 1, &n);
+    if (n == 0) {
+        lua_pushliteral(L, "");
+        return 1;
+    }
+    if (n > 0x3fffffff) {
+        return ku_err_fail(L, "TEXT", "toobig", "the string is too long to case-map");
+    }
+    int wide_len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, (int)n, NULL, 0);
+    if (wide_len <= 0) {
+        return ku_err_fail(L, "TEXT", "invalid", "the string is not valid UTF-8");
+    }
+    wchar_t *wide = (wchar_t *)malloc((size_t)wide_len * sizeof(wchar_t));
+    if (wide == NULL) {
+        return ku_err_raise(L, "TEXT", "oserror", "out of memory");
+    }
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, (int)n, wide, wide_len);
+    int mapped_len = LCMapStringEx(LOCALE_NAME_INVARIANT, flag, wide, wide_len, NULL, 0, NULL, NULL, 0);
+    wchar_t *mapped = mapped_len > 0 ? (wchar_t *)malloc((size_t)mapped_len * sizeof(wchar_t)) : NULL;
+    if (mapped == NULL || LCMapStringEx(LOCALE_NAME_INVARIANT, flag, wide, wide_len, mapped, mapped_len, NULL, NULL, 0) <= 0) {
+        free(wide);
+        free(mapped);
+        return ku_err_raise(L, "TEXT", "oserror", "the case mapping failed");
+    }
+    free(wide);
+    int utf8_len = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, mapped, mapped_len, NULL, 0, NULL, NULL);
+    char *utf8 = utf8_len > 0 ? (char *)malloc((size_t)utf8_len) : NULL;
+    if (utf8 == NULL || WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, mapped, mapped_len, utf8, utf8_len, NULL, NULL) <= 0) {
+        free(mapped);
+        free(utf8);
+        return ku_err_raise(L, "TEXT", "oserror", "the case mapping failed");
+    }
+    free(mapped);
+    lua_pushlstring(L, utf8, (size_t)utf8_len);
+    free(utf8);
+    return 1;
+}
+
+static int l_text_upper(lua_State *L)
+{
+    return case_map(L, LCMAP_UPPERCASE);
+}
+
+static int l_text_lower(lua_State *L)
+{
+    return case_map(L, LCMAP_LOWERCASE);
+}
+
 static int l_text_encodings(lua_State *L)
 {
     static const char *const names[] = {"utf-8", "utf-16le", "utf-16be", "latin1", "ansi", "oem", "cpNNN", NULL};
@@ -483,6 +539,8 @@ int ku_open_text(lua_State *L)
         {"frombase64", l_text_frombase64},
         {"tohex", l_text_tohex},
         {"fromhex", l_text_fromhex},
+        {"upper", l_text_upper},
+        {"lower", l_text_lower},
         {NULL, NULL},
     };
     luaL_newlib(L, functions);

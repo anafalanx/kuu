@@ -76,6 +76,7 @@ hashing, and every other organ are behind `require`.
 | [`archive`](archive.md) | zip and tar archives through the tar.exe Windows ships |
 | [`sys`](sys.md) | facts about this machine and this process |
 | [`mem`](mem.md) | a small memory across runs, one JSON file per project |
+| [`sync`](sync.md) | one at a time across processes: a named lock |
 | `rt` | the launch: version, executable, route, program, arguments, the require root |
 
 `require` searches `package.preload`, where these live, and then the program's

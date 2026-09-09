@@ -50,14 +50,14 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `kuu check`: parse, global declarations, `require` resolution, without running; no arity checking, by design | 0.3 |
 | verification as a capability: `http.get { to, sha256 }`, `fs.unpack`, `fs.pack` over the tar.exe Windows ships | 0.4 |
 | `fs.glob`, `fs.join`, `fs.dirname`, `fs.basename`, `fs.ext`, `fs.relative`, `fs.tempfile`, `fs.tempdir`, `fs.space` | 0.4 |
-| `sys.info`; `hash.uuid`; `text.base64`, `text.hex`; `mem`, a small JSON notebook per project | 0.4 |
+| `sys.info`; `hash.uuid`; `text.base64`, `text.hex`, `text.upper`, `text.lower`; `mem`, a small JSON notebook per project; `sync`, a named lock across processes | 0.4 |
 | `kuu run --dry-run`; a crash handler so kuu never dies silently; soak and stress tests on demand | 0.4 |
 | the from-PowerShell page of the manual: each cmdlet an agent reaches for, and the kuu call | 0.4 onward |
 | a version resource, Certum signing, a GitHub Release, by make; `kuu-test-project` under the released kuu | 0.4 |
 | `pty` over ConPTY with `expect`; VT processing and size on kuu's own console | 0.5 |
 | `re` on PCRE2; `time`; `debug.traceback` and `debug.getinfo` only; `csv`, `ini` | 0.5 |
 | `reg`; persistent environment variables with the change broadcast | 0.5 |
-| `proc.list`, `proc.find`, `proc.tree`; `net.probe`, `net.listeners`, `net.resolve`, `net.addresses`; `sync.lock` | 0.5 |
+| `proc.list`, `proc.find`, `proc.tree`; `net.probe`, `net.listeners`, `net.resolve`, `net.addresses` | 0.5 |
 | `svc` via the Service Control Manager; `evt`, the event logs; `worker` processes; `serve`; `check` learns the palette's names | 0.6 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
@@ -185,6 +185,11 @@ Tcl for this job. The ledger so far:
   lands, string-heavy work is where an agent will most often fall back to C or
   to a clumsy loop. This is the first entry that may prove decisive rather
   than minor.
+- **Case is ASCII in the language.** `string.upper` and `string.lower` know
+  the twenty-six letters; Tcl's `string toupper` knew Unicode. A glob that
+  had to find `é.txt` under `É*.TXT`, as the file system does, needed
+  `text.upper` on Windows' own folding. Small, and now closed, but the kind
+  of thing Tcl simply had.
 - **`global none` is opt-in boilerplate.** Tcl has no equivalent check at all,
   so this is a Lua advantage in the end, but every file must start with two
   lines to get it, and an agent that forgets them gets stock Lua's silent

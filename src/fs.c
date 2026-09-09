@@ -1026,6 +1026,11 @@ static int temp_make(lua_State *L, int directory)
     if (!plain_name_part(prefix) || !plain_name_part(suffix)) {
         return ku_err_raise(L, "FS", "badvalue", "prefix and suffix must be plain name parts");
     }
+    size_t suffix_length = strlen(suffix);
+    if (suffix_length > 0 && (suffix[suffix_length - 1] == '.' || suffix[suffix_length - 1] == ' ')) {
+        /* Windows would create it and then never name it the same way again. */
+        return ku_err_raise(L, "FS", "badvalue", "a name cannot end in a dot or a space");
+    }
     if (!has_dir) {
         push_shown_directory(L, GetTempPathW, "temporary directory");
     }

@@ -106,24 +106,33 @@ return function(fs)
 
   local function has_wild(c) return c:find("[*?]") ~= nil end
 
-  -- A glob component as an anchored Lua pattern over a lower-cased name.
+  -- Names fold as the file system folds them: by Windows' own upper-casing,
+  -- so "É*.TXT" finds "é.txt".  A name that is not valid UTF-8 folds as it is.
+  local text = require "text"
+  local function fold(s) return text.upper(s) or s end
+
+  -- One UTF-8 encoded character, as a pattern: "?" matches a character, not a byte.
+  local ONE_CHAR = "[\1-\127\194-\244][\128-\191]*"
+
+  -- A glob component as an anchored Lua pattern over a folded name.
   local function to_pattern(c)
     local out = { "^" }
-    for ch in c:gmatch(".") do
+    for ch in fold(c):gmatch(ONE_CHAR) do
       if ch == "*" then out[#out + 1] = ".*"
-      elseif ch == "?" then out[#out + 1] = "."
-      elseif ch:match("%w") then out[#out + 1] = ch:lower()
-      else out[#out + 1] = "%" .. ch end
+      elseif ch == "?" then out[#out + 1] = ONE_CHAR
+      elseif ch:match("^%w$") then out[#out + 1] = ch
+      else out[#out + 1] = (ch:gsub(".", "%%%0")) end
     end
     out[#out + 1] = "$"
     return table.concat(out)
   end
 
   -- fs.glob(pattern [, { kind = "file" | "directory" }]) -> paths, errors
-  -- `*` and `?` match within a name, case-insensitively; `**` as a whole
-  -- component matches any number of directories, including none.  Results
-  -- are sorted, relative when the pattern is, and never enter links.  Every
-  -- directory that could not be listed is one entry of `errors`.
+  -- `*` and `?` match within a name, `?` one character, ignoring case as
+  -- Windows does; `**` as a whole component matches any number of
+  -- directories, including none.  Results are sorted, relative when the
+  -- pattern is, and never enter links.  Every directory that could not be
+  -- listed is one entry of `errors`.
   function fs.glob(pattern, options)
     options = options or {}
     if type(pattern) ~= "string" or pattern == "" then error(err.new("FS", "badvalue", "glob needs a pattern"), 2) end
@@ -173,7 +182,7 @@ return function(fs)
       end
       local pat = to_pattern(comp)
       for _, e in ipairs(entries_of(dir)) do
-        if e.name:lower():match(pat) then
+        if fold(e.name):match(pat) then
           local sub = under(shown, e.name)
           if last then accept(sub, e.kind) elseif e.kind == "directory" then walk(fs.join(dir, e.name), sub, i + 1) end
         end

@@ -14,6 +14,9 @@ text.tobase64(bytes, { url = true })   -- the url alphabet, no padding
 text.frombase64(s)                -- bytes, or nil, err TEXT invalid; either alphabet, padding optional, whitespace ignored
 text.tohex(bytes)                 -- lower case
 text.fromhex(s)                   -- bytes, or nil, err TEXT invalid; either case, whitespace ignored
+
+text.upper(s), text.lower(s)      -- Unicode case mapping by Windows' invariant rules, the ones file names fold by;
+                                  -- Lua's own string.upper knows ASCII only; nil, err TEXT invalid for bad UTF-8
 ```
 
 Encodings: `utf-8`, `utf-16le`, `utf-16be`, `latin1`, `ansi` (the system code

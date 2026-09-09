@@ -58,7 +58,7 @@ HOST_O   := $(patsubst $(HOST_SRC)/%.c,$(BUILD)/obj/host/%.o,$(HOST_C))
 # The payload: kuu's own Lua and the manual, turned into C by tools/embed.c
 # (compiled here, run by make; kuu is never used to build kuu).
 EMBED      := $(BUILD)/embed.exe
-PAYLOAD_IN := $(wildcard lua/*.lua) $(wildcard lua/cmd/*.lua) $(wildcard lua/fs/*.lua) $(wildcard docs/*.md)
+PAYLOAD_IN := $(wildcard lua/*.lua) $(wildcard lua/cmd/*.lua) $(wildcard lua/fs/*.lua) $(wildcard lua/sync/*.lua) $(wildcard docs/*.md)
 PAYLOAD_C  := $(BUILD)/gen/payload.c
 PAYLOAD_O  := $(BUILD)/obj/gen/payload.o
 
@@ -98,7 +98,7 @@ $(EMBED): tools/embed.c | $(BUILD)
 	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -o $@ $<
 
 $(PAYLOAD_C): $(EMBED) $(PAYLOAD_IN) | $(BUILD)/gen
-	$(subst /,\,$(EMBED)) $@ lua lua/cmd lua/fs docs
+	$(subst /,\,$(EMBED)) $@ lua lua/cmd lua/fs lua/sync docs
 
 $(PAYLOAD_O): $(PAYLOAD_C) $(HOST_SRC)/payload.h | $(BUILD)/obj/gen
 	$(CC) -std=c23 -O1 -I$(HOST_SRC) -c $< -o $@
@@ -161,5 +161,12 @@ $(BUILD)/kuu.exe.sha256: $(SIGNED) $(SHA256SUM)
 
 release: $(BUILD)/kuu.exe.sha256
 
+# The release is bound to the commit this tree was built from: the tag lands
+# on HEAD, never on whatever the remote default branch points at, and a tree
+# with uncommitted changes is refused.  HEAD must already be pushed.
+GIT_HEAD  := $(shell git rev-parse HEAD)
+GIT_DIRTY := $(shell git status --porcelain)
+
 publish: release
-	$(GH) release create $(VERSION) $(OUT) $(BUILD)/kuu.exe.sha256 --title "kuu $(VERSION)" --generate-notes
+	$(if $(GIT_DIRTY),$(error the tree has uncommitted changes; commit and push before publishing))
+	$(GH) release create $(VERSION) $(OUT) $(BUILD)/kuu.exe.sha256 --target $(GIT_HEAD) --title "kuu $(VERSION)" --generate-notes

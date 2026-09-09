@@ -258,23 +258,36 @@ static void push_rt_table(lua_State *L, const ku_launch *launch)
     lua_setfield(L, -2, "source");
 }
 
-/* `fs` is C for everything that touches Windows and Lua for the string half:
- * lua/fs/path.lua installs join, dirname, glob, and their kin into the table
- * the C module built. */
-static int open_fs_full(lua_State *L)
+/* A module that is C for what touches Windows and Lua for the rest: the C
+ * opener builds the table, then an embedded chunk returns an installer that
+ * adds the Lua half to it.  `fs` gets join, dirname, glob, and their kin from
+ * lua/fs/path.lua; `sync` gets its waiting lock from lua/sync/wait.lua. */
+static int open_hybrid(lua_State *L, lua_CFunction open, const char *chunk)
 {
-    ku_open_fs(L);
-    const ku_payload_entry *entry = ku_payload_find("lua/fs/path.lua");
+    open(L);
+    const ku_payload_entry *entry = ku_payload_find(chunk);
     if (entry == NULL) {
-        return luaL_error(L, "kuu is missing lua/fs/path.lua");
+        return luaL_error(L, "kuu is missing %s", chunk);
     }
-    if (luaL_loadbufferx(L, (const char *)entry->bytes, entry->length, "=kuu/lua/fs/path.lua", "t") != LUA_OK) {
+    char chunkname[128];
+    snprintf(chunkname, sizeof chunkname, "=kuu/%s", chunk);
+    if (luaL_loadbufferx(L, (const char *)entry->bytes, entry->length, chunkname, "t") != LUA_OK) {
         return lua_error(L);
     }
     lua_call(L, 0, 1);    /* the chunk returns its installer */
-    lua_pushvalue(L, -2); /* the fs table */
+    lua_pushvalue(L, -2); /* the module table */
     lua_call(L, 1, 0);
     return 1;
+}
+
+static int open_fs_full(lua_State *L)
+{
+    return open_hybrid(L, ku_open_fs, "lua/fs/path.lua");
+}
+
+static int open_sync_full(lua_State *L)
+{
+    return open_hybrid(L, ku_open_sync, "lua/sync/wait.lua");
 }
 
 lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
@@ -347,6 +360,8 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "http");
     lua_pushcfunction(L, ku_open_sys);
     lua_setfield(L, -2, "sys");
+    lua_pushcfunction(L, open_sync_full);
+    lua_setfield(L, -2, "sync");
     lua_pop(L, 2);
     return L;
 }

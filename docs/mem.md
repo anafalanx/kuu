@@ -8,7 +8,7 @@ local mem = require("mem")
 mem.set("last_build", { at = os.time(), ok = true })   -- any value JSON can hold
 mem.get("last_build")                                   -- nil when absent
 mem.get("runs", 0)                                      -- with a default
-mem.set("runs", mem.get("runs", 0) + 1)
+mem.update("runs", function(n) return (n or 0) + 1 end) -- read-modify-write as one step, under the lock
 mem.forget("last_build")                                -- so does set(key, nil)
 mem.keys()                                              -- sorted
 mem.all()                                               -- a copy of everything
@@ -21,9 +21,13 @@ The file is `.kuu/memory.json` under the project root, the nearest
 `require` searches when there is no project. Add `.kuu/` to the project's
 `.gitignore` unless the memory is meant to travel with the repository.
 
-Every `get` reads the file and every `set` reads, merges, and writes it
-atomically, so two kuu processes take turns rather than overwrite each
-other's keys. The whole file may not exceed 1 MiB: `set` refuses with
+Every `get` reads the file. Every `set` holds a machine-wide
+[`sync`](sync.md) lock named after the file while it reads, merges, and
+writes atomically, so two kuu processes writing at once take turns and
+neither loses the other's keys; a writer that cannot get the lock within ten
+seconds gets `SYNC busy`. A value computed from a `get` and then `set` is
+still two steps, and two processes counting that way lose increments; `update`
+runs the function under the lock, so it is one. The whole file may not exceed 1 MiB: `set` refuses with
 `MEM toobig` and the file stands. This is a notebook, never a database; the
 database stays out of kuu by decision.
 

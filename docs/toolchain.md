@@ -82,7 +82,10 @@ then verifies the signature and checks that the leaf was issued to the
 expected name, then writes `build\kuu.exe.sha256` with `tools/sha256sum.c`.
 Signing needs the owner's SimplySign session, so the owner runs it.
 `publish` does all that and creates the GitHub Release named after the
-version, with both files attached and notes generated from the commits.
+version, with both files attached and notes generated from the commits. The
+release is bound to the commit the tree was built from: the tag is created on
+`HEAD`, which must already be pushed, and a tree with uncommitted changes is
+refused.
 `SIGNTOOL`, `SIGN_SHA1`, `SIGN_NAME`, `TIMESTAMP`, and `GH` are make variables
 whose defaults fit the owner's machine; `GH` names the gh executable when it
 is not on `PATH`.

@@ -101,7 +101,8 @@ function archive.pack(file, dir, entries, options)
     if not made then return nil, e end
   end
   fs.remove(file)
-  local args = { "-a", "-cf", windows_path(file), "-C", windows_path(dir) }
+  -- "--" keeps an entry named like an option, "--help" say, an entry
+  local args = { "-a", "-cf", windows_path(file), "-C", windows_path(dir), "--" }
   for _, name in ipairs(entries) do args[#args + 1] = name end
   local r, e2 = run_tar(args, options.timeout)
   if not r then return nil, e2 end

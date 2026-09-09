@@ -52,4 +52,10 @@ return function(T)
   check("an odd number of hex digits is TEXT invalid", none == nil and err.is(e, "TEXT", "invalid"), tostring(e))
   none, e = text.fromhex("zz")
   check("a non-hex byte is TEXT invalid", none == nil and err.is(e, "TEXT", "invalid"), tostring(e))
+
+  -- case, as Windows maps it
+  check("upper and lower map beyond ASCII", text.upper("éà ü straat") == "ÉÀ Ü STRAAT" and text.lower("ÉÀ Ü") == "éà ü" and text.upper("") == "", text.upper("éà ü straat"))
+  check("Lua's own upper is ASCII only, which is why these exist", ("é"):upper() == "é")
+  none, e = text.upper("\255")
+  check("invalid UTF-8 is TEXT invalid", none == nil and err.is(e, "TEXT", "invalid"), tostring(e))
 end

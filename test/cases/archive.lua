@@ -37,6 +37,13 @@ return function(T)
       and fs.read(work .. "/from-" .. ext .. "/loose.txt") == "loose\n" and fs.read(work .. "/from-" .. ext .. "/tool-1.0/a.txt") == "alpha\n", tostring(e))
   end
 
+  fs.write(work .. "/src/--help", "an entry, not an option\n")
+  ok, e = archive.pack(work .. "/out/dash.zip", work .. "/src", { "--help" })
+  local dash = ok and archive.list(work .. "/out/dash.zip") or nil
+  check("an entry named like an option is packed as an entry", ok == true and dash and dash[1] == "--help", tostring(e))
+  ok, e = archive.unpack(work .. "/out/dash.zip", work .. "/dash")
+  check("and unpacks", ok == true and fs.read(work .. "/dash/--help") == "an entry, not an option\n", tostring(e))
+
   local none
   none, e = archive.unpack(work .. "/out/absent.zip", work .. "/three")
   check("unpacking a missing archive is ARCHIVE notfound", none == nil and err.is(e, "ARCHIVE", "notfound"), tostring(e))

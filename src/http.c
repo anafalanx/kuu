@@ -242,6 +242,10 @@ static DWORD WINAPI http_worker(LPVOID arg)
      * WinHttpSetTimeouts does not cover. */
     int t = (int)q->timeout_ms;
     WinHttpSetTimeouts(request, t, t, t, t);
+    /* Requests are independent: the shared session must not carry cookies
+     * from one to the next.  A caller who wants a cookie sends the header. */
+    DWORD no_cookies = WINHTTP_DISABLE_COOKIES;
+    WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &no_cookies, sizeof no_cookies);
     /* Publish the handle so the loop's deadline can cancel us; if the deadline
      * already passed, it is our job to notice. */
     InterlockedExchangePointer(&q->cancel_handle, request);
