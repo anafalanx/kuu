@@ -150,14 +150,14 @@ $(SIGNED): $(OUT)
 	"$(SIGNTOOL)" verify /pa /all $(OUT_WIN)
 	"$(SIGNTOOL)" verify /pa /v $(OUT_WIN) | findstr /C:"Issued to: $(SIGN_NAME)" > nul
 	@echo signed $(OUT) as $(SIGN_NAME)> $@
-	@type $@
+	@type $(subst /,\,$@)
 
 .PHONY: sign release publish
 sign: $(SIGNED)
 
 $(BUILD)/kuu.exe.sha256: $(SIGNED) $(SHA256SUM)
 	$(subst /,\,$(SHA256SUM)) $(OUT_WIN) > $@
-	@type $@
+	@type $(subst /,\,$@)
 
 release: $(BUILD)/kuu.exe.sha256
 
