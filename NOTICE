@@ -1,0 +1,8 @@
+kuu
+Copyright 2026 Vincent Vercauteren
+
+Licensed under the Apache License, Version 2.0; see LICENSE.
+
+This product includes Lua 5.5.1, Copyright (C) 1994-2026 Lua.org, PUC-Rio,
+distributed under the MIT license. The Lua sources are in vendor/lua-5.5.1
+and their license text is in vendor/lua-5.5.1/doc/readme.html.
