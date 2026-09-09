@@ -14,12 +14,21 @@ so that another machine, or another person, can reproduce it.
 ```
 
 Only the `ucrt64` subtree is needed; the MSYS2 shell, pacman, and the `usr`
-tree are not. The compiler runs from PowerShell or any shell as long as
-`ucrt64\bin` is on `PATH`, because the compiler proper (`cc1.exe`, under
-`lib\gcc`) loads `libgmp`, `libisl`, `libmpfr`, `libmpc`, `zlib`, and `zstd`
-from that directory and the driver does not add it for the programs it spawns.
-Without it every compile exits 1 and prints nothing. `tools/build.ps1` sets the
-path itself.
+tree are not. It brings GNU make (`mingw32-make.exe`) as well as gcc. The
+compiler runs from any shell as long as `ucrt64\bin` is on `PATH`, because the
+compiler proper (`cc1.exe`, under `lib\gcc`) loads `libgmp`, `libisl`,
+`libmpfr`, `libmpc`, `zlib`, and `zstd` from that directory and the driver does
+not add it for the programs it spawns. Without it every compile exits 1 and
+prints nothing. The `Makefile` sets the path itself and runs its recipes under
+`cmd.exe`, so `make` behaves the same from PowerShell, cmd, or Git Bash:
+
+```bash
+.tools\msys2\ucrt64\bin\mingw32-make.exe -j8
+```
+
+```bash
+.tools\msys2\ucrt64\bin\mingw32-make.exe test
+```
 
 The tree in use on 2026-09-09, by MSYS2 package:
 

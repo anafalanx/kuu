@@ -28,4 +28,12 @@ typedef struct ku_launch {
 /* NULL with `fail` set (domain STATE) when the state cannot be created. */
 lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail);
 
+/* The palette modules, registered in package.preload by ku_state_new. */
+int ku_open_sched(lua_State *L);
+int ku_open_proc(lua_State *L);
+int ku_open_hash(lua_State *L);
+int ku_open_text(lua_State *L);
+int ku_open_json(lua_State *L);
+int ku_open_fs(lua_State *L);
+
 #endif /* KUU_STATE_H */

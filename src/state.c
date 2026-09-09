@@ -1,11 +1,15 @@
 /* state.c -- building the program's Lua state; see state.h. */
 #include "state.h"
+#include "err.h"
+#include "payload.h"
 #include "program.h"
 #include "wintext.h"
 
 #include "lauxlib.h"
 #include "lualib.h"
 
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,6 +86,21 @@ static int ku_searcher(lua_State *L)
         lua_pushfstring(L, "\n\tmodule name '%s' is not a plain dotted name", name);
         return 1;
     }
+    /* kuu's own Lua, carried inside the executable, comes before the program's
+     * directory so a program cannot shadow a kuu module by accident. */
+    char embedded[KU_PATH_MAX];
+    if (snprintf(embedded, sizeof embedded, "lua/%s.lua", relative) < (int)sizeof embedded) {
+        const ku_payload_entry *entry = ku_payload_find(embedded);
+        if (entry != NULL) {
+            char chunkname[KU_PATH_MAX + 8];
+            snprintf(chunkname, sizeof chunkname, "=kuu/%s", embedded);
+            if (luaL_loadbufferx(L, (const char *)entry->bytes, entry->length, chunkname, "t") != LUA_OK) {
+                return luaL_error(L, "error loading kuu module '%s':\n\t%s", name, lua_tostring(L, -1));
+            }
+            lua_pushstring(L, chunkname + 1);
+            return 2;
+        }
+    }
     static const char *const tails[2] = {".lua", "/init.lua"};
     char missing[2 * KU_PATH_MAX + 64];
     missing[0] = '\0';
@@ -123,6 +142,42 @@ static int ku_searcher(lua_State *L)
         return 2;
     }
     lua_pushstring(L, missing);
+    return 1;
+}
+
+/* os.getenv reading the live UTF-16 environment as UTF-8.  The C runtime's
+ * getenv reads a narrow copy made at startup in the ANSI code page, so a
+ * value such as "ünïcode" would come back mangled and stale. */
+static int ku_getenv(lua_State *L)
+{
+    const char *name = luaL_checkstring(L, 1);
+    wchar_t *wname = ku_utf8_to_wide(name);
+    if (wname == NULL) {
+        lua_pushnil(L);
+        return 1;
+    }
+    DWORD need = GetEnvironmentVariableW(wname, NULL, 0);
+    if (need == 0) {
+        free(wname);
+        lua_pushnil(L);
+        return 1;
+    }
+    wchar_t *value = (wchar_t *)malloc((size_t)need * sizeof(wchar_t));
+    if (value == NULL || GetEnvironmentVariableW(wname, value, need) == 0) {
+        free(value);
+        free(wname);
+        lua_pushnil(L);
+        return 1;
+    }
+    char *utf8 = ku_wide_to_utf8(value, -1);
+    free(value);
+    free(wname);
+    if (utf8 == NULL) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushstring(L, utf8);
+    free(utf8);
     return 1;
 }
 
@@ -178,6 +233,11 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     drop_field(L, "os", "tmpname");
     drop_field(L, "_G", "dofile");
     drop_field(L, "_G", "loadfile");
+    if (lua_getglobal(L, "os") == LUA_TTABLE) {
+        lua_pushcfunction(L, ku_getenv);
+        lua_setfield(L, -2, "getenv");
+    }
+    lua_pop(L, 1);
 
     lua_getglobal(L, "load");
     lua_pushcclosure(L, ku_load, 1);
@@ -203,6 +263,20 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     push_rt_table(L, launch);
     lua_pushcclosure(L, ku_rt_open, 1);
     lua_setfield(L, -2, "rt");
+    lua_pushcfunction(L, ku_open_err);
+    lua_setfield(L, -2, "err");
+    lua_pushcfunction(L, ku_open_sched);
+    lua_setfield(L, -2, "sched");
+    lua_pushcfunction(L, ku_open_proc);
+    lua_setfield(L, -2, "proc");
+    lua_pushcfunction(L, ku_open_hash);
+    lua_setfield(L, -2, "hash");
+    lua_pushcfunction(L, ku_open_text);
+    lua_setfield(L, -2, "text");
+    lua_pushcfunction(L, ku_open_json);
+    lua_setfield(L, -2, "json");
+    lua_pushcfunction(L, ku_open_fs);
+    lua_setfield(L, -2, "fs");
     lua_pop(L, 2);
     return L;
 }

@@ -14,6 +14,8 @@
  * are binary: what the program writes is what leaves the process.
  */
 #include "kuu.h"
+#include "loop.h"
+#include "payload.h"
 #include "program.h"
 #include "state.h"
 #include "wintext.h"
@@ -25,9 +27,16 @@
 #include <windows.h>
 #include <fcntl.h>
 #include <io.h>
+#include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* The mingw C runtime expands wildcards in argv unless told not to.  A program
+ * that receives "*.lua" must receive the four characters, not a listing. */
+int _CRT_glob = 0;
+
+static int usage_fail(const char *message);
 
 static void usage(FILE *to)
 {
@@ -35,8 +44,77 @@ static void usage(FILE *to)
           "usage: kuu FILE [arg ...]        run a Lua program file\n"
           "       kuu - [arg ...]           run a program read from standard input\n"
           "       kuu -e SCRIPT [arg ...]   run an inline script\n"
+          "       kuu docs [PAGE | search TEXT]   the manual, from inside the executable\n"
           "       kuu --version | --help\n",
           to);
+}
+
+/* ---- the manual, carried in the executable ------------------------------- */
+
+static int page_name_length(const char *name)
+{
+    /* "docs/proc.md" -> the length of "proc" */
+    const char *slash = strchr(name, '/');
+    const char *base = slash != NULL ? slash + 1 : name;
+    const char *dot = strrchr(base, '.');
+    return (int)((dot != NULL ? dot : base + strlen(base)) - base);
+}
+
+static int docs_route(int argc, const char *const *argv)
+{
+    if (argc == 0) {
+        printf("kuu %s manual. Pages:\n", KUU_VERSION);
+        for (const ku_payload_entry *e = ku_payload; e->name != NULL; e++) {
+            if (strncmp(e->name, "docs/", 5) == 0) {
+                printf("  %.*s\n", page_name_length(e->name), e->name + 5);
+            }
+        }
+        printf("\nkuu docs PAGE prints a page; kuu docs search TEXT finds lines.\n");
+        return KUU_EXIT_OK;
+    }
+    if (strcmp(argv[0], "search") == 0) {
+        if (argc < 2) {
+            return usage_fail("docs search needs text to look for");
+        }
+        const char *needle = argv[1];
+        size_t needle_length = strlen(needle);
+        int hits = 0;
+        for (const ku_payload_entry *e = ku_payload; e->name != NULL; e++) {
+            if (strncmp(e->name, "docs/", 5) != 0) {
+                continue;
+            }
+            const char *text = (const char *)e->bytes;
+            int line = 1;
+            for (const char *p = text; *p != '\0'; line++) {
+                const char *end = strchr(p, '\n');
+                size_t length = end != NULL ? (size_t)(end - p) : strlen(p);
+                for (size_t i = 0; i + needle_length <= length; i++) {
+                    if (_strnicmp(p + i, needle, needle_length) == 0) {
+                        printf("%.*s:%d: %.*s\n", page_name_length(e->name), e->name + 5, line, (int)length, p);
+                        hits++;
+                        break;
+                    }
+                }
+                if (end == NULL) {
+                    break;
+                }
+                p = end + 1;
+            }
+        }
+        if (hits == 0) {
+            printf("nothing in the manual mentions '%s'\n", needle);
+        }
+        return KUU_EXIT_OK;
+    }
+    char name[256];
+    snprintf(name, sizeof name, "docs/%s.md", argv[0]);
+    const ku_payload_entry *e = ku_payload_find(name);
+    if (e == NULL) {
+        fprintf(stderr, "%s: ENTRY notfound: no manual page '%s'; kuu docs lists them\n", KUU_NAME, argv[0]);
+        return KUU_EXIT_ENTRY;
+    }
+    fwrite(e->bytes, 1, e->length, stdout);
+    return KUU_EXIT_OK;
 }
 
 static int report_fail(const ku_fail *fail)
@@ -84,12 +162,23 @@ static void report_error(lua_State *L, lua_State *co)
     lua_pop(L, 2);
 }
 
+static void main_finished(ku_driver *driver, int nresults)
+{
+    (void)driver; /* the loop records the status; main reads it below */
+    (void)nresults;
+}
+
 static int run_program(const ku_launch *launch, const ku_program *program,
                        const char *chunkname)
 {
     ku_fail fail;
     lua_State *L = ku_state_new(launch, &fail);
     if (L == NULL) {
+        return report_fail(&fail);
+    }
+    ku_loop *loop = ku_loop_new(L, &fail);
+    if (loop == NULL) {
+        lua_close(L);
         return report_fail(&fail);
     }
     lua_State *co = lua_newthread(L);
@@ -99,31 +188,45 @@ static int run_program(const ku_launch *launch, const ku_program *program,
         fprintf(stderr, "%s: %s\n", KUU_NAME,
                 message != NULL ? message : "cannot load the program");
         lua_close(L);
+        ku_loop_free(loop);
         return KUU_EXIT_PROGRAM;
     }
     for (int i = 0; i < launch->argc; i++) {
         lua_pushstring(co, launch->argv[i]);
     }
-    int results = 0;
-    status = lua_resume(co, L, launch->argc, &results);
+    /* The program is the first coroutine the loop drives.  Palette calls
+     * that wait park it; completions resume it; it ends when it returns. */
+    ku_driver driver;
+    memset(&driver, 0, sizeof driver);
+    driver.on_finish = main_finished;
+    if (ku_driver_start(loop, &driver, co, launch->argc) != 0) {
+        fprintf(stderr, "%s: STATE oserror: out of memory\n", KUU_NAME);
+        lua_close(L);
+        ku_loop_free(loop);
+        return KUU_EXIT_ENTRY;
+    }
     int exit_code = KUU_EXIT_OK;
-    if (status == LUA_YIELD) {
-        fprintf(stderr, "%s: SCHED yield: the program yielded with nothing to wait for\n",
+    if (ku_loop_run(loop, &driver) < 0) {
+        fprintf(stderr, "%s: SCHED deadlock: every task is waiting and nothing can wake them\n",
                 KUU_NAME);
         exit_code = KUU_EXIT_PROGRAM;
-    } else if (status != LUA_OK) {
+    } else if (driver.status != LUA_OK) {
         report_error(L, co);
         exit_code = KUU_EXIT_PROGRAM;
     }
     /* Close pending to-be-closed variables, whether the program finished,
-     * failed, or yielded.  An error raised while closing is a failure too. */
-    if (lua_closethread(co, L) != LUA_OK) {
+     * failed, or was left parked.  lua_closethread reports a thread's original
+     * error status again, so only a program that finished cleanly can learn
+     * something new here: an error raised by a __close handler. */
+    int close_status = lua_closethread(co, L);
+    if (driver.status == LUA_OK && close_status != LUA_OK) {
         const char *message = lua_tostring(co, -1);
         fprintf(stderr, "%s: error while closing: %s\n", KUU_NAME,
                 message != NULL ? message : "(error object is not a string)");
         exit_code = KUU_EXIT_PROGRAM;
     }
-    lua_close(L);
+    lua_close(L); /* collects every child handle: their jobs close, their trees die */
+    ku_loop_free(loop);
     return exit_code;
 }
 
@@ -206,6 +309,11 @@ int wmain(int argc, wchar_t **argv)
     _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
     _setmode(_fileno(stderr), _O_BINARY);
+    /* The C runtime converts narrow paths (io.open) with the LC_CTYPE code
+     * page.  UTF-8 there makes Lua's own file functions agree with the rest
+     * of kuu; collation and numerics stay in the "C" locale, so string order
+     * and the decimal point are unchanged. */
+    setlocale(LC_CTYPE, ".UTF8");
 
     if (argc < 2) {
         usage(stderr);
@@ -233,6 +341,9 @@ int wmain(int argc, wchar_t **argv)
     if (strcmp(first, "--help") == 0) {
         usage(stdout);
         return KUU_EXIT_OK;
+    }
+    if (strcmp(first, "docs") == 0) {
+        return docs_route(argc - 2, (const char *const *)(words + 2));
     }
 
     ku_launch launch;
