@@ -15,7 +15,10 @@
  *   fs.same(a, b)                         -> boolean
  *   fs.link(path)                         -> false | { type, target, tag }
  *   fs.watch(dir [, opts])                -> watcher (fs_watch.c)
- *   fs.cwd(), fs.temp(), fs.absolute(path)
+ *   fs.cwd(), fs.chdir(path), fs.temp(), fs.absolute(path)
+ *   fs.tempfile { dir, prefix, suffix }, fs.tempdir { dir, prefix } -> a new path
+ *   fs.space(dir)                         -> { total, free, available } bytes
+ *   join, dirname, basename, ext, stem, relative, glob: Lua, in lua/fs/path.lua
  *
  * Paths in are UTF-8 and become `\\?\`-prefixed absolute UTF-16 (fspath.h);
  * paths out are UTF-8 with forward slashes.  Identity comes from handles, not
@@ -33,6 +36,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
+#include <bcrypt.h>
 
 #define KU_FS_DEFAULT_MAXREAD ((int64_t)1 << 30)
 
@@ -966,6 +970,171 @@ static int l_fs_cwd(lua_State *L)
     return push_shown_directory(L, GetCurrentDirectoryW, "current directory");
 }
 
+/* ---- temporary names, free space --------------------------------------------------------- */
+
+static int random_hex(wchar_t *out, size_t bytes_wanted)
+{
+    unsigned char bytes[16];
+    if (bytes_wanted > sizeof bytes ||
+        BCryptGenRandom(NULL, bytes, (ULONG)bytes_wanted, BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
+        return -1;
+    }
+    static const wchar_t digits[] = L"0123456789abcdef";
+    for (size_t i = 0; i < bytes_wanted; i++) {
+        out[i * 2] = digits[bytes[i] >> 4];
+        out[i * 2 + 1] = digits[bytes[i] & 15];
+    }
+    out[bytes_wanted * 2] = L'\0';
+    return 0;
+}
+
+static int plain_name_part(const char *s)
+{
+    for (; *s != '\0'; s++) {
+        if (*s == '/' || *s == '\\' || *s == ':' || (unsigned char)*s < 0x20) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* fs.tempfile { dir, prefix, suffix } and fs.tempdir { dir, prefix }: a new,
+ * uniquely named file or directory, created exclusively so two callers never
+ * get the same name; the path comes back absolute. */
+static int temp_make(lua_State *L, int directory)
+{
+    static const char *const file_options[] = {"dir", "prefix", "suffix", NULL};
+    static const char *const dir_options[] = {"dir", "prefix", NULL};
+    check_options(L, 1, directory ? dir_options : file_options);
+    const char *prefix = "kuu-", *suffix = "";
+    int has_dir = 0;
+    if (lua_istable(L, 1)) {
+        lua_getfield(L, 1, "prefix");
+        if (!lua_isnil(L, -1)) {
+            prefix = luaL_checkstring(L, -1);
+        }
+        lua_getfield(L, 1, "suffix");
+        if (!lua_isnil(L, -1)) {
+            suffix = luaL_checkstring(L, -1);
+        }
+        lua_getfield(L, 1, "dir");
+        has_dir = !lua_isnil(L, -1);
+        if (!has_dir) {
+            lua_pop(L, 1);
+        }
+    }
+    if (!plain_name_part(prefix) || !plain_name_part(suffix)) {
+        return ku_err_raise(L, "FS", "badvalue", "prefix and suffix must be plain name parts");
+    }
+    if (!has_dir) {
+        push_shown_directory(L, GetTempPathW, "temporary directory");
+    }
+    const char *shown_dir = luaL_checkstring(L, -1);
+    ku_wpath dir;
+    path_arg(L, lua_gettop(L), &dir);
+    wchar_t *wprefix = ku_utf8_to_wide(prefix);
+    wchar_t *wsuffix = ku_utf8_to_wide(suffix);
+    if (wprefix == NULL || wsuffix == NULL) {
+        free(wprefix);
+        free(wsuffix);
+        ku_wpath_free(&dir);
+        return ku_err_raise(L, "FS", "encoding", "prefix and suffix must be valid UTF-8");
+    }
+    size_t plen = wcslen(wprefix), slen = wcslen(wsuffix);
+    for (int attempt = 0; attempt < 32; attempt++) {
+        wchar_t random[17];
+        if (random_hex(random, 8) != 0) {
+            break;
+        }
+        size_t nlen = plen + 16 + slen;
+        wchar_t *name = (wchar_t *)malloc((nlen + 1) * sizeof(wchar_t));
+        if (name == NULL) {
+            break;
+        }
+        wcscpy(name, wprefix);
+        wcscat(name, random);
+        wcscat(name, wsuffix);
+        wchar_t *candidate = ku_wpath_join(dir.text, dir.length, name, nlen);
+        free(name);
+        if (candidate == NULL) {
+            break;
+        }
+        BOOL ok;
+        DWORD error = 0;
+        if (directory) {
+            ok = CreateDirectoryW(candidate, NULL);
+        } else {
+            HANDLE h = CreateFileW(candidate, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+            ok = h != INVALID_HANDLE_VALUE;
+            if (ok) {
+                CloseHandle(h);
+            }
+        }
+        if (!ok) {
+            error = GetLastError();
+        }
+        if (ok) {
+            char *shown = ku_wpath_show(candidate, dir.unc);
+            free(candidate);
+            free(wprefix);
+            free(wsuffix);
+            ku_wpath_free(&dir);
+            if (shown == NULL) {
+                return ku_err_raise(L, "FS", "encoding", "the temporary path is not representable");
+            }
+            lua_pushstring(L, shown);
+            free(shown);
+            return 1;
+        }
+        free(candidate);
+        if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) {
+            free(wprefix);
+            free(wsuffix);
+            ku_wpath_free(&dir);
+            return fail_win(L, error, directory ? "create a temporary directory in" : "create a temporary file in",
+                            shown_dir);
+        }
+    }
+    free(wprefix);
+    free(wsuffix);
+    ku_wpath_free(&dir);
+    return ku_err_raise(L, "FS", "oserror", "cannot find a free temporary name in '%s'", shown_dir);
+}
+
+static int l_fs_tempfile(lua_State *L)
+{
+    return temp_make(L, 0);
+}
+
+static int l_fs_tempdir(lua_State *L)
+{
+    return temp_make(L, 1);
+}
+
+/* fs.space(dir) -> { total, free, available }: bytes on the volume holding
+ * `dir`; `available` is what this user may still use, under any quota. */
+static int l_fs_space(lua_State *L)
+{
+    ku_wpath path;
+    path_arg(L, 1, &path);
+    const char *shown = lua_tostring(L, 1);
+    ULARGE_INTEGER available, total, free_bytes;
+    BOOL ok = GetDiskFreeSpaceExW(path.text, &available, &total, &free_bytes);
+    DWORD error = ok ? 0 : GetLastError();
+    ku_wpath_free(&path);
+    if (!ok) {
+        return fail_win(L, error, "measure the space at", shown);
+    }
+    lua_createtable(L, 0, 3);
+    lua_pushinteger(L, (lua_Integer)total.QuadPart);
+    lua_setfield(L, -2, "total");
+    lua_pushinteger(L, (lua_Integer)free_bytes.QuadPart);
+    lua_setfield(L, -2, "free");
+    lua_pushinteger(L, (lua_Integer)available.QuadPart);
+    lua_setfield(L, -2, "available");
+    return 1;
+}
+
 /* fs.chdir(path) -> true | nil, err.  Process-wide: every task and every
  * child started afterwards sees it. */
 static int l_fs_chdir(lua_State *L)
@@ -1036,6 +1205,9 @@ int ku_open_fs(lua_State *L)
         {"cwd", l_fs_cwd},
         {"chdir", l_fs_chdir},
         {"temp", l_fs_temp},
+        {"tempfile", l_fs_tempfile},
+        {"tempdir", l_fs_tempdir},
+        {"space", l_fs_space},
         {"absolute", l_fs_absolute},
         {NULL, NULL},
     };

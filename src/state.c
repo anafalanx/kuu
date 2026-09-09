@@ -258,6 +258,25 @@ static void push_rt_table(lua_State *L, const ku_launch *launch)
     lua_setfield(L, -2, "source");
 }
 
+/* `fs` is C for everything that touches Windows and Lua for the string half:
+ * lua/fs/path.lua installs join, dirname, glob, and their kin into the table
+ * the C module built. */
+static int open_fs_full(lua_State *L)
+{
+    ku_open_fs(L);
+    const ku_payload_entry *entry = ku_payload_find("lua/fs/path.lua");
+    if (entry == NULL) {
+        return luaL_error(L, "kuu is missing lua/fs/path.lua");
+    }
+    if (luaL_loadbufferx(L, (const char *)entry->bytes, entry->length, "=kuu/lua/fs/path.lua", "t") != LUA_OK) {
+        return lua_error(L);
+    }
+    lua_call(L, 0, 1);    /* the chunk returns its installer */
+    lua_pushvalue(L, -2); /* the fs table */
+    lua_call(L, 1, 0);
+    return 1;
+}
+
 lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
 {
     lua_State *L = luaL_newstate();
@@ -322,7 +341,7 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "text");
     lua_pushcfunction(L, ku_open_json);
     lua_setfield(L, -2, "json");
-    lua_pushcfunction(L, ku_open_fs);
+    lua_pushcfunction(L, open_fs_full);
     lua_setfield(L, -2, "fs");
     lua_pushcfunction(L, ku_open_http);
     lua_setfield(L, -2, "http");

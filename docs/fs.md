@@ -105,6 +105,32 @@ every notification. The watch is armed before `fs.watch` returns. When
 `overflow` appears or `dropped` grows, the system could not describe every
 change: reconcile from `fs.list` or `fs.dirs`.
 
+## Paths as strings
+
+```lua
+fs.join("build", "out\\", "/app.exe")   -- "build/out/app.exe": either separator in, "/" out
+fs.join("a", "C:/x", "y")               -- "C:/x/y": a drive or a share starts over
+fs.dirname("a/b/c.txt")                 -- "a/b"; "." for a bare name; a root stays a root
+fs.basename("a/b/c.txt")                -- "c.txt"
+fs.ext("a/b.tar.gz")                    -- ".gz"; "" for ".gitignore"
+fs.stem("a/b.tar.gz")                   -- "b.tar"
+fs.relative("C:/work/app/src/x.c", "C:/work/app")   -- "src/x.c"; ".." as needed; case ignored
+```
+
+None of these touch the disk except `relative`, which makes both paths
+absolute first and returns the absolute path when they share no root.
+
+```lua
+local paths, errors = fs.glob("src/**/*.c")           -- sorted; relative when the pattern is
+fs.glob("C:/work/**", { kind = "directory" })         -- or "file"
+```
+
+`*` and `?` match within one name, ignoring case as the file system does;
+`**` as a whole component matches any number of directories, including none.
+Links are matched by name but never entered. Each directory that could not be
+listed is one entry of `errors`, with `path` and `message`, and the rest of
+the results stand.
+
 ## Places
 
 ```lua
@@ -112,7 +138,13 @@ fs.cwd()          -- the current directory
 fs.chdir(p)       -- change it, for the whole process: every task and every child started afterwards
 fs.temp()         -- the temporary directory
 fs.absolute(p)    -- the normalised absolute spelling of p
+fs.tempfile { dir = "build", prefix = "kuu-", suffix = ".tmp" }   -- a new empty file, uniquely named; every field optional
+fs.tempdir { dir = "build", prefix = "kuu-" }                     -- a new empty directory
+fs.space("C:/")   -- { total, free, available } in bytes; available is what this user may still use
 ```
+
+Temporary names are created exclusively, so two callers never receive the
+same one. Both default to the temporary directory and to the prefix `kuu-`.
 
 ## Errors
 
