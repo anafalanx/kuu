@@ -181,10 +181,10 @@ Tcl for this job. The ledger so far:
   `regexp` had all of it, and an agent's first instinct in any language is a
   regex. In kuu's own Lua this shows already: `check` resolves module names
   with two patterns because one cannot say `a|a.b`, and `cli` and `values`
-  each parse durations by hand. `re` on PCRE2 is planned for 0.5; until it
-  lands, string-heavy work is where an agent will most often fall back to C or
-  to a clumsy loop. This is the first entry that may prove decisive rather
-  than minor.
+  each parse durations by hand. `re` on PCRE2 landed first in 0.5, about
+  five hundred lines over a vendored library that cost 450 KB of executable.
+  The gap was the first that looked decisive, and it is closed; what remains
+  true is that Tcl had it for free.
 - **Case is ASCII in the language.** `string.upper` and `string.lower` know
   the twenty-six letters; Tcl's `string toupper` knew Unicode. A glob that
   had to find `é.txt` under `É*.TXT`, as the file system does, needed
@@ -195,6 +195,6 @@ Tcl for this job. The ledger so far:
   lines to get it, and an agent that forgets them gets stock Lua's silent
   globals.
 
-Nothing decisive yet, though the pattern entry is the one to watch. The
+Nothing decisive: the pattern entry, the one to watch, closed with `re`. The
 coroutine model, the byte strings, and the C API have been strengths at every
 step so far.

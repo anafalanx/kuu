@@ -76,4 +76,7 @@ which spawns itself as a child and compares bytes.
 ## License
 
 Apache License 2.0; see [LICENSE](LICENSE). Lua is MIT-licensed by
-Lua.org, PUC-Rio; see `vendor/lua-5.5.1/doc/readme.html`.
+Lua.org, PUC-Rio; see `vendor/lua-5.5.1/doc/readme.html`. yyjson is MIT, in
+`vendor/yyjson-0.12.0`. PCRE2 is BSD-3-Clause with the PCRE2 exception; see
+`vendor/pcre2-10.48/LICENCE.md` and `vendor/pcre2-10.48/README-kuu.md` for
+what was taken and what was configured.

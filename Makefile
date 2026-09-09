@@ -22,6 +22,7 @@ export PATH := $(TOOLS_WIN)\bin;$(PATH)$(Path)
 BUILD      := build
 LUA_SRC    := vendor/lua-5.5.1/src
 YYJSON_SRC := vendor/yyjson-0.12.0
+PCRE2_SRC  := vendor/pcre2-10.48/src
 HOST_SRC   := src
 OUT        := $(BUILD)/kuu.exe
 OUT_WIN    := $(subst /,\,$(OUT))
@@ -34,11 +35,15 @@ VERSION := $(word 3,$(subst ",,$(shell findstr /B /C:"#define KUU_VERSION " src\
 # authored warning gate.  luaconf.h derives LUA_USE_WINDOWS from _WIN32 itself.
 VENDOR_FLAGS := -std=gnu99 -O2 -ffunction-sections -fdata-sections
 
+# PCRE2, the 8-bit library without JIT, with kuu's config.h (vendor/pcre2-10.48/README-kuu.md).
+PCRE2_FLAGS := $(VENDOR_FLAGS) -DHAVE_CONFIG_H -DPCRE2_CODE_UNIT_WIDTH=8 -DPCRE2_STATIC -I$(PCRE2_SRC)
+
 # The host is C23 under the els method's warning set, and warnings are errors.
 HOST_FLAGS := -std=c23 -O2 -Wall -Wextra -Wpedantic -Wformat=2 -Wundef -Werror \
               -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 \
+              -DPCRE2_CODE_UNIT_WIDTH=8 -DPCRE2_STATIC \
               -ffunction-sections -fdata-sections \
-              -I$(LUA_SRC) -I$(YYJSON_SRC) -I$(HOST_SRC)
+              -I$(LUA_SRC) -I$(YYJSON_SRC) -I$(PCRE2_SRC) -I$(HOST_SRC)
 
 # wmain entry, libgcc and winpthread static, unused sections dropped, symbols
 # stripped.  The C runtime stays the system's ucrtbase.dll; bcrypt is Windows'.
@@ -52,6 +57,8 @@ FIXTURES    := $(BUILD)/test/http_fixture.exe
 LUA_C    := $(filter-out $(LUA_SRC)/lua.c $(LUA_SRC)/luac.c,$(wildcard $(LUA_SRC)/*.c))
 LUA_O    := $(patsubst $(LUA_SRC)/%.c,$(BUILD)/obj/lua/%.o,$(LUA_C))
 YYJSON_O := $(BUILD)/obj/vendor/yyjson.o
+PCRE2_C  := $(wildcard $(PCRE2_SRC)/pcre2_*.c)
+PCRE2_O  := $(patsubst $(PCRE2_SRC)/%.c,$(BUILD)/obj/pcre2/%.o,$(PCRE2_C))
 HOST_C   := $(wildcard $(HOST_SRC)/*.c)
 HOST_O   := $(patsubst $(HOST_SRC)/%.c,$(BUILD)/obj/host/%.o,$(HOST_C))
 
@@ -72,9 +79,12 @@ VERSION_O  := $(BUILD)/obj/gen/version.o
 .PHONY: all test clean
 all: $(OUT)
 
-$(OUT): $(HOST_O) $(LUA_O) $(YYJSON_O) $(PAYLOAD_O) $(VERSION_O)
+$(OUT): $(HOST_O) $(LUA_O) $(YYJSON_O) $(PCRE2_O) $(PAYLOAD_O) $(VERSION_O)
 	$(CC) $(LINK_FLAGS) -o $@ $^ $(LINK_LIBS)
 	@echo built $@
+
+$(BUILD)/obj/pcre2/%.o: $(PCRE2_SRC)/%.c | $(BUILD)/obj/pcre2
+	$(CC) $(PCRE2_FLAGS) -MMD -MP -c $< -o $@
 
 $(VERSIONRC): tools/versionrc.c $(HOST_SRC)/kuu.h | $(BUILD)
 	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -I$(HOST_SRC) -o $@ $<
@@ -106,7 +116,7 @@ $(PAYLOAD_O): $(PAYLOAD_C) $(HOST_SRC)/payload.h | $(BUILD)/obj/gen
 $(BUILD)/test/%.exe: $(FIXTURE_SRC)/%.c | $(BUILD)/test
 	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 -o $@ $< -lws2_32
 
-$(BUILD) $(BUILD)/gen $(BUILD)/test $(BUILD)/obj/lua $(BUILD)/obj/host $(BUILD)/obj/vendor $(BUILD)/obj/gen:
+$(BUILD) $(BUILD)/gen $(BUILD)/test $(BUILD)/obj/lua $(BUILD)/obj/host $(BUILD)/obj/vendor $(BUILD)/obj/pcre2 $(BUILD)/obj/gen:
 	@if not exist "$(subst /,\,$@)" mkdir "$(subst /,\,$@)"
 
 .PHONY: fixtures
@@ -118,7 +128,7 @@ test: $(OUT) $(FIXTURES)
 clean:
 	@if exist $(BUILD) rmdir /s /q $(BUILD)
 
--include $(LUA_O:.o=.d) $(HOST_O:.o=.d)
+-include $(LUA_O:.o=.d) $(HOST_O:.o=.d) $(PCRE2_O:.o=.d)
 
 # Soak: kuu under volume for SOAK seconds (default 60), on demand, with the fixture.
 SOAK ?= 60

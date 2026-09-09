@@ -6,3 +6,8 @@ Licensed under the Apache License, Version 2.0; see LICENSE.
 This product includes Lua 5.5.1, Copyright (C) 1994-2026 Lua.org, PUC-Rio,
 distributed under the MIT license. The Lua sources are in vendor/lua-5.5.1
 and their license text is in vendor/lua-5.5.1/doc/readme.html.
+
+This product includes PCRE2 10.48, Copyright (c) 1997-2026 University of
+Cambridge and the PCRE2 authors, distributed under the BSD-3-Clause licence
+with the PCRE2 exception. The sources are in vendor/pcre2-10.48 and the
+licence text is in vendor/pcre2-10.48/LICENCE.md.

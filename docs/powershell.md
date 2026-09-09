@@ -71,7 +71,11 @@ stalls another task.
 | `New-Guid` | `hash.uuid()` | |
 | `.ToUpper()`, `.ToLower()` | `text.upper`, `text.lower` | Unicode, by the rules file names fold by; Lua's own are ASCII only |
 | `New-Object Threading.Mutex`, `Wait-Handle` | `sync.lock(name, timeout)`, `sync.try(name)` | a named mutex across processes; a dead holder hands it over as `abandoned` |
-| `-match`, `-replace`, `Select-String` | Lua patterns now; 0.5: `re` on PCRE2 | patterns have no alternation, see [Pitfalls](pitfalls.md) |
+| `-match`, `$Matches` | `re.match`, `re.exec` | `exec` gives positions, numbered and named groups in one table |
+| `-replace` | `re.gsub(s, pattern, "$1")` | `$1`, `${name}`, `$0`, `$$`; a function or table too |
+| `-split` | `re.split` | |
+| `Select-String` | `re.find` in a loop over `c:lines()` or `fs.read` | |
+| `[regex]::Escape` | `re.escape` | |
 | `Get-Date -Format`, time zones | `os.date`, `os.time`; 0.5: `time` | |
 | `Import-Csv`, `Export-Csv` | 0.5: `csv` | |
 | `Select-Xml`, `[xml]` | deferred | |

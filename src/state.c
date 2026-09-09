@@ -362,6 +362,8 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "sys");
     lua_pushcfunction(L, open_sync_full);
     lua_setfield(L, -2, "sync");
+    lua_pushcfunction(L, ku_open_re);
+    lua_setfield(L, -2, "re");
     lua_pop(L, 2);
     return L;
 }
