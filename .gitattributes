@@ -1,0 +1,12 @@
+# Every text file is stored and checked out with LF, so a checkout is
+# byte-identical on every machine and a build that embeds files reproduces.
+# core.autocrlf on a machine no longer decides what the working copy holds.
+* text=auto eol=lf
+
+# Never normalize binaries.
+*.png binary
+*.ico binary
+*.exe binary
+*.dll binary
+*.zip binary
+*.gz binary
