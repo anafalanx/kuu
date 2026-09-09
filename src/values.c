@@ -37,27 +37,51 @@ static const char *parse_number(const char *text, double *value)
     return end;
 }
 
+/* "30s", "250ms", "1.5h", "2d", and sums of those with or without spaces:
+ * "1h30m", "1h 30m 5s".  Units: ms, s, m, h, d. */
 int ku_parse_duration_ms(const char *text, int64_t *ms)
 {
-    double value = 0.0;
-    const char *unit = parse_number(text, &value);
-    if (unit == NULL) {
-        return -1;
+    double total = 0.0;
+    int parts = 0;
+    const char *p = text;
+    for (;;) {
+        while (*p == ' ') {
+            p++;
+        }
+        if (*p == '\0') {
+            break;
+        }
+        double value = 0.0;
+        const char *unit = parse_number(p, &value);
+        if (unit == NULL) {
+            return -1;
+        }
+        double scale;
+        if (unit[0] == 'm' && unit[1] == 's') {
+            scale = 1.0;
+            p = unit + 2;
+        } else if (unit[0] == 's') {
+            scale = 1000.0;
+            p = unit + 1;
+        } else if (unit[0] == 'm') {
+            scale = 60000.0;
+            p = unit + 1;
+        } else if (unit[0] == 'h') {
+            scale = 3600000.0;
+            p = unit + 1;
+        } else if (unit[0] == 'd') {
+            scale = 86400000.0;
+            p = unit + 1;
+        } else {
+            return -1;
+        }
+        total += value * scale;
+        parts++;
+        if (total > 9.0e15) {
+            return -1;
+        }
     }
-    double scale;
-    if (strcmp(unit, "ms") == 0) {
-        scale = 1.0;
-    } else if (strcmp(unit, "s") == 0) {
-        scale = 1000.0;
-    } else if (strcmp(unit, "m") == 0) {
-        scale = 60000.0;
-    } else if (strcmp(unit, "h") == 0) {
-        scale = 3600000.0;
-    } else {
-        return -1;
-    }
-    double total = value * scale;
-    if (total > 9.0e15) {
+    if (parts == 0) {
         return -1;
     }
     *ms = (int64_t)(total + 0.5);

@@ -76,7 +76,8 @@ stalls another task.
 | `-split` | `re.split` | |
 | `Select-String` | `re.find` in a loop over `c:lines()` or `fs.read` | |
 | `[regex]::Escape` | `re.escape` | |
-| `Get-Date -Format`, time zones | `os.date`, `os.time`; 0.5: `time` | |
+| `Get-Date`, `Get-Date -Format`, `[DateTime]::Parse`, `ToUniversalTime` | `time.now`, `time.format`, `time.parse`, `time.iso` | instants are seconds since the epoch; zones are `utc`, `local`, or an offset |
+| `New-TimeSpan`, `[TimeSpan]::Parse` | `time.duration("1h30m")`, `time.human(seconds)` | |
 | `Import-Csv`, `Export-Csv` | 0.5: `csv` | |
 | `Select-Xml`, `[xml]` | deferred | |
 | `Write-Host`, `Write-Verbose` | `print`, `io.stderr:write`, `log` | `log` never raises and never interrupts the work |
