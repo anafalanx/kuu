@@ -89,7 +89,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      need on its first day: MSYS2's `make` package alone imports
      `libintl-8.dll`, which imports `libiconv-2.dll`; its version check
      printed nothing, and kuu refused it. Until the lock can say so, the
-     project's first tool is ninja, one executable from its upstream release.
+     project's lock names no tool.
    - `kuu run --dry-run`: the plan, in order, without running it.
    - The release, by make and cmd recipes in kuu's own repository, which
      stays free of kuu: a version resource from `windres` so the file's
