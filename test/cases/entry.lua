@@ -10,7 +10,7 @@ return function(T)
 
   -- identity and usage ------------------------------------------------------
   local r = kuu { "--version" }
-  check("version line", r.code == 0 and r.out == "kuu 0.2 (Lua 5.5.1)\n", describe(r))
+  check("version line", r.code == 0 and r.out == "kuu 0.3 (Lua 5.5.1)\n", describe(r))
 
   r = kuu { "--help" }
   check("help exits 0 on stdout", r.code == 0 and contains(r.out, "usage: kuu FILE") and r.err == "", describe(r))
@@ -32,7 +32,7 @@ return function(T)
   check("inline arguments arrive as ...", r.out == "2\ta\tb c\n", describe(r))
 
   r = kuu { "-e", "local rt = require('rt'); print(rt.version, rt.lua, rt.route, #rt.args, rt.args[2], rt.program, rt.exe ~= nil)", "x", "y" }
-  check("rt module describes the launch", r.out == "0.2\tLua 5.5.1\teval\t2\ty\tnil\ttrue\n", describe(r))
+  check("rt module describes the launch", r.out == "0.3\tLua 5.5.1\teval\t2\ty\tnil\ttrue\n", describe(r))
 
   local accented = "héllo wörld €"
   r = kuu { "-e", "io.write(...)", accented }

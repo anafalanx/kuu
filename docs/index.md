@@ -11,7 +11,7 @@ kuu runs on Windows 11 version 25H2 and later, and on the equivalent Windows
 Server releases. Nothing else, on purpose: the process, console, and file
 system features it builds on are used without fallbacks.
 
-This is version 0.2: the runner, the scheduler, processes, files, JSON,
+This is version 0.3: the runner, the scheduler, processes, files, JSON, HTTP,
 hashing, text encodings, logging, and argument parsing. The
 [roadmap](roadmap.md) records what is planned and why, and
 [inheritance](inheritance.md) records what kuu learned from its predecessors.
@@ -38,7 +38,7 @@ array of the `rt` module. There is no `arg` global.
 ```lua
 local rt = require("rt")
 print(rt.version, rt.lua, rt.route, rt.exe, rt.program, #rt.args)
--- 0.2  Lua 5.5.1  file  C:\tools\kuu.exe  build.lua  2
+-- 0.3  Lua 5.5.1  file  C:\tools\kuu.exe  build.lua  2
 ```
 
 `rt.route` is `"file"`, `"stdin"`, or `"eval"`. `rt.program` is the path as
@@ -53,6 +53,7 @@ that requires nothing has no authority over the machine.
 |---|---|
 | [`proc`](proc.md) | children with decided lifetimes: run, start, wait, kill, detach |
 | [`fs`](fs.md) | files, directories, identity, links, walks, watches, with Windows truth |
+| [`http`](http.md) | fetch and post over WinHTTP, with the machine's proxy and certificates |
 | [`sched`](sched.md) | tasks, sleep, a monotonic clock, wall time |
 | [`json`](json.md) | strict decoding and exact encoding |
 | [`hash`](hash.md) | digests, HMAC, random bytes |
@@ -102,9 +103,9 @@ Failures kuu detects before the program runs are spelled
 
 - [Pitfalls](pitfalls.md): what differs from the Lua an agent already knows,
   and the Windows facts kuu refuses to hide.
-- [proc](proc.md), [fs](fs.md), [sched](sched.md), [json](json.md),
-  [hash](hash.md), [text](text.md), [log](log.md), [cli](cli.md),
-  [err](err.md): the modules.
+- [proc](proc.md), [fs](fs.md), [http](http.md), [sched](sched.md),
+  [json](json.md), [hash](hash.md), [text](text.md), [log](log.md),
+  [cli](cli.md), [err](err.md): the modules.
 - [Roadmap](roadmap.md): decisions taken and milestones ahead.
 - [Inheritance](inheritance.md): laws, traps, and contracts carried over from
   machteld, the z estate, and the archived projects.

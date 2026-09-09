@@ -38,7 +38,11 @@ HOST_FLAGS := -std=c23 -O2 -Wall -Wextra -Wpedantic -Wformat=2 -Wundef -Werror \
 # wmain entry, libgcc and winpthread static, unused sections dropped, symbols
 # stripped.  The C runtime stays the system's ucrtbase.dll; bcrypt is Windows'.
 LINK_FLAGS := -municode -static -static-libgcc -Wl,--gc-sections -s
-LINK_LIBS  := -lbcrypt
+LINK_LIBS  := -lbcrypt -lwinhttp
+
+# Test fixtures: small C programs the suite drives as children.
+FIXTURE_SRC := test/fixtures
+FIXTURES    := $(BUILD)/test/http_fixture.exe
 
 LUA_C    := $(filter-out $(LUA_SRC)/lua.c $(LUA_SRC)/luac.c,$(wildcard $(LUA_SRC)/*.c))
 LUA_O    := $(patsubst $(LUA_SRC)/%.c,$(BUILD)/obj/lua/%.o,$(LUA_C))
@@ -78,10 +82,16 @@ $(PAYLOAD_C): $(EMBED) $(PAYLOAD_IN) | $(BUILD)/gen
 $(PAYLOAD_O): $(PAYLOAD_C) $(HOST_SRC)/payload.h | $(BUILD)/obj/gen
 	$(CC) -std=c23 -O1 -I$(HOST_SRC) -c $< -o $@
 
-$(BUILD) $(BUILD)/gen $(BUILD)/obj/lua $(BUILD)/obj/host $(BUILD)/obj/vendor $(BUILD)/obj/gen:
+$(BUILD)/test/%.exe: $(FIXTURE_SRC)/%.c | $(BUILD)/test
+	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 -o $@ $< -lws2_32
+
+$(BUILD) $(BUILD)/gen $(BUILD)/test $(BUILD)/obj/lua $(BUILD)/obj/host $(BUILD)/obj/vendor $(BUILD)/obj/gen:
 	@if not exist "$(subst /,\,$@)" mkdir "$(subst /,\,$@)"
 
-test: $(OUT)
+.PHONY: fixtures
+fixtures: $(FIXTURES)
+
+test: $(OUT) $(FIXTURES)
 	$(subst /,\,$(OUT)) test\run.lua
 
 clean:

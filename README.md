@@ -5,7 +5,7 @@ program and, milestone by milestone, gives it correct native control over
 processes, files, and the network. Kuu is Finnish for moon, as Lua is
 Portuguese for it.
 
-Version 0.2 is the palette core: programs run as coroutines on one event loop;
+Version 0.3 adds the network to the palette core: programs run as coroutines on one event loop;
 `proc` gives them children with decided lifetimes under Windows Job Objects;
 `fs` tells the truth about paths, identity, junctions, and long names, and
 watches directories; `json`, `hash`, `text`, `log`, and `cli` round it out.

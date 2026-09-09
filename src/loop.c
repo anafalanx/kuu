@@ -416,6 +416,11 @@ int ku_loop_attach_job(ku_loop *lp, HANDLE job, ku_source *src)
                : -1;
 }
 
+int ku_loop_post(ku_loop *lp, ku_source *src, void *value, DWORD bytes)
+{
+    return PostQueuedCompletionStatus(lp->port, bytes, (ULONG_PTR)src, (LPOVERLAPPED)value) ? 0 : -1;
+}
+
 void ku_loop_expect(ku_loop *lp)
 {
     lp->pending++;
@@ -436,6 +441,10 @@ static void dispatch(ku_loop *lp, const OVERLAPPED_ENTRY *entry)
     }
     if (src->kind == KU_SRC_JOB) {
         src->on_job(src, entry->dwNumberOfBytesTransferred, (DWORD)(ULONG_PTR)entry->lpOverlapped);
+        return;
+    }
+    if (src->kind == KU_SRC_POSTED) {
+        src->on_posted(src, (void *)entry->lpOverlapped, entry->dwNumberOfBytesTransferred);
         return;
     }
     ku_io *io = (ku_io *)entry->lpOverlapped;

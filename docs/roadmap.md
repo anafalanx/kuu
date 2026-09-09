@@ -36,7 +36,8 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `json` on yyjson, `hash` on CNG, `text`, `log`, `cli` | 0.2 |
 | the manual and kuu's own Lua inside the executable; `kuu docs [page | search]` | 0.2 |
 | live child streams with backpressure (`read`, `read_err`, `lines`, `write`, `close_stdin`), `inherit = true`, `proc.wait_any`, `proc.wait_all` | 0.2 |
-| `http` via WinHTTP, `toolchain` hydrate/verify/path, `task` and `run`/`list` | 0.3 |
+| `http` on WinHTTP: get, post, request, streaming to a file, a wall-clock deadline of kuu's own | 0.3 |
+| `toolchain` hydrate/verify/path from a prescriptive lock, `task` and `run`/`list` | 0.3, in progress |
 | `check` (parse, `global none`, palette arity before running), `--json` envelopes | 0.3 |
 | `pty` over ConPTY with `expect`; `re` via PCRE2; worker processes; `serve` | later |
 | version resource, signing, release | with the first palette release |

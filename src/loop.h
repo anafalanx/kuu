@@ -42,7 +42,7 @@ typedef struct ku_driver ku_driver;
 
 /* ---- completion sources ------------------------------------------------- */
 
-typedef enum { KU_SRC_IO = 1, KU_SRC_JOB = 2 } ku_source_kind;
+typedef enum { KU_SRC_IO = 1, KU_SRC_JOB = 2, KU_SRC_POSTED = 3 } ku_source_kind;
 
 struct ku_source {
     ku_source_kind kind;
@@ -53,7 +53,14 @@ struct ku_source {
     /* KU_SRC_JOB: a Job Object message (JOB_OBJECT_MSG_*), with the pid it
      * concerns where the message has one. */
     void (*on_job)(ku_source *src, DWORD message, DWORD pid);
+    /* KU_SRC_POSTED: a packet a foreign thread posted with ku_loop_post; the
+     * only thing such a thread may do to the loop. */
+    void (*on_posted)(ku_source *src, void *value, DWORD bytes);
 };
+
+/* Post a packet from any thread.  The loop calls src->on_posted on its own
+ * thread.  Pair with ku_loop_expect before and ku_loop_received in the handler. */
+int ku_loop_post(ku_loop *loop, ku_source *src, void *value, DWORD bytes);
 
 /* An overlapped request.  Allocate with ku_io_new, post with ReadFile or
  * WriteFile on `handle` using &io->ov, then call ku_io_posted (or free it
