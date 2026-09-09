@@ -129,16 +129,6 @@ task.default "build"
   r = T.kuu({ "list" }, { cwd = bare })
   check("a syntax error in tasks.lua exits 2 with its location", r.code == 2 and contains(r.err, "tasks.lua:1:"), T.describe(r))
 
-  -- the shipped example is a project too; it lists and checks without the network ----------
-  local example = fs.absolute(T.root .. "/examples/hello")
-  r = T.kuu({ "list", "--json" }, { cwd = example })
-  local ex = r.code == 0 and json.decode(r.out) or nil
-  check("examples/hello lists its tasks with test as the default", ex and ex.ok == true and ex.result.default == "test" and #ex.result.tasks == 5, T.describe(r))
-  r = T.kuu({ "check" }, { cwd = example })
-  check("examples/hello passes kuu check", r.code == 0 and contains(r.err, "1 files, 0 errors, 0 warnings"), T.describe(r))
-  local lock, lock_e = require("toolchain").read(example .. "/tools/lock.json")
-  check("the example lock is well-formed and pins zig by hash", lock and lock.tools.zig and #lock.tools.zig.sha256 == 64 and lock.tools.zig.kind == "zip", tostring(lock_e))
-
   -- the module in-process ------------------------------------------------------------------
   local plan, e = task.plan("nothing")
   check("task.plan on an unknown name is nil, TASK unknown", plan == nil and err.is(e, "TASK", "unknown"))

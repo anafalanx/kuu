@@ -45,7 +45,6 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `toolchain` hydrate/verify/path from a prescriptive lock; `kuu hydrate`, `kuu verify` | 0.3 |
 | `task`, `tasks.lua`, `kuu run`, `kuu list`, `--json` envelopes on every verb; `fs.chdir`, `rt.root`, `rt.source` | 0.3 |
 | `kuu check`: parse, global declarations, `require` resolution, without running; no arity checking, by design | 0.3 |
-| `examples/hello`: a lock that pins Zig by hash, a `tasks.lua` that hydrates it and builds one C file with it | 0.3 |
 | `kuu-test-project` driven from its own `.tools/kuu.exe`; tools made of several archives in the lock, so an MSYS2 gcc assembles from upstream packages; `kuu run --dry-run`; a version resource and a signed, published release, by make | 0.4 |
 | `pty` over ConPTY with `expect`; `re` on PCRE2; `fs.glob` | 0.5 |
 | `worker` processes; `serve`; `check` learns the palette's names | 0.6 |
@@ -70,13 +69,10 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    through. `check` parses, wants a global declaration, and resolves every
    `require`; palette arity checking was dropped, because a checker that
    promises more than it runs is not a gate. The suite drives a synthetic
-   project end to end. Done 2026-09-09 with `examples/hello`: a lock that
-   pins Zig 0.16.0 by hash, and a `tasks.lua` that hydrates it (97 MB, 14 s
-   including the hash, the unpack, and `zig version`), compiles one C file
-   with it (67 s the first time, while Zig builds its C runtime; 0.2 s
-   after), and tests the result. `kuu verify --deep` passes, a second
-   `kuu run` costs a stamp check, and editing the lock makes the tool stale
-   and re-installs it from the cache.
+   project end to end. Done 2026-09-09: the finish line was met by a worked
+   example that pinned a compiler by hash, hydrated it, built one C file with
+   it, and tested the result. It was retired the same day, at the owner's
+   request, in favour of `kuu-test-project`.
 4. **0.4, the test project and the first release.**
    - `kuu-test-project`, at `C:\dev\kuu-test-project`, local and without a
      remote, is where kuu meets a project: its own `kuu.exe` in `.tools`, a
@@ -125,10 +121,6 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 ## Open decisions
 
 - **1.0 criteria.** The proposal above stands until the owner sets them.
-- **`examples/hello`.** It pins Zig because a compiler in one archive made
-  the smallest demonstration of the lock. The test project is the vehicle
-  from here on; the example stays as the manual's worked example until the
-  test project builds C from MSYS2 packages, then retires or switches.
 
 ## Backlog
 

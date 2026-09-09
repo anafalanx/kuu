@@ -67,7 +67,6 @@ which spawns itself as a child and compares bytes.
 | `lua/` | kuu's own Lua: `log`, `cli`, `task`, `project`, `toolchain`, and the verbs under `lua/cmd/` |
 | `docs/` | the manual, shipped inside the executable |
 | `test/` | the Lua test suite: `run.lua`, `cases/`, `fixtures/` |
-| `examples/hello/` | a repository kuu drives end to end: a `tasks.lua`, a lock that pins Zig by hash, one C file |
 | `Makefile` | the build |
 | `.tools/` | the compiler and make, local to this checkout |
 
