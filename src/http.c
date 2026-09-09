@@ -26,6 +26,7 @@
 #include "lauxlib.h"
 
 #include <winhttp.h>
+#include <bcrypt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,6 +69,9 @@ typedef struct http_request {
     unsigned char *data;
     size_t data_len, data_cap;
     size_t total;
+    /* `sha256` given: the body is hashed as it arrives and must match */
+    int want_hash;
+    unsigned char expected[32];
 } http_request;
 
 /* ---- the worker ------------------------------------------------------------------ */
@@ -156,11 +160,49 @@ static int append_data(http_request *q, const unsigned char *bytes, DWORD n)
     return 0;
 }
 
+static int parse_hex(const char *text, size_t length, unsigned char *out, size_t out_len)
+{
+    if (length != out_len * 2) {
+        return -1;
+    }
+    for (size_t i = 0; i < out_len; i++) {
+        unsigned value = 0;
+        for (int k = 0; k < 2; k++) {
+            char c = text[i * 2 + k];
+            unsigned digit;
+            if (c >= '0' && c <= '9') {
+                digit = (unsigned)(c - '0');
+            } else if (c >= 'a' && c <= 'f') {
+                digit = (unsigned)(c - 'a' + 10);
+            } else if (c >= 'A' && c <= 'F') {
+                digit = (unsigned)(c - 'A' + 10);
+            } else {
+                return -1;
+            }
+            value = value * 16 + digit;
+        }
+        out[i] = (unsigned char)value;
+    }
+    return 0;
+}
+
+static void hex_of(const unsigned char *bytes, size_t n, char *out)
+{
+    static const char digits[] = "0123456789abcdef";
+    for (size_t i = 0; i < n; i++) {
+        out[i * 2] = digits[bytes[i] >> 4];
+        out[i * 2 + 1] = digits[bytes[i] & 15];
+    }
+    out[n * 2] = '\0';
+}
+
 static DWORD WINAPI http_worker(LPVOID arg)
 {
     http_request *q = (http_request *)arg;
     HINTERNET session = NULL, connection = NULL, request = NULL;
     unsigned char *chunk = NULL;
+    BCRYPT_ALG_HANDLE alg = NULL;
+    BCRYPT_HASH_HANDLE hash = NULL;
 
     session = WinHttpOpen(L"kuu/" KUU_VERSION_W, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
                           WINHTTP_NO_PROXY_BYPASS, 0);
@@ -220,6 +262,14 @@ static DWORD WINAPI http_worker(LPVOID arg)
         goto done;
     }
     q->status = status;
+    if (q->want_hash && (status < 200 || status >= 300)) {
+        /* Specific bytes were asked for; anything but success is a failure. */
+        q->failed = 1;
+        q->code = "status";
+        snprintf(q->message, sizeof q->message, "the server answered %lu to a request for a verified body",
+                 (unsigned long)status);
+        goto done;
+    }
     DWORD raw_size = 0;
     WinHttpQueryHeaders(request, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX, NULL, &raw_size,
                         WINHTTP_NO_HEADER_INDEX);
@@ -239,6 +289,13 @@ static DWORD WINAPI http_worker(LPVOID arg)
         q->code = "oserror";
         snprintf(q->message, sizeof q->message, "out of memory");
         goto done;
+    }
+    if (q->want_hash) {
+        if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, NULL, 0) != 0 ||
+            BCryptCreateHash(alg, &hash, NULL, 0, NULL, 0, 0) != 0) {
+            worker_fail(q, "oserror", "cannot start the SHA-256 check", 0);
+            goto done;
+        }
     }
     for (;;) {
         DWORD available = 0;
@@ -271,6 +328,26 @@ static DWORD WINAPI http_worker(LPVOID arg)
         if (append_data(q, chunk, got) != 0) {
             goto done;
         }
+        if (hash != NULL && BCryptHashData(hash, chunk, got, 0) != 0) {
+            worker_fail(q, "oserror", "the SHA-256 check failed", 0);
+            goto done;
+        }
+    }
+    if (hash != NULL) {
+        unsigned char digest[32];
+        if (BCryptFinishHash(hash, digest, sizeof digest, 0) != 0) {
+            worker_fail(q, "oserror", "the SHA-256 check failed", 0);
+            goto done;
+        }
+        if (memcmp(digest, q->expected, sizeof digest) != 0) {
+            char have[65], want[65];
+            hex_of(digest, sizeof digest, have);
+            hex_of(q->expected, sizeof q->expected, want);
+            q->failed = 1;
+            q->code = "mismatch";
+            snprintf(q->message, sizeof q->message, "the body hashes to %s, expected %s", have, want);
+            goto done;
+        }
     }
     if (q->file != NULL && !FlushFileBuffers(q->file)) {
         worker_fail(q, "oserror", "cannot flush the download", GetLastError());
@@ -278,6 +355,12 @@ static DWORD WINAPI http_worker(LPVOID arg)
 
 done:
     free(chunk);
+    if (hash != NULL) {
+        BCryptDestroyHash(hash);
+    }
+    if (alg != NULL) {
+        BCryptCloseAlgorithmProvider(alg, 0);
+    }
     if (q->file != NULL) {
         CloseHandle(q->file);
         q->file = NULL;
@@ -469,7 +552,7 @@ static wchar_t *wide_or_raise(lua_State *L, const char *utf8, const char *what)
 static int build_request(lua_State *L, int idx)
 {
     static const char *const known[] = {"method", "url", "body", "headers", "type", "timeout", "maxbody", "redirect",
-                                        "to", NULL};
+                                        "to", "sha256", NULL};
     luaL_checktype(L, idx, LUA_TTABLE);
     lua_pushnil(L);
     while (lua_next(L, idx) != 0) {
@@ -633,6 +716,17 @@ static int build_request(lua_State *L, int idx)
             return ku_err_raise(L, "HTTP", "badvalue", "maxbody must be a positive size such as \"64M\"");
         }
         q->maxbody = (size_t)bytes;
+    }
+    lua_pop(L, 1);
+    lua_getfield(L, idx, "sha256");
+    if (!lua_isnil(L, -1)) {
+        size_t hex_length = 0;
+        const char *hex = lua_type(L, -1) == LUA_TSTRING ? lua_tolstring(L, -1, &hex_length) : NULL;
+        if (hex == NULL || parse_hex(hex, hex_length, q->expected, sizeof q->expected) != 0) {
+            request_free(q);
+            return ku_err_raise(L, "HTTP", "badvalue", "sha256 must be 64 hex digits");
+        }
+        q->want_hash = 1;
     }
     lua_pop(L, 1);
 

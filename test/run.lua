@@ -22,7 +22,7 @@ if not made or made.code ~= 0 then
   os.exit(2)
 end
 
-local cases = { "entry", "sched", "proc", "json", "hash", "text", "fs", "log", "cli", "http", "task", "toolchain", "check" }
+local cases = { "entry", "sched", "proc", "json", "hash", "text", "fs", "log", "cli", "http", "task", "archive", "check" }
 if #rt.args > 0 then cases = rt.args end
 
 local started = require("sched").clock()

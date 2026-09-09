@@ -23,8 +23,7 @@ task "build" {
   deps = { "gen" },
   args = { { "--release", type = "flag", help = "optimise" } },
   run = function(opts)
-    local zig = assert(require("toolchain").path("tools/lock.json", "zig", ".tools"))
-    return task.exec { zig, "build", opts.release and "-Doptimize=ReleaseFast" or "-Doptimize=Debug" }
+    return task.exec { ".tools/zig/zig.exe", "build", opts.release and "-Doptimize=ReleaseFast" or "-Doptimize=Debug" }
   end,
 }
 

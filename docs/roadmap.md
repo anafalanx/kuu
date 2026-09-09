@@ -17,16 +17,19 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | build | GNU make from the same `.tools`, recipes under `cmd.exe` | no PowerShell in the repository, and kuu never builds kuu: the build is make and gcc, the tests are Lua run by the built kuu |
 | self-hosting | none, by owner decision | kuu is not required to bootstrap or build itself; a person with `.tools` populated runs `make` |
 | versions | `Major.Minor`, both natural numbers | 0.1, 0.2, ...; no patch component |
-| dependency pinning | a prescriptive lock for the repositories kuu drives (0.3); kuu's own compiler stays unpinned, by owner decision | `tools/lock.json` names url, hash, size, unpacking, a version check, and the license notice; kuu's `.tools` is populated by hand because kuu does not bootstrap itself |
+| dependency pinning | none: a project fetches what it needs by url and hash with `http` and `archive`; kuu's own compiler is copied by hand | the lock built in 0.3 was removed in 0.4 as formalism; kuu does not bootstrap itself |
 | the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has only stock Lua's `io` and `os`, and a static check can list what else a file asks for |
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
 | process lifetime | the no-orphans law, first thing in the palette | every child is born into a kill-on-close job; only `detach`, and a child's own deliberate breakaway, step outside it |
 | what stays out | `store` (SQLite), publishing, Tk, a wrap verb, any Tcl, PATH lookup, `io.popen`, `os.execute` | tools or hazards, not organs |
 | projects share nothing | every project carries its own `kuu.exe` in its own `.tools`, copied in by hand; nothing on `PATH`, no machine changes, no bootstrap scripts | the owner ended estate-wide management; a small executable is copied, not fetched by glue |
-| what a lock may point at | upstream downloads only, into the project's own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger hydrates from the same public sources |
+| what a project may fetch | upstream downloads only, into its own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger fetches from the same public sources |
 | kuu's own repository | free of kuu: build and release are make, gcc, and cmd recipes; no `tasks.lua` there | self-reference is unwelcome, for release steps too |
 | releases | anafalanx/kuu public; GitHub Releases carry `kuu.exe` and its `.sha256`; signed with the owner's existing Certum certificate through the Windows SDK's signtool | the estate already signs this way, and public releases need no credentials to fetch |
 | the second project | `C:\dev\kuu-test-project`, local, no remote, tailored to test kuu features | a project built to exercise the runtime, before any existing one is converted |
+| what kuu is | a Windows-only power tool in the agent's hand: set up, configure, run, test, script, control, keep in check; every feature replaces a PowerShell fumble | the agent knows its prerequisites; kuu removes the fumbling, not the knowing |
+| dependencies | no lock: verification is a capability (`http.get` with `sha256`, `fs.unpack`), and the agent writes its own setup | the lock was formalism for a shared-payload world that no longer exists |
+| memory across runs | `mem`, a small JSON notebook per project, Lua only, capped at 1 MiB | agents need to remember between runs; the executable stays nimble; SQLite stays out |
 
 ## Inventory
 
@@ -42,12 +45,22 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | the manual and kuu's own Lua inside the executable; `kuu docs [page | search]` | 0.2 |
 | live child streams with backpressure (`read`, `read_err`, `lines`, `write`, `close_stdin`), `inherit = true`, `proc.wait_any`, `proc.wait_all` | 0.2 |
 | `http` on WinHTTP: get, post, request, streaming to a file, a wall-clock deadline of kuu's own | 0.3 |
-| `toolchain` hydrate/verify/path from a prescriptive lock; `kuu hydrate`, `kuu verify` | 0.3 |
+| `toolchain` hydrate/verify/path from a prescriptive lock; `kuu hydrate`, `kuu verify` | 0.3, removed in 0.4 |
 | `task`, `tasks.lua`, `kuu run`, `kuu list`, `--json` envelopes on every verb; `fs.chdir`, `rt.root`, `rt.source` | 0.3 |
 | `kuu check`: parse, global declarations, `require` resolution, without running; no arity checking, by design | 0.3 |
-| `kuu-test-project` driven from its own `.tools/kuu.exe`; tools made of several archives in the lock, so an MSYS2 gcc assembles from upstream packages; `kuu run --dry-run`; a version resource and a signed, published release, by make | 0.4 |
-| `pty` over ConPTY with `expect`; `re` on PCRE2; `fs.glob` | 0.5 |
-| `worker` processes; `serve`; `check` learns the palette's names | 0.6 |
+| verification as a capability: `http.get { to, sha256 }`, `fs.unpack`, `fs.pack` over the tar.exe Windows ships | 0.4 |
+| `fs.glob`, `fs.join`, `fs.dirname`, `fs.basename`, `fs.ext`, `fs.relative`, `fs.tempfile`, `fs.tempdir`, `fs.space` | 0.4 |
+| `sys.info`; `hash.uuid`; `text.base64`, `text.hex`; `mem`, a small JSON notebook per project | 0.4 |
+| `kuu run --dry-run`; a crash handler so kuu never dies silently; soak and stress tests on demand | 0.4 |
+| the from-PowerShell page of the manual: each cmdlet an agent reaches for, and the kuu call | 0.4 onward |
+| a version resource, Certum signing, a GitHub Release, by make; `kuu-test-project` under the released kuu | 0.4 |
+| `pty` over ConPTY with `expect`; VT processing and size on kuu's own console | 0.5 |
+| `re` on PCRE2; `time`; `debug.traceback` and `debug.getinfo` only; `csv`, `ini` | 0.5 |
+| `reg`; persistent environment variables with the change broadcast | 0.5 |
+| `proc.list`, `proc.find`, `proc.tree`; `net.probe`, `net.listeners`, `net.resolve`, `net.addresses`; `sync.lock` | 0.5 |
+| `svc` via the Service Control Manager; `evt`, the event logs; `worker` processes; `serve`; `check` learns the palette's names | 0.6 |
+| deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
+| no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
 
 ## Milestones
 
@@ -73,46 +86,55 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    example that pinned a compiler by hash, hydrated it, built one C file with
    it, and tested the result. It was retired the same day, at the owner's
    request, in favour of `kuu-test-project`.
-4. **0.4, the test project and the first release.**
-   - `kuu-test-project`, at `C:\dev\kuu-test-project`, local and without a
-     remote, is where kuu meets a project: its own `kuu.exe` in `.tools`, a
-     `tasks.lua` that refuses any other kuu version, a lock of upstream
-     downloads only. Created 2026-09-09 with a smoke task over the palette,
-     a `check` task that runs the project's own kuu, and MSYS2's `make` from
-     `mirror.msys2.org` as the first pinned tool. It grows until a C program
-     builds there from scratch, and whatever it teaches goes into the
-     runtime before the release.
-   - The lock learns tools made of several archives: an MSYS2 gcc is some
-     twenty `.pkg.tar.zst` packages from the mirror, each pinned by hash,
-     unpacked into one tree, checked by `gcc --version`. The same mechanism
-     serves any tool upstream ships in parts. The test project found the
-     need on its first day: MSYS2's `make` package alone imports
-     `libintl-8.dll`, which imports `libiconv-2.dll`; its version check
-     printed nothing, and kuu refused it. Until the lock can say so, the
-     project's lock names no tool.
+4. **0.4, the tool in the hand, and the first release.** Decided with the
+   owner on 2026-09-09, after the whole feasible surface was laid out and
+   given a go, a defer, or a no-go; the inventory above records them.
+   - The lock goes. `toolchain`, `tools/lock.json`, `kuu hydrate`, and
+     `kuu verify` are removed with their tests; `http.get` learns `sha256`
+     for a file it writes, refusing and deleting on a mismatch, and `fs`
+     learns `unpack` and `pack` over the tar.exe Windows ships. The manual
+     shows the ten lines a project writes to fetch, verify, and unpack a
+     prerequisite. The test project found the lock's next demand on its
+     first day, MSYS2's `make` needing two sibling packages, and that demand
+     is now a loop in a `tasks.lua`, which is what it always was.
+   - The small things every setup reaches for: `fs.glob`, path helpers,
+     temporary files, free space, `sys.info`, `hash.uuid`, base64 and hex.
+   - `mem`: a small JSON notebook per project, so an agent remembers between
+     runs. Lua only, atomic writes, 1 MiB at most.
    - `kuu run --dry-run`: the plan, in order, without running it.
+   - Like a watch: a structured exception handler so kuu never dies
+     silently, and soak and stress tests, run on demand, that the
+     thirteen-second suite cannot afford.
+   - The from-PowerShell page: each cmdlet an agent reaches for, and the kuu
+     call that replaces it. It grows with every milestone and is the product
+     statement in one page.
    - The release, by make and cmd recipes in kuu's own repository, which
      stays free of kuu: a version resource from `windres` so the file's
      properties say what `--version` says; Authenticode signing with the
      owner's Certum certificate through the Windows SDK's signtool, verified
      after signing against the pinned leaf certificate and a timestamp, the
      discipline els already has in Tcl; `kuu.exe` and its `.sha256`
-     published as a GitHub Release of the public repository. Done when the
-     test project runs its tasks end to end under the released `kuu.exe`
-     copied into its `.tools`.
-5. **0.5, the agent's console and text.** `pty`: a child on a ConPTY, born
-   in a job like every other child, its pipes overlapped on the one port, no
-   threads; `read`, `write`, `resize`, `wait`, `kill`, and
+     published as a GitHub Release of the public repository. Done when
+     `kuu-test-project` runs its tasks end to end under the released
+     `kuu.exe` copied into its `.tools`.
+5. **0.5, the console, the language, the machine.** `pty`: a child on a
+   ConPTY, born in a job like every other child, its pipes overlapped on the
+   one port, no threads; `read`, `write`, `resize`, `wait`, `kill`, and
    `expect(patterns, timeout)` against both the raw bytes and the plain text
    a terminal would show; done when the suite drives an interactive prompt
-   and a REPL through it. `re` on PCRE2 (UTF-8, named groups, `find`,
-   `match`, `gmatch`, `gsub`, `split`), because the ledger says Lua patterns
-   may prove decisive. `fs.glob`.
-6. **0.6, workers.** `worker` processes, Lua in a child kuu with JSON
-   messages over pipes on the port, for CPU-bound and isolated work; `serve`,
-   a local HTTP listener on the loop for tooling and webhooks; `check` learns
-   the palette's exported names, so `fs.exist` is an error before a run,
-   still without arity.
+   and a REPL through it. `re` on PCRE2, because the ledger says Lua
+   patterns may prove decisive; `time` with zones and ISO 8601;
+   `debug.traceback` and `debug.getinfo` and nothing else of that library;
+   `csv` and `ini`. `reg` with typed values and persistent environment
+   variables with the change broadcast, reads and writes. `proc.list`,
+   `proc.find`, `proc.tree`; `net.probe`, `net.listeners`, `net.resolve`,
+   `net.addresses`; `sync.lock`, a named mutex across processes.
+6. **0.6, control and keeping in check.** `svc` via the Service Control
+   Manager: query, start, stop, create, delete; `evt`, the event logs read
+   with filters; `worker` processes, Lua in a child kuu with JSON messages
+   over pipes on the port; `serve`, a local HTTP listener on the loop;
+   `check` learns the palette's exported names, so `fs.exist` is an error
+   before a run, still without arity.
 7. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
@@ -124,9 +146,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 
 ## Backlog
 
-Small things, unscheduled: patches pinned by before-and-after hashes in the
-lock, for vendored sources; `kuu hydrate --prune` for downloads no lock names;
-a per-tool download `timeout`; cancellation and a streaming body reader in
+Small things, unscheduled: cancellation and a streaming body reader in
 `http`; `kuu docs` as a searchable single page.
 
 ## The Lua-versus-Tcl ledger

@@ -11,8 +11,8 @@ Windows Job Objects; `fs` tells the truth about paths, identity, junctions,
 and long names, and watches directories; `http` fetches over WinHTTP with a
 deadline of kuu's own; `json`, `hash`, `text`, `log`, and `cli` round it out.
 A repository declares its tasks once in `tasks.lua` and runs them with
-`kuu run`; it pins its tools by hash in `tools/lock.json` and gets them with
-`kuu hydrate`. The manual rides inside the executable: `kuu docs`. kuu runs on
+`kuu run`, and fetches its own prerequisites by url and hash with `http` and
+`archive`. The manual rides inside the executable: `kuu docs`. kuu runs on
 Windows 11 25H2 and later, and the equivalent Windows Server releases, only.
 
 ```text
@@ -21,7 +21,6 @@ kuu - [arg ...]           run a program read from standard input
 kuu -e SCRIPT [arg ...]   run an inline script
 kuu run [TASK [arg ...]]  a task from the nearest tasks.lua
 kuu list [--json]         those tasks
-kuu hydrate | verify      the tools lock
 kuu check [PATH ...]      parse, global declarations, requires, without running
 kuu docs [PAGE | search TEXT]   the manual
 kuu --version | --help
@@ -64,7 +63,7 @@ which spawns itself as a child and compares bytes.
 |---|---|
 | `src/` | the host, C23 under the els method's warning set |
 | `vendor/lua-5.5.1/` | PUC Lua 5.5.1 as released, compiled as C |
-| `lua/` | kuu's own Lua: `log`, `cli`, `task`, `project`, `toolchain`, and the verbs under `lua/cmd/` |
+| `lua/` | kuu's own Lua: `log`, `cli`, `task`, `project`, `archive`, `check`, and the verbs under `lua/cmd/` |
 | `docs/` | the manual, shipped inside the executable |
 | `test/` | the Lua test suite: `run.lua`, `cases/`, `fixtures/` |
 | `Makefile` | the build |

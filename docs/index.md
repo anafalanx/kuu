@@ -26,7 +26,6 @@ kuu -e SCRIPT [arg ...]   run an inline script
 kuu docs [PAGE | search TEXT]   this manual, from inside the executable
 kuu run [TASK [arg ...]]  a task from the nearest tasks.lua      (see Tasks)
 kuu list [--json]         those tasks
-kuu hydrate | verify [--deep] [--lock FILE] [--root DIR] [--json]   the tools lock  (see Toolchain)
 kuu check [--json] [PATH ...]   parse, global declarations, requires, without running  (see check)
 kuu --version | --help
 ```
@@ -72,7 +71,7 @@ hashing, and every other organ are behind `require`.
 | [`cli`](cli.md) | a program's arguments, declared once |
 | [`err`](err.md) | the one error shape and how to test it |
 | [`task`](task.md) | a repository's tasks, declared once in `tasks.lua`, run by `kuu run` |
-| [`toolchain`](toolchain.md) | a repository's tools, pinned by hash in a lock, hydrated and verified |
+| [`archive`](archive.md) | zip and tar archives through the tar.exe Windows ships |
 | `rt` | the launch: version, executable, route, program, arguments, the require root |
 
 `require` searches `package.preload`, where these live, and then the program's
@@ -120,8 +119,8 @@ Failures kuu detects before the program runs are spelled
   [cli](cli.md), [err](err.md): the modules.
 - [Tasks](task.md): `tasks.lua`, `kuu run`, `kuu list`, and the exit codes.
 - [check](check.md): what `kuu check` finds without running a file.
-- [Toolchain](toolchain.md): the lock, `kuu hydrate`, `kuu verify`, and what
-  kuu's own `.tools` holds.
+- [Toolchain](toolchain.md): what kuu's own `.tools` holds and where it comes
+  from.
 - [Roadmap](roadmap.md): decisions taken and milestones ahead.
 - [Inheritance](inheritance.md): laws, traps, and contracts carried over from
   machteld, the z estate, and the archived projects.

@@ -1,12 +1,10 @@
--- project.lua -- where a repository's tasks.lua and lock live, and how the
--- verbs enter the project.
+-- project.lua -- where a repository's tasks.lua lives, and how the verbs
+-- enter the project.
 --
 --   local project = require "project"
 --   local root = project.find()          -- the nearest directory upward holding tasks.lua
 --   project.enter(root)                  -- chdir there and point `require` at it
 --   project.load_tasks(root)             -- run tasks.lua, which fills the task registry
---   project.lock_path(root)              -- <root>/tools/lock.json
---   project.tools_root(root)             -- <root>/.tools
 global none
 global <const> require, tostring, type, pcall, load
 
@@ -66,8 +64,5 @@ function project.load_tasks(root)
   end
   return true
 end
-
-function project.lock_path(root) return join(root, "tools/lock.json") end
-function project.tools_root(root) return join(root, ".tools") end
 
 return project

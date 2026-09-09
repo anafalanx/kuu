@@ -101,6 +101,22 @@ return function(T)
   r = http.get(base .. "/files/missing.bin", { to = target })
   check("a 404 download still writes what the server sent", r and r.status == 404 and fs.read(target) == "no such file")
 
+  -- verification -----------------------------------------------------------------------------
+  local hello_sha = require("hash").sum("sha256", "hello")
+  r, e = http.get(base .. "/hello", { to = files .. "/verified.txt", sha256 = hello_sha:upper() })
+  check("a download that hashes as asked lands", r and r.status == 200 and fs.read(files .. "/verified.txt") == "hello", tostring(e))
+  r, e = http.get(base .. "/hello", { to = files .. "/wrong.txt", sha256 = string.rep("0", 64) })
+  local leftovers = 0
+  for _, entry in ipairs(fs.list(files).entries) do if entry.name:sub(1, 9) == "wrong.txt" then leftovers = leftovers + 1 end end
+  check("a download that hashes otherwise is HTTP mismatch, names both digests, and leaves no file", r == nil and err.is(e, "HTTP", "mismatch")
+    and contains(e.message, hello_sha) and leftovers == 0, tostring(e))
+  r, e = http.get(base .. "/status/404", { to = files .. "/missing.txt", sha256 = hello_sha })
+  check("a non-2xx answer to a verified download is HTTP status and leaves no file", r == nil and err.is(e, "HTTP", "status") and not fs.exists(files .. "/missing.txt"), tostring(e))
+  r, e = http.get(base .. "/hello", { sha256 = hello_sha })
+  check("a body kept in memory is verified the same way", r and r.body == "hello", tostring(e))
+  local ok_hex, raised_hex = pcall(http.get, base .. "/hello", { sha256 = "abc" })
+  check("a malformed sha256 is refused before any request", not ok_hex and err.is(raised_hex, "HTTP", "badvalue"), tostring(raised_hex))
+
   -- concurrency on the loop -----------------------------------------------------------------
   local t0 = sched.clock()
   local tasks = {}

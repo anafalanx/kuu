@@ -47,7 +47,6 @@ static void usage(FILE *to)
           "       kuu docs [PAGE | search TEXT]   the manual, from inside the executable\n"
           "       kuu run [TASK [arg ...]]  run a task from the nearest tasks.lua\n"
           "       kuu list [--json]         list those tasks\n"
-          "       kuu hydrate | verify [--lock FILE] [--root DIR] [--json]   the toolchain lock\n"
           "       kuu check [--json] [PATH ...]   parse, global declarations, requires\n"
           "       kuu --version | --help\n",
           to);
