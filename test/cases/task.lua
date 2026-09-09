@@ -1,7 +1,7 @@
 -- task.lua -- tasks.lua discovery, `kuu run` and `kuu list`: dependency order,
 -- arguments, exit codes, the JSON envelopes, and a project-local require.
 global none
-global <const> require, ipairs, tostring, tonumber, type, string, table, pcall
+global <const> require, ipairs, tostring, tonumber, type, string, table, pcall, select
 
 return function(T)
   local check, contains, starts = T.check, T.contains, T.starts
@@ -40,6 +40,8 @@ task "secret" { hidden = true, run = function() end }
 task "needy" { desc = "needs an argument", args = { { "target", required = true } }, run = function(opts) note("needy " .. opts.target) end }
 task "uses_needy" { desc = "depends on needy", deps = { "needy" }, run = function() note("uses") end }
 task "talk" { desc = "prints", run = function() print("spoken") io.write("written\n") end }
+task "console" { desc = "asks for the console explicitly", run = function() return task.exec { "cmd.exe", "/c", "echo via-console", inherit = true } end }
+task "big" { desc = "emits more than maxout", run = function() return task.exec { require("rt").exe, "-e", "io.write(string.rep('x', 200000))", maxout = "64K" } end }
 task.default "build"
 ]])
 
@@ -58,7 +60,7 @@ task.default "build"
   r = T.kuu({ "list", "--json" }, { cwd = project })
   local listing = r.code == 0 and json.decode(r.out) or nil
   check("kuu list --json is an envelope with root, default, and tasks", listing and listing.ok == true and listing.result.root == project
-    and listing.result.default == "build" and #listing.result.tasks == 13, T.describe(r))
+    and listing.result.default == "build" and #listing.result.tasks == 15, T.describe(r))
   if listing then
     local build
     for _, t in ipairs(listing.result.tasks) do if t.name == "build" then build = t end end
@@ -95,6 +97,14 @@ task.default "build"
   local spoken = json.decode(r.out)
   check("under --json a task's print and io.write are redirected to standard error", r.code == 0 and spoken and spoken.ok == true
     and contains(r.err, "spoken") and contains(r.err, "written"), T.describe(r))
+  r = T.kuu({ "run", "--json", "console" }, { cwd = project })
+  local console = json.decode(r.out)
+  check("under --json a child that asked for the console is relayed to stderr all the same", r.code == 0 and console and console.ok == true
+    and contains(r.err, "via-console"), T.describe(r))
+  r = T.kuu({ "run", "--json", "big" }, { cwd = project })
+  local big = json.decode(r.out)
+  check("under --json a child's output beyond maxout is relayed whole, nothing dropped", r.code == 0 and big and big.ok == true
+    and select(2, r.err:gsub("x", "")) == 200000, T.describe(r):sub(1, 400))
   r = T.kuu({ "run", "gen", "extra" }, { cwd = project })
   check("arguments to a task without a spec exit 2", r.code == 2 and contains(r.err, "takes no arguments"), T.describe(r))
   r = T.kuu({ "run", "fail" }, { cwd = project })

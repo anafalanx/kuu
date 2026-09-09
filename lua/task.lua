@@ -21,6 +21,7 @@ global <const> require, ipairs, pairs, tostring, type, string, table, error, set
 
 local err = require "err"
 local proc = require "proc"
+local sched = require "sched"
 
 local registry = { order = {}, byname = {}, default_name = nil }
 
@@ -144,11 +145,34 @@ function task.execute(entry, opts)
   return true
 end
 
--- task.relay: nil, or a file such as io.stderr.  When set, task.exec captures
--- its child's output and writes it there when the child finishes, instead of
--- letting the child write to kuu's own console.  `kuu run --json` sets it so
--- standard output carries only the envelope.
+-- task.relay: nil, or a file such as io.stderr.  When set, task.exec runs its
+-- child with piped streams and copies whatever arrives to the relay as it
+-- arrives, whatever `inherit` the caller asked for.  `kuu run --json` sets it
+-- so standard output carries only the envelope.
 task.relay = nil
+
+-- Two small tasks pump the child's streams to the relay while the child runs,
+-- so nothing waits for it to finish and nothing is capped: maxout is only the
+-- point at which the child is held back until the relay has caught up.
+local function relay_exec(spec, relay)
+  spec.inherit = nil
+  spec.stream = true
+  local c <close>, e = proc.start(spec)
+  if not c then return nil, e end
+  local function pump(read)
+    while true do
+      local chunk = read(c, "some")
+      if chunk == nil then return end
+      relay:write(chunk)
+    end
+  end
+  local out_pump = sched.spawn(function() pump(c.read) end)
+  local err_pump = sched.spawn(function() pump(c.read_err) end)
+  local r, e2 = c:wait()
+  out_pump:join()
+  err_pump:join()
+  return r, e2
+end
 
 -- task.exec { "gcc", ..., cwd = , env = , timeout = } -> true | nil, err
 -- Runs a child on kuu's own console, so its output streams through.  A
@@ -160,11 +184,7 @@ function task.exec(spec)
   end
   local r, e
   if task.relay ~= nil then
-    r, e = proc.run(spec)
-    if r ~= nil then
-      task.relay:write(r.out)
-      task.relay:write(r.err)
-    end
+    r, e = relay_exec(spec, task.relay)
   else
     spec.inherit = true
     r, e = proc.run(spec)

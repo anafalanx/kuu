@@ -94,7 +94,8 @@ end
 ```
 
 `task.exec` runs a child on kuu's own console, so its output streams through
-as it happens. It takes the same table as `proc.run` (`cwd`, `env`, `timeout`)
+as it happens; under `--json` it streams to standard error instead. It takes
+the same table as `proc.run` (`cwd`, `env`, `timeout`)
 and returns `true`, or `nil, err` with `TASK exit` and the child's code in
 `err.exit`, which `kuu run` then uses as its own exit code. A child that timed
 out or was killed is `TASK failed`. To capture output instead, use
@@ -112,9 +113,9 @@ out or was killed is `TASK failed`. To capture output instead, use
 `kuu run --json` (the flag before the task name) prints one JSON object on
 standard output when it ends, and nothing else there: `print` and `io.write`
 from tasks are redirected to standard error, and the output of a `task.exec`
-child is captured and relayed to standard error when the child finishes.
-Only a direct `io.stdout:write` bypasses this, and then the task itself has
-broken the contract.
+child is streamed to standard error as it arrives, whatever `inherit` the
+task asked for, with no cap on its size. Only a direct `io.stdout:write`
+bypasses this, and then the task itself has broken the contract.
 
 ```json
 {"ok":true,"result":{"root":"C:/work/app","task":"test",
