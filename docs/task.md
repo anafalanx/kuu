@@ -10,6 +10,8 @@ declaration, and `kuu list` reads them back from there.
 local task = require "task"
 local fs = require "fs"
 
+task.defaults { timeout = "10m" }
+
 task "gen" {
   desc = "write build/version.h",
   run = function()
@@ -103,12 +105,26 @@ run = function(opts)
 end
 ```
 
+`task.defaults { timeout = "10m" }` gives every `task.exec` a default
+child timeout. A duration string uses the same units as `proc`, and a number
+is seconds. An explicit `timeout` in the call wins, including zero.
+`task.defaults {}` clears the default. Each call replaces the preceding
+defaults; only `timeout` is accepted, and a malformed duration or unknown key
+raises `TASK badvalue` without changing the preceding setting. Settings are
+copied, so later changes to the declaration table do not alter the default.
+This bounds each child, not the whole task or its dependency plan; use
+`sched.deadline` for a scope containing several waits.
+
 `task.exec` runs a child on kuu's own console, so its output streams through
 as it happens; under `--json` it streams to standard error instead. It takes
-the same table as `proc.run` (`cwd`, `env`, `timeout`)
+the same table as `proc.run` (`cwd`, `env`, `timeout`, `maxout`, `limits`)
 and returns `true`, or `nil, err` with `TASK exit` and the child's code in
 `err.exit`, which `kuu run` then uses as its own exit code. A child that timed
-out or was killed is `TASK failed`. To capture output instead, use
+out, was killed, or hit a job limit is `TASK failed`. The caller's argv and
+options table is never modified, in either console or JSON mode.
+The `limits` table has `memory` (bytes or a size string), `cpu` (seconds or
+a duration string), and `processes` (a positive count); see
+[proc limits](proc.md). To capture output instead, use
 [proc.run](proc.md) directly and decide for yourself.
 
 | exit | meaning |
@@ -132,11 +148,56 @@ bypasses this, and then the task itself has broken the contract.
   "tasks":[{"name":"gen","seconds":0.01,"ok":true},{"name":"build","seconds":3.2,"ok":true},{"name":"test","seconds":0.8,"ok":true}]}}
 ```
 
-On failure `ok` is false, `error` carries `domain`, `code`, `message`, and
-`exit`, and the process exits as in the table above. `kuu list --json` gives
-`{"ok":true,"result":{"root","default","tasks":[...]}}`, each task with `name`,
-`desc`, `deps`, `hidden`, and `args` as declared (`name`, `type`, `help`,
-`default`, `required`, `rest`, `choices`).
+These structural schemas use `?` for an omitted optional field. Arrays are
+present even when empty; a field is never replaced with `null` merely because
+it is optional.
+
+```typescript
+type RunError = { domain: string; code: string; message: string; exit?: number };
+type TaskRun = { name: string; seconds: number; ok: boolean };
+type RunReport =
+  | { ok: true; result: { root: string; task: string; tasks: TaskRun[] } }
+  | { ok: false; result: { root?: string; task?: string; tasks: TaskRun[] };
+      error: RunError };
+type DryRunReport = {
+  ok: true;
+  result: { root: string; task: string;
+    plan: { name: string; desc: string; deps: string[] }[] };
+};
+```
+
+`root` is absolute. `tasks` lists completed attempts in execution order,
+including the failed task; it is empty for a failure before execution.
+Failure fields `root`, `task`, and `error.exit` appear only when supplied by
+that failure path. The process exits as in the table above even when
+`error.exit` is absent. A successful `--dry-run --json` produces
+`DryRunReport`; its failure uses the failed `RunReport` shape. A dry run
+still loads declarations and validates every task's arguments.
+
+`kuu list --json` uses this schema. It includes hidden tasks, marked with
+`hidden: true`; only the human-readable listing omits them.
+
+```typescript
+type TaskArgument = {
+  name: string; type: "flag" | "string" | "int" | "number" | "duration" | "size";
+  help: string; required: boolean; rest: boolean;
+  default?: unknown; choices?: unknown[];
+};
+type ListReport =
+  | { ok: true; result: { root: string; default?: string; tasks: {
+      name: string; desc: string; deps: string[]; hidden: boolean;
+      args: TaskArgument[];
+    }[] } }
+  | { ok: false; error: { domain: string; code: string; message: string } };
+```
+
+The `default` task name is omitted when none is declared. Arguments carry
+their declared default and choices, not parsed values; bounds such as
+`min` and `max` are not included. `tasks.lua` must keep its top level quiet
+for `list --json` because that verb does not redirect declaration output.
+Malformed command-line options are rejected with a diagnostic on stderr
+before either verb builds a JSON report. `--help` before the task name
+prints usage and exits 0; task-specific `--help` is a `CLI usage` failure.
 
 ## The module in a program
 
@@ -158,7 +219,12 @@ task.execute(entry, opts)     -- run it with parsed arguments: true | nil, err
 |---|---|
 | `TASK noproject` | no `tasks.lua` here or above |
 | `TASK badvalue` | a bad declaration, or `tasks.lua` failed to load |
+| `TASK usage` | no task or default was selected, or a runner option is unknown |
 | `TASK unknown`, `TASK cycle` | the dependency graph |
 | `CLI usage` | wrong arguments for a task, or `--help` |
 | `TASK failed` | a task raised something that is not an `err`, or its child did not exit normally |
 | `TASK exit` | a `task.exec` child exited non-zero; `err.exit` is the code |
+
+Errors returned or raised by `proc` while starting a child keep their
+original domain and code; [proc](proc.md) lists them. A job limit produces
+`TASK failed` with its kind in the message, such as `limit (memory)`.

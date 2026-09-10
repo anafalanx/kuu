@@ -187,4 +187,58 @@ task.default "build"
   ok, raised = pcall(task, "badrun", {deps={"x"}, run=false})
   check("aggregate tasks still reject a non-function run", not ok and err.is(raised, "TASK", "badvalue"))
 
+  -- Default child timeouts are validated once, copied, and overridable.
+  local defaults = { timeout = "0s 80ms" }
+  task.defaults(defaults)
+  defaults.timeout = "5s"
+  local slow = { T.exe, "-e", "require('sched').sleep('500ms')" }
+  local ran, timed = task.exec(slow)
+  check("task.defaults times out a child and does not retain the settings table",
+    ran == nil and err.is(timed, "TASK", "failed") and contains(timed.message, "timeout"), tostring(timed))
+  check("console execution leaves the caller's argv/options table untouched",
+    slow.timeout == nil and slow.inherit == nil and slow.stream == nil and slow[1] == T.exe)
+  local explicit = { T.exe, "-e", "require('sched').sleep('140ms')", timeout = "2s", inherit = false }
+  ran, timed = task.exec(explicit)
+  check("an explicit timeout overrides the default without changing caller options",
+    ran == true and explicit.timeout == "2s" and explicit.inherit == false, tostring(timed))
+  for _, value in ipairs { "soon", -1, false, {}, 0 / 0 } do
+    ok, raised = pcall(task.defaults, { timeout = value })
+    check("an invalid default timeout is TASK badvalue: " .. tostring(value),
+      not ok and err.is(raised, "TASK", "badvalue"), tostring(raised))
+  end
+  ok, raised = pcall(task.defaults, { timeout = "5s", extra = true })
+  check("unknown default options are rejected before changing any setting",
+    not ok and err.is(raised, "TASK", "badvalue") and contains(raised.message, "unknown option"), tostring(raised))
+  ran, timed = task.exec(slow)
+  check("a rejected defaults declaration preserves the preceding default",
+    ran == nil and err.is(timed, "TASK", "failed") and contains(timed.message, "timeout"), tostring(timed))
+  task.defaults { timeout = 0.08 }
+  ran, timed = task.exec(slow)
+  check("a numeric default timeout is seconds",
+    ran == nil and err.is(timed, "TASK", "failed") and contains(timed.message, "timeout"), tostring(timed))
+  local relay_text = ""
+  task.relay = { write = function(_, bytes) relay_text = relay_text .. bytes end }
+  local relayed = { T.exe, "-e", "io.write('relayed')", timeout = "2s", inherit = true, stream = false }
+  ran, timed = task.exec(relayed)
+  task.relay = nil
+  check("relay execution preserves caller options while applying the default/override rules",
+    ran == true and relay_text == "relayed" and relayed.inherit == true and relayed.stream == false and relayed.timeout == "2s", tostring(timed))
+  task.defaults {}
+  ran, timed = task.exec { T.exe, "-e", "require('sched').sleep('140ms')" }
+  check("an empty defaults table clears the default", ran == true, tostring(timed))
+  ok, raised = pcall(task.defaults, "80ms")
+  check("defaults requires a table", not ok and err.is(raised, "TASK", "badvalue"), tostring(raised))
+  local proc = require "proc"
+  local original_run, received = proc.run
+  proc.run = function(spec) received = spec return { status = "limit", limit = "memory", code = 0 } end
+  local limits = { memory = "64M", cpu = "1s", processes = 2 }
+  local called, result, limited = pcall(task.exec, { T.exe, limits = limits })
+  proc.run = original_run
+  check("task.exec forwards child limits and refuses a limit result even with code zero",
+    called and result == nil and err.is(limited, "TASK", "failed") and contains(limited.message, "limit (memory)")
+    and received.limits == limits, tostring(limited))
+  fs.write(bare .. "/tasks.lua", 'require("task").defaults { timeout = "soon" }\n')
+  r = T.kuu({ "list" }, { cwd = bare })
+  check("bad defaults fail while declaring tasks, before any task runs",
+    r.code == 2 and contains(r.err, "TASK badvalue") and contains(r.err, "timeout must be"), T.describe(r))
 end

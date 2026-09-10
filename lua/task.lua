@@ -24,6 +24,7 @@ local proc = require "proc"
 local sched = require "sched"
 
 local registry = { order = {}, byname = {}, default_name = nil }
+local default_timeout
 
 local ATTRIBUTES = { desc = true, deps = true, args = true, run = true, hidden = true }
 
@@ -81,6 +82,20 @@ local task = setmetatable({}, {
 function task.default(name)
   if type(name) ~= "string" then bad("the default must be a task name") end
   registry.default_name = name
+end
+
+-- task.defaults { timeout = "10m" }: replace the defaults for task.exec.
+-- Validate the whole declaration before changing it; {} clears the default.
+function task.defaults(options)
+  if type(options) ~= "table" then bad("defaults needs a table") end
+  for name in pairs(options) do
+    if name ~= "timeout" then bad("defaults: unknown option '" .. tostring(name) .. "'") end
+  end
+  local timeout = options.timeout
+  if timeout ~= nil and require("cli").duration(timeout) == nil then
+    bad("defaults: timeout must be a duration such as 10m, or seconds")
+  end
+  default_timeout = timeout
 end
 
 function task.get(name) return registry.byname[name] end
@@ -186,6 +201,12 @@ function task.exec(spec)
   if type(spec) ~= "table" or type(spec[1]) ~= "string" then
     error(err.new("TASK", "badvalue", "task.exec needs an argv table"), 2)
   end
+  -- Both console and relay setup change options. Own those changes instead
+  -- of changing the caller's reusable table, and let its timeout win.
+  local copied = {}
+  for name, value in pairs(spec) do copied[name] = value end
+  spec = copied
+  if spec.timeout == nil then spec.timeout = default_timeout end
   local r, e
   if task.relay ~= nil then
     r, e = relay_exec(spec, task.relay)
@@ -195,7 +216,8 @@ function task.exec(spec)
   end
   if not r then return nil, e end
   if r.status ~= "exit" then
-    return nil, err.new("TASK", "failed", spec[1] .. ": " .. r.status)
+    local reason = r.status .. (r.limit and (" (" .. r.limit .. ")") or "")
+    return nil, err.new("TASK", "failed", spec[1] .. ": " .. reason)
   end
   if r.code ~= 0 then
     return nil, err.new("TASK", "exit", spec[1] .. " exited with code " .. r.code, { exit = r.code })
