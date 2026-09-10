@@ -118,6 +118,30 @@ HANDLE ku_job_new(ku_fail *fail)
     return job;
 }
 
+int ku_job_limits(HANDLE job, const ku_limits *limits, ku_fail *fail)
+{
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION info;
+    ZeroMemory(&info, sizeof info);
+    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK;
+    if (limits->memory != 0) {
+        info.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_JOB_MEMORY;
+        info.JobMemoryLimit = (SIZE_T)limits->memory;
+    }
+    if (limits->cpu_ms != 0) {
+        info.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_JOB_TIME;
+        info.BasicLimitInformation.PerJobUserTimeLimit.QuadPart = limits->cpu_ms * 10000;
+    }
+    if (limits->processes != 0) {
+        info.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+        info.BasicLimitInformation.ActiveProcessLimit = limits->processes;
+    }
+    if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info, sizeof info)) {
+        return ku_fail_set(fail, "PROC", "oserror", "cannot apply child limits (error %lu)",
+                           (unsigned long)GetLastError());
+    }
+    return 0;
+}
+
 HANDLE ku_open_nul(int write)
 {
     HANDLE h = CreateFileW(L"NUL", write ? GENERIC_READ | GENERIC_WRITE : GENERIC_READ,

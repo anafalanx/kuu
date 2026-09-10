@@ -54,7 +54,7 @@ LINK_LIBS  := -lbcrypt -lwinhttp -liphlpapi -lws2_32
 
 # Test fixtures: small C programs the suite drives as children.
 FIXTURE_SRC := test/fixtures
-FIXTURES    := $(BUILD)/test/http_fixture.exe $(BUILD)/test/reg_fixture.exe $(BUILD)/test/http_error_fixture.exe
+FIXTURES    := $(BUILD)/test/http_fixture.exe $(BUILD)/test/reg_fixture.exe $(BUILD)/test/http_error_fixture.exe $(BUILD)/test/limits_fixture.exe
 
 LUA_C    := $(filter-out $(LUA_SRC)/lua.c $(LUA_SRC)/luac.c,$(wildcard $(LUA_SRC)/*.c))
 LUA_O    := $(patsubst $(LUA_SRC)/%.c,$(BUILD)/obj/lua/%.o,$(LUA_C))

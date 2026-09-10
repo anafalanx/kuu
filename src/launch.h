@@ -19,6 +19,7 @@
 #include <windows.h>
 
 #include "kuu.h"
+#include <stdint.h>
 
 typedef struct ku_stdio {
     HANDLE in, out, err;
@@ -31,6 +32,15 @@ int ku_resolve_exe(const char *program, char **exe);
 
 /* Create a Job Object with KILL_ON_JOB_CLOSE; NULL with `fail` set. */
 HANDLE ku_job_new(ku_fail *fail);
+
+typedef struct ku_limits {
+    uint64_t memory;
+    int64_t cpu_ms;
+    DWORD processes;
+} ku_limits;
+
+/* Apply positive job-wide limits before any process is born in the job. */
+int ku_job_limits(HANDLE job, const ku_limits *limits, ku_fail *fail);
 
 /* Open the null device for reading (write == 0) or reading and writing. */
 HANDLE ku_open_nul(int write);

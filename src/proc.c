@@ -48,6 +48,7 @@ enum { READ_LINE = 1, READ_ALL = 2, READ_BYTES = 3, READ_SOME = 4, READ_CLOSED =
 typedef struct ku_result {
     int refs;
     const char *status;
+    const char *limit;
     DWORD code;
     DWORD pid;
     double elapsed;
@@ -91,6 +92,8 @@ struct ku_child {
     int in_close_pending;  /* close stdin once the queue drains */
     int in_done;
     int job_zero, exited, done, killed, timed_out;
+    const char *limit;
+    ku_limits limits;
     int closed;            /* the Lua side released it */
     int woken;             /* readers woken but not yet resumed: they still hold `c` */
     DWORD exit_code;
@@ -124,6 +127,10 @@ static void push_result(lua_State *L, const ku_result *r)
     lua_createtable(L, 0, 7);
     lua_pushstring(L, r->status);
     lua_setfield(L, -2, "status");
+    if (r->limit != NULL) {
+        lua_pushstring(L, r->limit);
+        lua_setfield(L, -2, "limit");
+    }
     lua_pushinteger(L, (lua_Integer)r->code);
     lua_setfield(L, -2, "code");
     lua_pushinteger(L, (lua_Integer)r->pid);
@@ -142,6 +149,7 @@ static void push_result(lua_State *L, const ku_result *r)
 
 static void child_check_done(ku_child *c);
 static void child_maybe_free(ku_child *c);
+static void child_kill(ku_child *c);
 static int stream_post_read(ku_child *c, ku_stream *s);
 
 static size_t stream_available(const ku_stream *s)
@@ -435,6 +443,24 @@ static void child_on_job(ku_source *src, DWORD message, DWORD pid)
 {
     ku_child *c = (ku_child *)src->owner;
     switch (message) {
+    case JOB_OBJECT_MSG_END_OF_JOB_TIME:
+    case JOB_OBJECT_MSG_JOB_MEMORY_LIMIT:
+    case JOB_OBJECT_MSG_ACTIVE_PROCESS_LIMIT:
+        if (!c->done && !c->killed && !c->timed_out && c->limit == NULL) {
+            /* Nested jobs also forward their messages. Only claim a limit
+             * configured on this job; a descendant may have its own limits. */
+            if (message == JOB_OBJECT_MSG_END_OF_JOB_TIME && c->limits.cpu_ms != 0) {
+                c->limit = "cpu";
+            } else if (message == JOB_OBJECT_MSG_JOB_MEMORY_LIMIT && c->limits.memory != 0) {
+                c->limit = "memory";
+            } else if (message == JOB_OBJECT_MSG_ACTIVE_PROCESS_LIMIT && c->limits.processes != 0) {
+                c->limit = "processes";
+            }
+            if (c->limit != NULL) {
+                child_kill(c);
+            }
+        }
+        break;
     case JOB_OBJECT_MSG_EXIT_PROCESS:
     case JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS:
         if (pid == c->pid && !c->exited && c->process != NULL) {
@@ -539,6 +565,17 @@ static void child_check_done(ku_child *c)
         c->process = NULL;
     }
     if (c->job != NULL) {
+        /* The default CPU action terminates in the kernel. END_OF_JOB_TIME
+         * is only sent for POST_AT_END_OF_JOB, which disables that action.
+         * Read the final accounting before releasing the job instead. */
+        if (c->limit == NULL && !c->timed_out && !c->killed && c->limits.cpu_ms != 0) {
+            JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting;
+            if (QueryInformationJobObject(c->job, JobObjectBasicAccountingInformation,
+                                         &accounting, sizeof accounting, NULL) &&
+                accounting.TotalUserTime.QuadPart >= c->limits.cpu_ms * 10000) {
+                c->limit = "cpu";
+            }
+        }
         CloseHandle(c->job); /* ACTIVE_PROCESS_ZERO was the job's last message */
         c->job = NULL;
     }
@@ -556,7 +593,8 @@ static void child_check_done(ku_child *c)
     ku_result *r = (ku_result *)calloc(1, sizeof *r);
     if (r != NULL) {
         r->refs = 1;
-        r->status = c->timed_out ? "timeout" : c->killed ? "killed" : "exit";
+        r->status = c->limit != NULL ? "limit" : c->timed_out ? "timeout" : c->killed ? "killed" : "exit";
+        r->limit = c->limit;
         r->code = c->exit_code;
         r->pid = c->pid;
         r->elapsed = (double)(ku_now_ms() - c->start_ms) / 1000.0;
@@ -646,7 +684,44 @@ typedef struct ku_spec {
     int stream;
     int inherit;
     size_t maxout;
+    ku_limits limits;
+    int has_limits;
 } ku_spec;
+
+static void parse_limits(lua_State *L, int idx, ku_limits *limits)
+{
+    if (!lua_istable(L, idx)) {
+        ku_err_raise(L, "PROC", "badvalue", "limits must be a table of memory, cpu, and processes");
+    }
+    idx = lua_absindex(L, idx);
+    lua_pushnil(L);
+    while (lua_next(L, idx) != 0) {
+        if (lua_type(L, -2) != LUA_TSTRING) {
+            ku_err_raise(L, "PROC", "badvalue", "limit names must be strings");
+        }
+        const char *key = ku_check_cstring(L, -2, "PROC", "limit name");
+        int64_t value = 0;
+        if (strcmp(key, "memory") == 0) {
+            if (ku_check_bytes(L, -1, &value) != 0 || value <= 0) {
+                ku_err_raise(L, "PROC", "badvalue", "limits.memory must be a positive byte size such as 512M");
+            }
+            limits->memory = (uint64_t)value;
+        } else if (strcmp(key, "cpu") == 0) {
+            if (ku_check_duration(L, -1, &value) != 0 || value <= 0 || value > INT64_MAX / 10000) {
+                ku_err_raise(L, "PROC", "badvalue", "limits.cpu must be a positive duration such as 30s");
+            }
+            limits->cpu_ms = value;
+        } else if (strcmp(key, "processes") == 0) {
+            if (!lua_isinteger(L, -1) || (value = lua_tointeger(L, -1)) < 1 || value > 0xffffffffLL) {
+                ku_err_raise(L, "PROC", "badvalue", "limits.processes must be an integer from 1 to 4294967295");
+            }
+            limits->processes = (DWORD)value;
+        } else {
+            ku_err_raise(L, "PROC", "badvalue", "unknown limit '%s'", key);
+        }
+        lua_pop(L, 1);
+    }
+}
 
 static const char *spec_string(lua_State *L, int idx, const char *what, size_t *len)
 {
@@ -731,7 +806,7 @@ static void parse_spec(lua_State *L, ku_spec *spec, int allow_options)
         if (lua_type(L, -2) != LUA_TSTRING) {
             ku_err_raise(L, "PROC", "usage", "option names must be strings");
         }
-        const char *key = lua_tostring(L, -2);
+        const char *key = ku_check_cstring(L, -2, "PROC", "option name");
         if (!allow_options) {
             ku_err_raise(L, "PROC", "usage", "option '%s' is not accepted here", key);
         }
@@ -747,6 +822,9 @@ static void parse_spec(lua_State *L, ku_spec *spec, int allow_options)
             if (ku_check_duration(L, -1, &spec->timeout_ms) != 0) {
                 ku_err_raise(L, "PROC", "badvalue", "timeout must be a duration such as \"30s\"");
             }
+        } else if (strcmp(key, "limits") == 0) {
+            parse_limits(L, -1, &spec->limits);
+            spec->has_limits = 1;
         } else if (strcmp(key, "maxout") == 0) {
             int64_t bytes = 0;
             if (ku_check_bytes(L, -1, &bytes) != 0 || bytes < 0) {
@@ -899,6 +977,7 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
     c->io_src.on_io = child_on_io;
     c->stream = spec->stream;
     c->inherit = spec->inherit;
+    c->limits = spec->limits;
     c->out.kind = IO_OUT;
     c->err.kind = IO_ERR;
     c->out.limit = spec->maxout;
@@ -909,6 +988,9 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
     int rc = 1;
     c->job = ku_job_new(fail);
     if (c->job == NULL) {
+        goto fail;
+    }
+    if (spec->has_limits && ku_job_limits(c->job, &spec->limits, fail) != 0) {
         goto fail;
     }
     if (ku_loop_attach_job(lp, c->job, &c->job_src) != 0) {
@@ -1314,7 +1396,7 @@ static int l_proc_detach(lua_State *L)
 {
     ku_spec spec;
     parse_spec(L, &spec, 1);
-    if (spec.has_stdin || spec.timeout_ms >= 0 || spec.stream || spec.inherit) {
+    if (spec.has_stdin || spec.timeout_ms >= 0 || spec.stream || spec.inherit || spec.has_limits) {
         return ku_err_raise(L, "PROC", "usage", "detach accepts only cwd and env options");
     }
     char *exe = NULL;

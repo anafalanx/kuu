@@ -42,7 +42,8 @@ pass is what it receives: spaces, quotes, and backslashes need no escaping.
 
 | field | meaning |
 |---|---|
-| `status` | `"exit"`, `"timeout"`, or `"killed"` |
+| `status` | `"exit"`, `"timeout"`, `"killed"`, or `"limit"` |
+| `limit` | only for `status = "limit"`: `"memory"`, `"cpu"`, or `"processes"` |
 | `code` | the exit code as an integer, untruncated |
 | `out`, `err` | stdout and stderr as bytes |
 | `pid` | the child's process id |
@@ -59,9 +60,37 @@ the child could not be started, with these codes:
 | `badvalue` | a bad option value (`nil, err` for `cwd` that does not exist; raised for a malformed value) |
 | `encoding` | a name is not valid UTF-8 |
 | `usage` | raised: no command, a wrong argument shape, an unknown option |
+| `oserror` | a job, pipe, or another launch resource could not be created |
 
 Unknown option names raise rather than pass silently, so a typo cannot
 become a run with the wrong settings.
+
+`run` accepts `cwd`, `env`, `timeout`, `stdin`, `maxout`, `inherit`, and
+`limits`; `start` additionally accepts `stream`. An omitted `timeout` has
+no time limit; zero requests an immediate timeout. `inherit` and `stream`
+default to false. Environment names are compared ignoring case: duplicates,
+empty names, `=`, and NUL are refused, as are NUL bytes in text values.
+
+## Limits
+
+```lua
+proc.run { "build.exe", timeout = "10m",
+  limits = { memory = "512M", cpu = "30s", processes = 8 } }
+```
+
+`limits` applies to `run`, `start`, and `task.exec`. All three bounds are
+job-wide, across the child and its descendants: `memory` is committed bytes,
+`cpu` is accumulated user-mode CPU time, and `processes` is the number alive
+at once, including the initial child. Each optional bound must be positive;
+unknown names and malformed bounds raise `PROC badvalue`. An empty table
+sets no bounds. `detach` does not accept limits.
+
+Windows refuses allocations and child creation that exceed memory and process
+limits; kuu terminates the job when the corresponding notification arrives.
+The kernel terminates a job that exhausts its CPU time. The result has
+`status = "limit"` and names the bound in `limit`. `timeout` is independently
+elapsed wall-clock time; keep it when a child can wait without using CPU.
+An intentional breakaway still follows the rules described under `detach`.
 
 ## proc.start and the child handle
 
@@ -74,12 +103,13 @@ c:kill()                 -- terminate the tree now; wait then reports "killed"
 c:close()                -- kill if still running, release everything
 ```
 
-`start` accepts the same table as `run`, plus `stream = true` and
+`start` accepts the same table as `run`, plus `stream = true`. Both accept
 `inherit = true`. The `timeout` is the child's, counted from launch and
 enforced whether or not anyone waits; a `wait` timeout only bounds the wait.
 The handle is also closed by `<close>` at the end of its block and by garbage
-collection, and either closing kills a tree that still runs. After `close`,
-every method raises `PROC closed`. Repeated waits on a finished child return
+collection, and either closing kills a tree that still runs. `close` is
+idempotent; after it, `pid` is nil and the other methods raise `PROC closed`.
+Repeated waits on a finished child return
 the same result.
 
 ## Streams
@@ -106,6 +136,9 @@ up, so nothing is ever truncated. Closing the child wakes a parked reader with
 `PROC closed`. A child that does not read its stdin is not an error; a child
 that never gets its stdin closed may never exit, so `close_stdin` when you are
 done.
+
+The stdin queue has its own fixed 64 MiB bound, independent of `maxout`.
+`write` returns `nil, PROC toobig` when a write cannot be queued within it.
 
 ## The console
 
@@ -182,6 +215,28 @@ not there is not an error. It takes exactly one of `name`, `pid`, `port` and
 raises PROC badvalue otherwise. `tree` answers `nil, PROC notfound` for an
 unknown pid. Process ids are reused, so a `parent` may name a process that
 exited long ago and whose id now belongs to something unrelated.
+Tree expansion stops after 64 levels; a deepest entry then has no expanded
+children.
+
+## Complete error codes
+
+| PROC code | when |
+|---|---|
+| `notfound` | a command or requested process does not exist |
+| `launch` | Windows refused to start the command |
+| `access` | `kill` cannot open the process for termination |
+| `badvalue` | malformed arguments or option values; usually raised, but returned for a refused working directory or invalid `kill` pid |
+| `encoding` | a command, path, environment entry, or process-name filter is not UTF-8 |
+| `usage` | raised: an invalid call shape, unknown option, incompatible stream modes, or a read/write without stream mode |
+| `timeout` | a child wait, stream read, `wait_any`, or `wait_all` outlasted its wait duration |
+| `closed` | raised for a closed handle; returned when stdin is closed or a pending read's handle closes |
+| `busy` | raised: another task is already reading that stream |
+| `toobig` | stdin could not queue the write within its 64 MiB bound |
+| `oserror` | Windows, snapshot, or allocation failure |
+
+Waiting can also propagate the scheduler's `SCHED` errors, including
+`deadline`; see [sched](sched.md). Child results with `status = "timeout"`,
+`"killed"`, or `"limit"` are result states, not error codes.
 
 ## Two things to know
 
