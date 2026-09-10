@@ -85,4 +85,10 @@ return function(T)
   check("an empty name is refused", not ok and err.is(raised, "SYNC", "badvalue"))
   ok, raised = pcall(sync.lock, name, "soon")
   check("a bad timeout is refused", not ok and err.is(raised, "SYNC", "badvalue"))
+  do
+    local lock, e = sync.lock(name .. "-compound", "1m30s")
+    check("lock timeouts accept the native compound duration grammar", lock ~= nil, tostring(e))
+    if lock then lock:release() end
+  end
+
 end

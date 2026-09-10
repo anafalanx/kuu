@@ -39,20 +39,23 @@ function csv.decode(text, opts)
   local ragged = option(opts, "ragged", false)
   if text:sub(1, 3) == "\239\187\191" then text = text:sub(4) end
 
-  local rows, row, field = {}, {}, {}
+  local rows, field = {}, {}
+  local quoted = false
   local pos, n, line = 1, #text, 1
   local function finish_field(s) field[#field + 1] = s end
   local function finish_row()
-    if #field == 1 and field[1] == "" then
+    if #field == 1 and field[1] == "" and not quoted then
       field = {} -- a blank line
       return
     end
     rows[#rows + 1] = field
     field = {}
+    quoted = false
   end
   while pos <= n do
     local c = text:sub(pos, pos)
     if c == '"' then
+      quoted = true
       -- a quoted field: up to the closing quote, "" is one quote
       local parts, at = {}, pos + 1
       while true do
@@ -152,6 +155,12 @@ local function field_text(v, sep)
   return s
 end
 
+-- One empty field is a record; an empty physical line is not.
+local function row_text(cells, sep)
+  if #cells == 1 and cells[1] == "" then return '""' end
+  return table.concat(cells, sep)
+end
+
 -- csv.encode(rows [, { separator = ",", columns = nil, header = true, bom = false, newline = "\r\n" }]) -> text
 --   rows are arrays of fields, or records when `columns` (or rows.columns) names the fields
 function csv.encode(rows, opts)
@@ -165,19 +174,19 @@ function csv.encode(rows, opts)
     if header then
       local cells = {}
       for i, name in ipairs(columns) do cells[i] = field_text(name, sep) end
-      out[#out + 1] = table.concat(cells, sep)
+      out[#out + 1] = row_text(cells, sep)
     end
     for _, rec in ipairs(rows) do
       local cells = {}
       for i, name in ipairs(columns) do cells[i] = field_text(rec[name], sep) end
-      out[#out + 1] = table.concat(cells, sep)
+      out[#out + 1] = row_text(cells, sep)
     end
   else
     for i, row in ipairs(rows) do
       if type(row) ~= "table" then error(err.new("CSV", "badvalue", "row " .. i .. " is not a table"), 2) end
       local cells = {}
       for k = 1, #row do cells[k] = field_text(row[k], sep) end
-      out[#out + 1] = table.concat(cells, sep)
+      out[#out + 1] = row_text(cells, sep)
     end
   end
   local text = table.concat(out, newline) .. (#out > 0 and newline or "")

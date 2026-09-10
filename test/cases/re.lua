@@ -114,4 +114,54 @@ return function(T)
   check("a megabyte of gsub finishes in under a second", count == 100000 and #replaced == #big - 200000 and took < 1.0, string.format("%.2fs", took))
   ok, raised = pcall(re.match, string.rep("a", 30) .. "b", "^(a+)+$")
   check("a catastrophic pattern hits the limit and is RE limit, not a hang", not ok and err.is(raised, "RE", "limit"), tostring(raised))
+  -- Run hostile callbacks in a child: a native regression must not kill the suite.
+  do
+    local r = T.kuu { "-e", [=[
+      local re = require "re"
+      local rx = re.compile("a+")
+      local out, n = rx:gsub("a aa", function(w)
+        assert(rx:gsub("aaa", "x") == "x")
+        assert(rx:match("aaaa") == "aaaa")
+        return w:upper()
+      end)
+      assert(out == "A AA" and n == 2, out)
+      out, n = re.gsub("a aa", "a+", function()
+        assert(re.match(("a"):rep(4096), "a+") ~= nil)
+        return nil
+      end)
+      assert(out == "a aa" and n == 2, out)
+      out, n = rx:gsub("a aa", setmetatable({}, { __index = function()
+        assert(rx:match(("a"):rep(4096)) ~= nil)
+        return false
+      end }))
+      assert(out == "a aa" and n == 2, out)
+      local outer, inner = rx:gmatch("a aa"), rx:gmatch("aaa aaaa")
+      assert(outer() == "a" and inner() == "aaa")
+      assert(outer() == "aa" and inner() == "aaaa")
+      assert(outer() == nil and inner() == nil)
+      out = rx:gsub("a aa", function(w)
+        for v in rx:gmatch("aaa aaaa") do assert(#v >= 3) end
+        return w
+      end)
+      assert(out == "a aa", out)
+      assert(not pcall(rx.gsub, rx, "a", function() error("callback failed") end))
+      collectgarbage()
+      assert(rx:match("aa") == "aa")
+      io.write("nested matches survive")
+    ]=] }
+    check("nested regex callbacks, iterators, and replacement metamethods keep their own offsets",
+      r.code == 0 and r.out == "nested matches survive", T.describe(r))
+    r = T.kuu({ "-e", [=[
+      local re, sched = require "re", require "sched"
+      local suffix = ("b"):rep(400000)
+      local started = sched.clock()
+      local out, n = re.gsub("a" .. suffix, "a", "x")
+      assert(out == "x" .. suffix and n == 1)
+      assert(sched.clock() - started < 1, "unmatched suffix took a second")
+      io.write("linear suffix")
+    ]=] }, { timeout = "5s" })
+    check("gsub stops searching a 400 KB unmatched suffix without rescanning it",
+      r.status == "exit" and r.code == 0 and r.out == "linear suffix", T.describe(r))
+  end
+
 end

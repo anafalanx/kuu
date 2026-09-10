@@ -25,10 +25,12 @@ net.resolve(name [, timeout])   -- { { address, family }, ... } | nil, err
 
 Every address the name resolves to, IPv4 and IPv6, in the order the system
 returns them. An address literal resolves to itself, so a caller need not
-check first. `family` is `"ipv4"` or `"ipv6"`.
+check first. `family` is `"ipv4"` or `"ipv6"`. IPv6 addresses keep their
+numeric interface scope, such as `fe80::1%1`, in both `resolve` and
+`addresses`; `probe` accepts that same spelling.
 
 Failures: `nil, NET resolve` when the name has no address, `nil, NET timeout`
-when nothing answered in time. An empty name or a malformed timeout is a
+when nothing answered in time. An empty name, a name with NUL, or a malformed timeout is a
 programming error and raises NET badvalue.
 
 ## net.probe

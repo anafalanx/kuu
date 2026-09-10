@@ -68,11 +68,43 @@ static void push_seconds(lua_State *L, int64_t ms)
     lua_pushnumber(L, (lua_Number)ms / 1000.0);
 }
 
+/* Fixed-width decimal fields do not accept scanf's signs or whitespace. */
+static int digits(const char *text, size_t width, int *value)
+{
+    int n = 0;
+    for (size_t i = 0; i < width; i++) {
+        if (text[i] < '0' || text[i] > '9') {
+            return 0;
+        }
+        n = n * 10 + (text[i] - '0');
+    }
+    *value = n;
+    return 1;
+}
+
+static int parse_offset(const char *text, ku_zone *zone)
+{
+    size_t n = strlen(text);
+    int hours = 0, minutes = 0;
+    if ((n != 3 && n != 5 && n != 6) || (text[0] != '+' && text[0] != '-') ||
+        !digits(text + 1, 2, &hours)) {
+        return 0;
+    }
+    if ((n == 6 && (text[3] != ':' || !digits(text + 4, 2, &minutes))) ||
+        (n == 5 && !digits(text + 3, 2, &minutes)) ||
+        hours > 14 || minutes > 59 || (hours == 14 && minutes != 0)) {
+        return 0;
+    }
+    zone->local = 0;
+    zone->offset_minutes = (text[0] == '-' ? -1 : 1) * (hours * 60 + minutes);
+    return 1;
+}
+
 /* "utc" | "Z" | "local" | "+hh:mm" | "-hh:mm" | "+hhmm" | "+hh" */
 static ku_zone zone_arg(lua_State *L, int idx, const char *fallback)
 {
     ku_zone z = {0, 0};
-    const char *text = lua_isnoneornil(L, idx) ? fallback : luaL_checkstring(L, idx);
+    const char *text = lua_isnoneornil(L, idx) ? fallback : ku_check_cstring(L, idx, "TIME", "zone");
     if (text == NULL || strcmp(text, "utc") == 0 || strcmp(text, "UTC") == 0 || strcmp(text, "Z") == 0) {
         return z;
     }
@@ -80,13 +112,7 @@ static ku_zone zone_arg(lua_State *L, int idx, const char *fallback)
         z.local = 1;
         return z;
     }
-    int sign = text[0] == '+' ? 1 : text[0] == '-' ? -1 : 0;
-    unsigned hours = 0, minutes = 0;
-    int n = 0;
-    if (sign != 0 && (sscanf(text + 1, "%2u:%2u%n", &hours, &minutes, &n) == 2 || sscanf(text + 1, "%2u%2u%n", &hours, &minutes, &n) == 2 ||
-                      (minutes = 0, sscanf(text + 1, "%2u%n", &hours, &n) == 1)) &&
-        text[1 + n] == '\0' && hours <= 14 && minutes < 60) {
-        z.offset_minutes = sign * (int)(hours * 60 + minutes);
+    if (parse_offset(text, &z)) {
         return z;
     }
     ku_err_raise(L, "TIME", "badvalue", "a zone is \"utc\", \"local\", or an offset such as \"+02:00\", got '%s'", text);
@@ -177,13 +203,14 @@ static void wall_from_ms(lua_State *L, int64_t ms, const ku_zone *zone, ku_wall 
 }
 
 /* The instant of wall-clock fields read in a zone. */
-static int64_t ms_from_wall(lua_State *L, int64_t year, int64_t month, int64_t day, int64_t hour, int64_t min,
-                            int64_t sec, int64_t ms, const ku_zone *zone)
+static int ms_from_wall(int64_t year, int64_t month, int64_t day, int64_t hour, int64_t min,
+                            int64_t sec, int64_t ms, const ku_zone *zone, int64_t *result)
 {
     int64_t days = days_from_civil(year, month, day);
     int64_t local_ms = days * MS_PER_DAY + hour * 3600000LL + min * 60000LL + sec * 1000LL + ms;
     if (!zone->local) {
-        return local_ms - (int64_t)zone->offset_minutes * 60000LL;
+        *result = local_ms - (int64_t)zone->offset_minutes * 60000LL;
+        return 1;
     }
     /* normalise the fields through the calendar, then let Windows apply the
      * rules that held on that local date */
@@ -203,13 +230,13 @@ static int64_t ms_from_wall(lua_State *L, int64_t year, int64_t month, int64_t d
     local.wMinute = (WORD)(rem / 60000 % 60);
     local.wSecond = (WORD)(rem / 1000 % 60);
     local.wMilliseconds = (WORD)(rem % 1000);
-    if (!TzSpecificLocalTimeToSystemTime(NULL, &local, &utc)) {
-        ku_err_raise(L, "TIME", "badvalue", "the local time is out of the range Windows can convert");
-    }
     FILETIME ft;
-    SystemTimeToFileTime(&utc, &ft);
+    if (!TzSpecificLocalTimeToSystemTime(NULL, &local, &utc) || !SystemTimeToFileTime(&utc, &ft)) {
+        return 0;
+    }
     int64_t ticks = ((int64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
-    return (ticks - EPOCH_TICKS) / TICKS_PER_MS;
+    *result = (ticks - EPOCH_TICKS) / TICKS_PER_MS;
+    return 1;
 }
 
 static void offset_text(int minutes, char *out, size_t cap, int colon)
@@ -277,28 +304,27 @@ static int l_time_iso(lua_State *L)
  * by default, because that is what a person meant when they wrote it. */
 static int l_time_parse(lua_State *L)
 {
-    const char *text = luaL_checkstring(L, 1);
+    size_t length = 0;
+    const char *text = luaL_checklstring(L, 1, &length);
     ku_zone fallback = zone_arg(L, 2, "local");
     int year, month, day, hour = 0, min = 0, sec = 0;
-    int n = 0;
-    if (sscanf(text, "%4d-%2d-%2d%n", &year, &month, &day, &n) != 3 || n != 10) {
+    if (length < 10 || memchr(text, '\0', length) != NULL || text[4] != '-' || text[7] != '-' ||
+        !digits(text, 4, &year) || !digits(text + 5, 2, &month) || !digits(text + 8, 2, &day)) {
         return ku_err_fail(L, "TIME", "badvalue", "not an ISO 8601 date: '%s'", text);
     }
-    const char *p = text + n;
+    const char *p = text + 10;
     int64_t frac_ms = 0;
-    int has_time = 0;
     if (*p == 'T' || *p == 't' || *p == ' ') {
-        has_time = 1;
         p++;
-        if (sscanf(p, "%2d:%2d%n", &hour, &min, &n) != 2 || n != 5) {
+        if (strlen(p) < 5 || p[2] != ':' || !digits(p, 2, &hour) || !digits(p + 3, 2, &min)) {
             return ku_err_fail(L, "TIME", "badvalue", "not an ISO 8601 time in '%s'", text);
         }
-        p += n;
+        p += 5;
         if (*p == ':') {
-            if (sscanf(p + 1, "%2d%n", &sec, &n) != 1 || n != 2) {
+            if (strlen(p + 1) < 2 || !digits(p + 1, 2, &sec)) {
                 return ku_err_fail(L, "TIME", "badvalue", "not an ISO 8601 time in '%s'", text);
             }
-            p += 1 + n;
+            p += 3;
             if (*p == '.' || *p == ',') {
                 p++;
                 int digits = 0;
@@ -327,9 +353,9 @@ static int l_time_parse(lua_State *L)
         zone.offset_minutes = 0;
         p++;
     } else if (*p == '+' || *p == '-') {
-        lua_pushstring(L, p);
-        zone = zone_arg(L, lua_gettop(L), NULL); /* raises on a malformed offset */
-        lua_pop(L, 1);
+        if (!parse_offset(p, &zone)) {
+            return ku_err_fail(L, "TIME", "badvalue", "not an ISO 8601 offset in '%s'", text);
+        }
         p += strlen(p);
     }
     if (*p != '\0') {
@@ -344,8 +370,11 @@ static int l_time_parse(lua_State *L)
         day > days_from_civil(year, month + 1, 1) - days_from_civil(year, month, 1)) {
         return ku_err_fail(L, "TIME", "badvalue", "no such day in '%s'", text);
     }
-    (void)has_time;
-    push_seconds(L, ms_from_wall(L, year, month, day, hour, min, sec, frac_ms, &zone));
+    int64_t instant = 0;
+    if (!ms_from_wall(year, month, day, hour, min, sec, frac_ms, &zone, &instant)) {
+        return ku_err_fail(L, "TIME", "badvalue", "the local time is out of the range Windows can convert");
+    }
+    push_seconds(L, instant);
     return 1;
 }
 
@@ -418,7 +447,11 @@ static int l_time_make(lua_State *L)
     if (year < -100000 || year > 100000) {
         return ku_err_raise(L, "TIME", "badvalue", "the year is out of range");
     }
-    push_seconds(L, ms_from_wall(L, year, month, day, hour, min, sec, ms, &zone));
+    int64_t instant = 0;
+    if (!ms_from_wall(year, month, day, hour, min, sec, ms, &zone, &instant)) {
+        return ku_err_raise(L, "TIME", "badvalue", "the local time is out of the range Windows can convert");
+    }
+    push_seconds(L, instant);
     return 1;
 }
 

@@ -169,7 +169,7 @@ An entry:
 | field | |
 |---|---|
 | `pid`, `parent`, `name`, `threads` | from the process snapshot; always present |
-| `exe` | the full path of the executable |
+| `exe` | the full UTF-8 path of the executable, with forward slashes like `fs.absolute` |
 | `cmdline` | the command line as the kernel holds it |
 | `started` | when the process began, an instant for [`time`](time.md) |
 | `cpu` | seconds of kernel plus user time so far |
@@ -194,3 +194,13 @@ exited long ago and whose id now belongs to something unrelated.
 - **Output is bytes.** Windows programs write in whatever encoding they
   choose; `cmd.exe` writes CRLF line ends and the console code page. Decode
   deliberately.
+
+## Tools that construct their own commands
+
+Kuu preserves the argument vector it passes to a child. A child may construct
+another command string internally. For example, Windows `windres` uses a shell
+for its preprocessor by default and can split checkout paths containing spaces.
+Use its `--use-temp-file` mode and relative resource/include paths from a build
+directory. Quoting only the original Kuu argument cannot repair that internal
+command. Process metadata's `cmdline` stays verbatim; only `exe` is normalized.
+Use `fs.canon` identity when different path spellings or aliases must compare equal.

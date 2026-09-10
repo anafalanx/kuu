@@ -20,14 +20,14 @@ return function(net)
     if math.type(port) ~= "integer" or port < 1 or port > 65535 then
       error(err.new("NET", "badvalue", "the port must be 1 to 65535"), 2)
     end
-    local ms = 5000
+    local seconds = 5
     if timeout ~= nil then
-      ms = cli.duration(timeout)
-      if ms == nil then error(err.new("NET", "badvalue", "the probe timeout must be a duration such as \"2s\""), 2) end
+      seconds = cli.duration(timeout)
+      if seconds == nil then error(err.new("NET", "badvalue", "the probe timeout must be a duration such as \"2s\""), 2) end
     end
     local started = sched.clock()
-    local deadline = started + ms / 1000
-    local addresses, e = net.resolve(host, ms / 1000)
+    local deadline = started + seconds
+    local addresses, e = net.resolve(host, seconds)
     if addresses == nil then return nil, e end
     local last
     for _, a in ipairs(addresses) do

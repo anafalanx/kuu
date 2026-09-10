@@ -8,15 +8,20 @@ nothing is looked up on `PATH`.
 ```text
 repo/
   tasks.lua          the tasks, and the prerequisites as url and sha256
-  .tools/            kuu.exe, downloads, unpacked tools; git ignores it
+  kuu.exe            this project's own runtime; git ignores it
+  .tools/            downloads and unpacked tools; git ignores it
   .kuu/              kuu's notebook for this repository (mem); git ignores it
   build/             outputs; git ignores it
   src/               whatever the repository is about
 ```
 
+The examples below target development version 0.6. Published 0.5 remains
+usable with its older duration convention; [upgrade notes](upgrading-0.6.md)
+describe the differences.
+
 ## 1. Give the repository its kuu
 
-Copy `kuu.exe` into `.tools\`. It comes from a
+Copy `kuu.exe` directly into the repository root. It comes from a
 [release](https://github.com/anafalanx/kuu/releases), signed, with a
 `kuu.exe.sha256` beside it, or from a build. That copy is the only kuu this
 repository knows; another repository has its own, possibly another
@@ -26,6 +31,7 @@ small file needs neither.
 Add to `.gitignore`:
 
 ```text
+/kuu.exe
 /.tools/
 /.kuu/
 /build/
@@ -39,9 +45,9 @@ has the full contract; this is the shape:
 
 ```lua
 global none
-global <const> require, ipairs, print
+global <const> require, ipairs, print, error
 
-local KUU = "0.5" -- the kuu this repository was made for
+local KUU = "0.6" -- the kuu this repository was made for
 
 local rt = require "rt"
 local task = require "task"
@@ -53,7 +59,7 @@ local hash = require "hash"
 local err = require "err"
 
 if rt.version ~= KUU then
-  error(err.new("PROJECT", "version", "made for kuu " .. KUU .. ", this is " .. rt.version .. "; copy the right kuu.exe into .tools"))
+  error(err.new("PROJECT", "version", "made for kuu " .. KUU .. ", this is " .. rt.version .. "; copy the right kuu.exe into the repository root"))
 end
 
 -- What this repository needs, by url and hash.  Nothing else is looked up anywhere.
@@ -116,12 +122,12 @@ Three habits make this work:
 ## 3. Run it
 
 ```text
-.tools\kuu.exe run                  the default task, with its dependencies
-.tools\kuu.exe run test             a named task
-.tools\kuu.exe run --dry-run test   the plan: what would run, in order, running nothing
-.tools\kuu.exe run --json test      the outcome as one JSON object on stdout
-.tools\kuu.exe list                 every task with its description and arguments
-.tools\kuu.exe check                tasks.lua and the repository's Lua, without running anything
+.\kuu.exe run                  the default task, with its dependencies
+.\kuu.exe run test             a named task
+.\kuu.exe run --dry-run test   the plan: what would run, in order, running nothing
+.\kuu.exe run --json test      the outcome as one JSON object on stdout
+.\kuu.exe list                 every task with its description and arguments
+.\kuu.exe check                tasks.lua and the repository's Lua, without running anything
 ```
 
 Exit codes: 0 when the task returned, 1 when it failed, 2 when kuu could
@@ -141,7 +147,7 @@ global before anything runs, so run it first after editing.
 
 ## 5. Upgrading kuu
 
-Copy the new `kuu.exe` over the old one in `.tools`, change the `KUU`
+Copy the new `kuu.exe` over the old one in the repository root, change the `KUU`
 constant, run `check`, run the tasks. The [roadmap](roadmap.md) lists what
 changed per version. Repositories upgrade one at a time; there is no
 machine-wide state to keep in step.
@@ -150,8 +156,8 @@ machine-wide state to keep in step.
 
 - Do not put kuu on `PATH`, and do not share one `.tools` between
   repositories. The point is that each repository stands alone.
-- Do not commit `.tools`, `.kuu`, or `build`.
+- Do not commit `kuu.exe`, `.tools`, `.kuu`, or `build`.
 - Do not write a bootstrap script to fetch kuu. A repository's README says
-  "copy kuu.exe into .tools" and that is the whole procedure.
+  "copy kuu.exe into the repository root" and that is the whole procedure.
 - Do not fetch a prerequisite without its hash. If upstream publishes none,
   fetch once, hash with `hash.file("sha256", path)`, and write it down.

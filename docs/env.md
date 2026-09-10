@@ -24,6 +24,8 @@ env.persist("TOOL_HOME", "C:\\tool", "machine")  -- for everyone; needs an eleva
 The **live environment** is this process's copy. `set` changes it for kuu
 and for every child kuu starts afterwards; nothing outside notices. A
 child's `env` option in [`proc`](proc.md) does the same for one child.
+`get` and `os.getenv` return `""` for an empty value and `nil` for an
+absent variable. Names and text values cannot contain NUL.
 
 The **persisted environment** is what Windows hands to new processes: the
 user's, under `HKCU\Environment`, and the machine's, under the Session
@@ -55,5 +57,5 @@ env.forget(name [, scope])          -- true | nil, err
 ## Errors
 
 Domain `ENV`: `badvalue` (raised: an empty name, a name with `=`, an unknown
-scope), `notfound` (forgetting what is not there), `access` (the machine
+scope, or embedded NUL), `notfound` (forgetting what is not there), `access` (the machine
 scope without elevation), `oserror`.

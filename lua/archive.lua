@@ -1,4 +1,4 @@
--- archive.lua -- zip and tar archives, through the tar.exe every supported Windows ships.
+-- archive.lua -- pack/unpack through Windows tar; list through its Unicode archive library.
 --
 --   local archive = require "archive"
 --   archive.unpack("build/zig.zip", ".tools/zig", { strip = 1 })    -- true | nil, err
@@ -15,6 +15,22 @@ global <const> require, ipairs, tostring, type, string, table, math, os, error
 local fs = require "fs"
 local proc = require "proc"
 local err = require "err"
+local rt, json = require "rt", require "json"
+
+-- Read Unicode names in a supervised copy of this same executable. Windows
+-- tar's text listing has already replaced names outside its ANSI code page.
+-- The native reader is private and synchronous; isolating it preserves the
+-- caller's scheduler, deadline, and process-tree cleanup on corrupt inputs.
+local list_worker = [[
+local entries, e = require("_archive")(...)
+local json = require "json"
+if entries then
+  io.write(json.encode { ok = true, entries = json.array(entries) })
+else
+  io.write(json.encode { ok = false, code = e.code, message = e.message })
+  os.exit(1)
+end
+]]
 
 local archive = {}
 
@@ -102,7 +118,13 @@ function archive.pack(file, dir, entries, options)
   end
   fs.remove(file)
   -- "--" keeps an entry named like an option, "--help" say, an entry
-  local args = { "-a", "-cf", windows_path(file), "-C", windows_path(dir), "--" }
+  local args = { "-a", "-cf", windows_path(file), "-C", windows_path(dir) }
+  if file:lower():match("%.zip$") then
+    -- Windows tar defaults ZIP headers to ANSI and silently loses names.
+    args[#args + 1] = "--options"
+    args[#args + 1] = "zip:hdrcharset=UTF-8"
+  end
+  args[#args + 1] = "--"
   for _, name in ipairs(entries) do args[#args + 1] = name end
   local r, e2 = run_tar(args, options.timeout)
   if not r then return nil, e2 end
@@ -114,11 +136,16 @@ function archive.list(file, options)
   options = options or {}
   if type(file) ~= "string" then error(err.new("ARCHIVE", "badvalue", "list needs an archive path"), 2) end
   if fs.exists(file) ~= "file" then return nil, err.new("ARCHIVE", "notfound", "no archive at '" .. file .. "'") end
-  local r, e = run_tar({ "-tf", windows_path(file) }, options.timeout)
+  local r, e = proc.run { rt.exe, "-e", list_worker, fs.absolute(file),
+    timeout = options.timeout or "30m", maxout = "64M" }
   if not r then return nil, e end
-  local entries = {}
-  for line in r.out:gmatch("[^\r\n]+") do entries[#entries + 1] = line end
-  return entries
+  if r.status ~= "exit" then return nil, err.new("ARCHIVE", r.status, "archive listing did not finish: " .. r.status) end
+  if r.truncated then return nil, err.new("ARCHIVE", "toobig", "archive listing exceeds 64 MiB") end
+  local record = json.decode(r.out)
+  if not record then return nil, err.new("ARCHIVE", "failed", "archive reader failed: " .. r.err) end
+  if not record.ok then return nil, err.new("ARCHIVE", record.code, record.message) end
+  if r.code ~= 0 then return nil, err.new("ARCHIVE", "failed", "archive reader exited " .. r.code) end
+  return record.entries
 end
 
 return archive

@@ -19,6 +19,7 @@
  * methods.  Positions are Lua's: one-based, inclusive, in bytes.
  */
 #include "err.h"
+#include "hold.h"
 #include "state.h"
 
 #include "lauxlib.h"
@@ -42,7 +43,6 @@
 
 typedef struct ku_re {
     pcre2_code *code;
-    pcre2_match_data *match;
     uint32_t groups;
     int utf;
 } ku_re;
@@ -55,10 +55,6 @@ static ku_re *check_re(lua_State *L, int idx)
 static int re_gc(lua_State *L)
 {
     ku_re *r = check_re(L, 1);
-    if (r->match != NULL) {
-        pcre2_match_data_free(r->match);
-        r->match = NULL;
-    }
     if (r->code != NULL) {
         pcre2_code_free(r->code);
         r->code = NULL;
@@ -141,14 +137,9 @@ static ku_re *compile_new(lua_State *L, const char *pattern, size_t length, cons
     }
     ku_re *r = (ku_re *)lua_newuserdatauv(L, sizeof *r, 1);
     r->code = code;
-    r->match = NULL;
     r->groups = 0;
     r->utf = utf;
     luaL_setmetatable(L, KU_RE_META);
-    r->match = pcre2_match_data_create_from_pattern(code, NULL);
-    if (r->match == NULL) {
-        ku_err_raise(L, "RE", "oserror", "out of memory");
-    }
     pcre2_pattern_info(code, PCRE2_INFO_CAPTURECOUNT, &r->groups);
     push_names(L, code);
     lua_setiuservalue(L, -2, 1);
@@ -206,11 +197,31 @@ static ku_re *cached(lua_State *L, int pattern_idx, int flags_idx)
 
 /* ---- matching -------------------------------------------------------------------------- */
 
+/* Match offsets belong to an operation, never to the cached pattern.  Lua
+ * callbacks and table metamethods can run that same pattern recursively. */
+static void match_free(void *ptr)
+{
+    pcre2_match_data_free((pcre2_match_data *)ptr);
+}
+
+static pcre2_match_data *new_match(lua_State *L, ku_re *r, int close)
+{
+    ku_hold *hold = ku_hold_new(L, match_free);
+    if (close) {
+        lua_toclose(L, -1);
+    }
+    hold->ptr = pcre2_match_data_create_from_pattern(r->code, NULL);
+    if (hold->ptr == NULL) {
+        ku_err_raise(L, "RE", "oserror", "out of memory");
+    }
+    return (pcre2_match_data *)hold->ptr;
+}
+
 /* pcre2_match with kuu's error mapping: the count of set pairs, or
  * PCRE2_ERROR_NOMATCH; anything else is raised. */
-static int do_match(lua_State *L, ku_re *r, const char *s, size_t n, size_t start, uint32_t options)
+static int do_match(lua_State *L, ku_re *r, pcre2_match_data *match, const char *s, size_t n, size_t start, uint32_t options)
 {
-    int rc = pcre2_match(r->code, (PCRE2_SPTR)s, n, start, options, r->match, NULL);
+    int rc = pcre2_match(r->code, (PCRE2_SPTR)s, n, start, options, match, NULL);
     if (rc >= 0 || rc == PCRE2_ERROR_NOMATCH) {
         return rc;
     }
@@ -219,7 +230,7 @@ static int do_match(lua_State *L, ku_re *r, const char *s, size_t n, size_t star
     }
     if (rc <= PCRE2_ERROR_UTF8_ERR1 && rc >= PCRE2_ERROR_UTF8_ERR21) {
         return ku_err_raise(L, "RE", "invalid", "the subject is not valid UTF-8 at byte %u; flag b matches bytes",
-                            (unsigned)pcre2_get_startchar(r->match) + 1);
+                            (unsigned)pcre2_get_startchar(match) + 1);
     }
     if (rc == PCRE2_ERROR_BADUTFOFFSET) {
         return ku_err_raise(L, "RE", "invalid", "init is inside a UTF-8 character");
@@ -231,9 +242,9 @@ static int do_match(lua_State *L, ku_re *r, const char *s, size_t n, size_t star
 
 /* Push the captures of the last match, or the whole match when the pattern
  * has none; unset groups are nil.  Returns the count pushed. */
-static int push_captures(lua_State *L, ku_re *r, const char *s, int pairs)
+static int push_captures(lua_State *L, ku_re *r, pcre2_match_data *match, const char *s, int pairs)
 {
-    PCRE2_SIZE *ov = pcre2_get_ovector_pointer(r->match);
+    PCRE2_SIZE *ov = pcre2_get_ovector_pointer(match);
     if (r->groups == 0) {
         lua_pushlstring(L, s + ov[0], ov[1] - ov[0]);
         return 1;
@@ -293,20 +304,21 @@ static size_t advance(const char *s, size_t n, size_t pos, int utf)
  * operation the subject cannot change, so once a call has validated it,
  * *checked says so and the rest skip the scan, or a megabyte of gsub would
  * be quadratic. */
-static int next_match(lua_State *L, ku_re *r, const char *s, size_t n, size_t *pos, size_t *empty_at, int *checked)
+static int next_match(lua_State *L, ku_re *r, pcre2_match_data *match, const char *s, size_t n, size_t *pos, size_t *empty_at, int *checked)
 {
     for (;;) {
         if (*pos > n) {
             return 0;
         }
-        uint32_t options = (*empty_at == *pos) ? (PCRE2_NOTEMPTY_ATSTART | PCRE2_ANCHORED) : 0;
+        int retry = *empty_at == *pos;
+        uint32_t options = retry ? (PCRE2_NOTEMPTY_ATSTART | PCRE2_ANCHORED) : 0;
         if (*checked) {
             options |= PCRE2_NO_UTF_CHECK;
         }
-        int rc = do_match(L, r, s, n, *pos, options);
+        int rc = do_match(L, r, match, s, n, *pos, options);
         *checked = 1; /* it returned, so the subject passed */
         if (rc == PCRE2_ERROR_NOMATCH) {
-            if (options == 0) {
+            if (!retry) {
                 *pos = n + 1;
                 return 0;
             }
@@ -314,7 +326,7 @@ static int next_match(lua_State *L, ku_re *r, const char *s, size_t n, size_t *p
             *empty_at = KU_RE_NONE;
             continue;
         }
-        PCRE2_SIZE *ov = pcre2_get_ovector_pointer(r->match);
+        PCRE2_SIZE *ov = pcre2_get_ovector_pointer(match);
         *empty_at = (ov[1] == ov[0]) ? ov[1] : KU_RE_NONE;
         *pos = ov[1];
         return rc;
@@ -332,18 +344,19 @@ static int find_impl(lua_State *L, ku_re *r, int sidx, int init_idx)
         lua_pushnil(L);
         return 1;
     }
-    int rc = do_match(L, r, s, n, start, 0);
+    pcre2_match_data *match = new_match(L, r, 1);
+    int rc = do_match(L, r, match, s, n, start, 0);
     if (rc == PCRE2_ERROR_NOMATCH) {
         lua_pushnil(L);
         return 1;
     }
-    PCRE2_SIZE *ov = pcre2_get_ovector_pointer(r->match);
+    PCRE2_SIZE *ov = pcre2_get_ovector_pointer(match);
     lua_pushinteger(L, (lua_Integer)ov[0] + 1);
     lua_pushinteger(L, (lua_Integer)ov[1]);
     if (r->groups == 0) {
         return 2;
     }
-    return 2 + push_captures(L, r, s, rc);
+    return 2 + push_captures(L, r, match, s, rc);
 }
 
 static int match_impl(lua_State *L, ku_re *r, int sidx, int init_idx)
@@ -355,12 +368,13 @@ static int match_impl(lua_State *L, ku_re *r, int sidx, int init_idx)
         lua_pushnil(L);
         return 1;
     }
-    int rc = do_match(L, r, s, n, start, 0);
+    pcre2_match_data *match = new_match(L, r, 1);
+    int rc = do_match(L, r, match, s, n, start, 0);
     if (rc == PCRE2_ERROR_NOMATCH) {
         lua_pushnil(L);
         return 1;
     }
-    return push_captures(L, r, s, rc);
+    return push_captures(L, r, match, s, rc);
 }
 
 static int exec_impl(lua_State *L, ku_re *r, int ridx, int sidx, int init_idx)
@@ -372,12 +386,13 @@ static int exec_impl(lua_State *L, ku_re *r, int ridx, int sidx, int init_idx)
         lua_pushnil(L);
         return 1;
     }
-    int rc = do_match(L, r, s, n, start, 0);
+    pcre2_match_data *match = new_match(L, r, 1);
+    int rc = do_match(L, r, match, s, n, start, 0);
     if (rc == PCRE2_ERROR_NOMATCH) {
         lua_pushnil(L);
         return 1;
     }
-    PCRE2_SIZE *ov = pcre2_get_ovector_pointer(r->match);
+    PCRE2_SIZE *ov = pcre2_get_ovector_pointer(match);
     lua_createtable(L, (int)r->groups, 2);
     lua_pushinteger(L, (lua_Integer)ov[0] + 1);
     lua_setfield(L, -2, "start");
@@ -407,7 +422,7 @@ static int exec_impl(lua_State *L, ku_re *r, int ridx, int sidx, int init_idx)
 
 /* gmatch: a closure over the subject (1), the regex (2), the next offset
  * (3), the offset of the previous empty match (4), and whether the subject
- * has been validated as UTF-8 (5). */
+ * has been validated as UTF-8 (5), and its own match block (6). */
 static int gmatch_iter(lua_State *L)
 {
     size_t n = 0;
@@ -417,7 +432,9 @@ static int gmatch_iter(lua_State *L)
     lua_Integer empty_raw = lua_tointeger(L, lua_upvalueindex(4));
     size_t empty_at = empty_raw < 0 ? KU_RE_NONE : (size_t)empty_raw;
     int checked = lua_toboolean(L, lua_upvalueindex(5));
-    int rc = next_match(L, r, s, n, &pos, &empty_at, &checked);
+    ku_hold *hold = (ku_hold *)lua_touserdata(L, lua_upvalueindex(6));
+    pcre2_match_data *match = (pcre2_match_data *)hold->ptr;
+    int rc = next_match(L, r, match, s, n, &pos, &empty_at, &checked);
     lua_pushinteger(L, (lua_Integer)pos);
     lua_replace(L, lua_upvalueindex(3));
     lua_pushinteger(L, empty_at == KU_RE_NONE ? -1 : (lua_Integer)empty_at);
@@ -427,7 +444,7 @@ static int gmatch_iter(lua_State *L)
     if (rc == 0) {
         return 0;
     }
-    return push_captures(L, r, s, rc);
+    return push_captures(L, r, match, s, rc);
 }
 
 static int gmatch_impl(lua_State *L, int ridx, int sidx)
@@ -438,15 +455,16 @@ static int gmatch_impl(lua_State *L, int ridx, int sidx)
     lua_pushinteger(L, 0);
     lua_pushinteger(L, -1);
     lua_pushboolean(L, 0);
-    lua_pushcclosure(L, gmatch_iter, 5);
+    new_match(L, check_re(L, ridx), 0);
+    lua_pushcclosure(L, gmatch_iter, 6);
     return 1;
 }
 
 /* Append the expansion of a replacement string: $0, $1..$99, ${name}, $$. */
-static void expand_replacement(lua_State *L, luaL_Buffer *b, ku_re *r, int ridx, const char *s, int pairs,
+static void expand_replacement(lua_State *L, luaL_Buffer *b, ku_re *r, pcre2_match_data *match, int ridx, const char *s, int pairs,
                                const char *repl, size_t rlen)
 {
-    PCRE2_SIZE *ov = pcre2_get_ovector_pointer(r->match);
+    PCRE2_SIZE *ov = pcre2_get_ovector_pointer(match);
     for (size_t i = 0; i < rlen; i++) {
         if (repl[i] != '$') {
             luaL_addchar(b, repl[i]);
@@ -512,19 +530,20 @@ static void expand_replacement(lua_State *L, luaL_Buffer *b, ku_re *r, int ridx,
 }
 
 /* Append the replacement for the current match, whatever kind `ridx_repl` is. */
-static void add_replacement(lua_State *L, luaL_Buffer *b, ku_re *r, int ridx, int repl_idx, const char *s, int pairs)
+static void add_replacement(lua_State *L, luaL_Buffer *b, ku_re *r, pcre2_match_data *match, int ridx, int repl_idx, const char *s, int pairs)
 {
-    PCRE2_SIZE *ov = pcre2_get_ovector_pointer(r->match);
+    PCRE2_SIZE *ov = pcre2_get_ovector_pointer(match);
+    size_t start = ov[0], stop = ov[1];
     int type = lua_type(L, repl_idx);
     if (type == LUA_TSTRING || type == LUA_TNUMBER) {
         size_t rlen = 0;
         const char *repl = lua_tolstring(L, repl_idx, &rlen);
-        expand_replacement(L, b, r, ridx, s, pairs, repl, rlen);
+        expand_replacement(L, b, r, match, ridx, s, pairs, repl, rlen);
         return;
     }
     if (type == LUA_TFUNCTION) {
         lua_pushvalue(L, repl_idx);
-        int pushed = push_captures(L, r, s, pairs);
+        int pushed = push_captures(L, r, match, s, pairs);
         lua_call(L, pushed, 1);
     } else { /* a table: looked up by the first capture, or the whole match */
         if (r->groups == 0 || pairs <= 1 || ov[2] == PCRE2_UNSET) {
@@ -536,7 +555,7 @@ static void add_replacement(lua_State *L, luaL_Buffer *b, ku_re *r, int ridx, in
     }
     if (lua_isnil(L, -1) || (lua_isboolean(L, -1) && !lua_toboolean(L, -1))) {
         lua_pop(L, 1);
-        luaL_addlstring(b, s + ov[0], ov[1] - ov[0]); /* keep the original */
+        luaL_addlstring(b, s + start, stop - start); /* bounds saved before calling Lua */
         return;
     }
     if (lua_type(L, -1) != LUA_TSTRING && lua_type(L, -1) != LUA_TNUMBER) {
@@ -554,20 +573,21 @@ static int gsub_impl(lua_State *L, ku_re *r, int ridx, int sidx, int repl_idx, i
         return ku_err_raise(L, "RE", "badvalue", "the replacement must be a string, a function, or a table");
     }
     lua_Integer max = luaL_optinteger(L, n_idx, -1);
+    pcre2_match_data *match = new_match(L, r, 1);
     luaL_Buffer b;
     luaL_buffinit(L, &b);
     size_t pos = 0, empty_at = KU_RE_NONE, last = 0;
     int checked = 0;
     lua_Integer count = 0;
     while (max < 0 || count < max) {
-        int rc = next_match(L, r, s, n, &pos, &empty_at, &checked);
+        int rc = next_match(L, r, match, s, n, &pos, &empty_at, &checked);
         if (rc == 0) {
             break;
         }
-        PCRE2_SIZE *ov = pcre2_get_ovector_pointer(r->match);
+        PCRE2_SIZE *ov = pcre2_get_ovector_pointer(match);
         luaL_addlstring(&b, s + last, ov[0] - last);
-        add_replacement(L, &b, r, ridx, repl_idx, s, rc);
-        last = ov[1];
+        last = ov[1]; /* keep the outer bounds before calling Lua */
+        add_replacement(L, &b, r, match, ridx, repl_idx, s, rc);
         count++;
     }
     if (last < n) {
@@ -582,16 +602,17 @@ static int split_impl(lua_State *L, ku_re *r, int sidx)
 {
     size_t n = 0;
     const char *s = luaL_checklstring(L, sidx, &n);
+    pcre2_match_data *match = new_match(L, r, 1);
     lua_newtable(L);
     lua_Integer count = 0;
     size_t pos = 0, empty_at = KU_RE_NONE, last = 0;
     int checked = 0;
     for (;;) {
-        int rc = next_match(L, r, s, n, &pos, &empty_at, &checked);
+        int rc = next_match(L, r, match, s, n, &pos, &empty_at, &checked);
         if (rc == 0) {
             break;
         }
-        PCRE2_SIZE *ov = pcre2_get_ovector_pointer(r->match);
+        PCRE2_SIZE *ov = pcre2_get_ovector_pointer(match);
         if (ov[0] == ov[1]) {
             if (ov[0] == last || ov[0] >= n) {
                 continue; /* an empty match at a boundary makes no piece */

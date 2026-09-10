@@ -33,15 +33,17 @@ task "test" { desc = "run the tests", deps = { "build", "gen" }, run = function(
 task "fail" { desc = "returns nil, err", run = function() return nil, require("err").new("TASK", "failed", "boom") end }
 task "raise" { desc = "raises a string", run = function() error("kaboom") end }
 task "child" { desc = "child exit passthrough", run = function() return task.exec { "cmd.exe", "/c", "echo from-child & exit 7" } end }
-task "loop_a" { deps = { "loop_b" }, run = function() end }
-task "loop_b" { deps = { "loop_a" }, run = function() end }
-task "needs_ghost" { deps = { "ghost" }, run = function() end }
+task "loop_a" { deps = { "loop_b" } }
+task "loop_b" { deps = { "loop_a" } }
+task "needs_ghost" { deps = { "ghost" } }
 task "secret" { hidden = true, run = function() end }
 task "needy" { desc = "needs an argument", args = { { "target", required = true } }, run = function(opts) note("needy " .. opts.target) end }
 task "uses_needy" { desc = "depends on needy", deps = { "needy" }, run = function() note("uses") end }
 task "talk" { desc = "prints", run = function() print("spoken") io.write("written\n") end }
 task "console" { desc = "asks for the console explicitly", run = function() return task.exec { "cmd.exe", "/c", "echo via-console", inherit = true } end }
 task "big" { desc = "emits more than maxout", run = function() return task.exec { require("rt").exe, "-e", "io.write(string.rep('x', 200000))", maxout = "64K" } end }
+task "all" { desc = "aggregate", deps = { "test", "gen" } }
+task "all-fail" { hidden = true, deps = { "child", "gen" } }
 task.default "build"
 ]])
 
@@ -60,7 +62,7 @@ task.default "build"
   r = T.kuu({ "list", "--json" }, { cwd = project })
   local listing = r.code == 0 and json.decode(r.out) or nil
   check("kuu list --json is an envelope with root, default, and tasks", listing and listing.ok == true and listing.result.root == project
-    and listing.result.default == "build" and #listing.result.tasks == 15, T.describe(r))
+    and listing.result.default == "build" and #listing.result.tasks == 17, T.describe(r))
   if listing then
     local build
     for _, t in ipairs(listing.result.tasks) do if t.name == "build" then build = t end end
@@ -160,6 +162,17 @@ task.default "build"
   r = T.kuu({ "list" }, { cwd = bare })
   check("a syntax error in tasks.lua exits 2 with its location", r.code == 2 and contains(r.err, "tasks.lua:1:"), T.describe(r))
 
+  reset()
+  r = T.kuu({ "run", "--json", "all" }, { cwd = project })
+  local aggregate = json.decode(r.out)
+  check("a dependency-only aggregate succeeds and runs shared dependencies once",
+    r.code == 0 and aggregate and aggregate.ok and order() == "gen helped\nbuild false app\ntest\n", T.describe(r))
+  reset()
+  r = T.kuu({ "run", "all-fail" }, { cwd = project })
+  check("an aggregate preserves its child's failure and skips later dependencies", r.code == 7 and order() == "", T.describe(r))
+  r = T.kuu({ "run", "--dry-run", "all" }, { cwd = project })
+  check("aggregate dry runs include the grouping task without executing it", r.code == 0 and contains(r.out, "4. all") and order() == "", T.describe(r))
+
   -- the module in-process ------------------------------------------------------------------
   local plan, e = task.plan("nothing")
   check("task.plan on an unknown name is nil, TASK unknown", plan == nil and err.is(e, "TASK", "unknown"))
@@ -169,4 +182,9 @@ task.default "build"
   check("a task without run is refused", not ok and contains(raised.message, "needs a run function"), tostring(raised))
   ok, raised = pcall(task.exec, "gcc")
   check("task.exec wants an argv table", not ok and err.is(raised, "TASK", "badvalue"))
+  ok, raised = pcall(task, "emptydeps", {deps={}})
+  check("empty dependency-only tasks are refused", not ok and err.is(raised, "TASK", "badvalue"))
+  ok, raised = pcall(task, "badrun", {deps={"x"}, run=false})
+  check("aggregate tasks still reject a non-function run", not ok and err.is(raised, "TASK", "badvalue"))
+
 end

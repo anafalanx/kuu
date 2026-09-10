@@ -22,7 +22,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
 | process lifetime | the no-orphans law, first thing in the palette | every child is born into a kill-on-close job; only `detach`, and a child's own deliberate breakaway, step outside it |
 | what stays out | `store` (SQLite), publishing, Tk, a wrap verb, any Tcl, PATH lookup, `io.popen`, `os.execute` | tools or hazards, not organs |
-| projects share nothing | every project carries its own `kuu.exe` in its own `.tools`, copied in by hand; nothing on `PATH`, no machine changes, no bootstrap scripts | the owner ended estate-wide management; a small executable is copied, not fetched by glue |
+| projects share nothing | every project carries its own `kuu.exe` directly in its root, copied in by hand; nothing on `PATH`, no machine changes, no bootstrap scripts | the owner ended estate-wide management; a small executable is copied, not fetched by glue |
 | what a project may fetch | upstream downloads only, into its own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger fetches from the same public sources |
 | kuu's own repository | free of kuu: build and release are make, gcc, and cmd recipes; no `tasks.lua` there | self-reference is unwelcome, for release steps too |
 | releases | anafalanx/kuu public; GitHub Releases carry `kuu.exe` and its `.sha256`; signed with the owner's existing Certum certificate through the Windows SDK's signtool | the estate already signs this way, and public releases need no credentials to fetch |
@@ -54,11 +54,12 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `kuu run --dry-run`; a crash handler so kuu never dies silently; soak and stress tests on demand | 0.4 |
 | the from-PowerShell page of the manual: each cmdlet an agent reaches for, and the kuu call | 0.4 onward |
 | a version resource, Certum signing, a GitHub Release, by make; `kuu-test-project` under the released kuu | 0.4 |
-| `pty` over ConPTY with `expect`; VT processing and size on kuu's own console | 0.6 |
+| `pty` over ConPTY with `expect`; VT processing and size on kuu's own console | deferred, on a real project need |
 | `re` on PCRE2; `time`; `debug.traceback` and `debug.getinfo` only; `csv`, `ini`; the adopting page of the manual | 0.5 |
 | `reg`; `env`: the live environment and the persisted one, with the change broadcast | 0.5 |
 | `proc.list`, `proc.find`, `proc.tree`; `net.probe`, `net.listeners`, `net.resolve`, `net.addresses` | 0.5 |
-| `svc` via the Service Control Manager; `evt`, the event logs; `worker` processes; `serve`; `check` learns the palette's names | 0.6 |
+| `svc` via the Service Control Manager; `evt`, the event logs; `worker` processes; `serve`; `check` learns the palette's names | deferred, on a real project need |
+| review fixes, dependency-only tasks, duration units, Unicode archives, TLS diagnostics, process path consistency; analysis and parser fuzz gates | local 0.6 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
 
@@ -116,7 +117,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      discipline els already has in Tcl; `kuu.exe` and its `.sha256`
      published as a GitHub Release of the public repository. Done when
      `kuu-test-project` runs its tasks end to end under the released
-     `kuu.exe` copied into its `.tools`.
+     `kuu.exe` copied directly into its root.
    - Done 2026-09-09, the same day it was decided. 509 checks. The soak test
      found a handle leak on its first run and a standalone probe traced it
      to WinHTTP itself, one handle per session opened and closed; kuu now
@@ -142,30 +143,33 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      missing from the MinGW header and is resolved at run time; a megabyte
      `gsub` took a minute until PCRE2 was told the subject was already
      checked as UTF-8.
-6. **0.6, the console, control, and a real repository.** `pty`: a child on
-   a ConPTY, born in a job like every other child, its pipes overlapped on
-   the one port, no threads; `read`, `write`, `resize`, `wait`, `kill`, and
-   `expect(patterns, timeout)` against both the raw bytes and the plain
-   text a terminal would show; done when the suite drives an interactive
-   prompt and a REPL through it. One real repository converted to kuu
-   (candidate: els), its findings driving the palette. `svc` via the
-   Service Control Manager: query, start, stop, create, delete; `evt`, the event logs read
-   with filters; `worker` processes, Lua in a child kuu with JSON messages
-   over pipes on the port; `serve`, a local HTTP listener on the loop;
-   `check` learns the palette's exported names, so `fs.exist` is an error
-   before a run, still without arity.
+6. **0.6, hardening through a real repository.** Time Actual now carries
+   `kuu.exe` directly in its root and uses project-owned recipes and tools
+   for setup, build, tests, and process control. The twelve 0.5 review fixes
+   and the defects observed during that adoption define this release:
+   dependency-only tasks, the `version` command, consistent duration units,
+   Unicode archive listing and ZIP creation, process path consistency, and
+   actionable TLS diagnostics. GCC analysis and deterministic parser fuzzing
+   supplement the regression suite. See the [migration notes](upgrading-0.6.md)
+   and [observations log](shortcomings.md). These changes are local and
+   verified; signing and publication remain separate release work.
+   - The earlier console/control plan is deferred. `pty`, `svc`, `evt`,
+     `worker`, `serve`, and export-aware `check` are not implemented in 0.6.
+     Add capabilities when a consuming project demonstrates the need.
+   - The next adoption check is clean setup and recovery: missing tools,
+     interrupted downloads, damaged installations, and a moved checkout.
+     Existing build/test results do not establish those guarantees.
 7. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
    verdict.
 
-## To do: the 0.5 review
+## The 0.5 review: fixes implemented
 
 The external review of 0.5 (commit 3811edf, 2026-09-09) found the items
-below, listed in its priority order with the fix each is to get. Work on
-them was started and is parked in a git stash named "review 0.5 fixes, in
-progress" (`git stash list`); nothing here is in a release yet. Each fix
-lands with the regression test named, and the two native defects go first.
+below, listed in its priority order. All twelve fixes are implemented with
+regression tests; they are not in a release yet. The native defects were
+addressed first. The old in-progress stash is not needed.
 
 1. **`re`: a callback that matches with the same pattern clobbers the outer
    match (P1).** One match block per compiled pattern is shared by every
@@ -226,10 +230,14 @@ lands with the regression test named, and the two native defects go first.
     `%scope` in the text from `resolve` and `addresses`, accepted by
     `probe`. Test: `"fe80::1%1"` resolves to itself.
 
-After the twelve: a `make analyze` target running gcc's static analyzer
-over the host, a fuzz case feeding random bytes to the C parsers
-(durations, paths, dates, command lines) and expecting a value or an error
-and never exit 3, and a release under the next version.
+Hardening gates are implemented: `make analyze` runs GCC's static analyzer
+over every authored host C file with warnings as errors; `make fuzz` exercises
+durations, paths, dates, and command lines with fixed seeds, arbitrary bytes,
+structured mutations, round trips, and supervised child deadlines. The
+Windows command-line parser provides an independent quoting check. See
+[toolchain](toolchain.md) for replay commands. Analysis also made the error
+raiser's non-returning contract explicit and led to entry-allocation cleanup.
+Signing and publication of 0.6 remain separate release work.
 
 ## Open decisions
 
@@ -280,3 +288,14 @@ Tcl for this job. The ledger so far:
 Nothing decisive: the pattern entry, the one to watch, closed with `re`. The
 coroutine model, the byte strings, and the C API have been strengths at every
 step so far.
+
+## 0.6: fixes from real repository adoption
+
+Time Actual exposed cross-module duration units, lossy archive names, process
+path inconsistency, and task/entry friction. The local 0.6 build uses numeric
+seconds throughout, supports dependency-only tasks and `kuu version`, returns
+Unicode archive inventories, writes UTF-8 ZIP headers, normalizes process
+executable paths, and identifies client-key/proxy TLS failures. See
+[migration notes](upgrading-0.6.md) and the [observations log](shortcomings.md).
+The Tcl sandbox issue remains an execution-environment limitation. The windres
+workaround belongs to the consuming build recipe and is now documented.

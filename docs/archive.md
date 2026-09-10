@@ -1,7 +1,10 @@
 # archive
 
-Zip and tar archives, through the `tar.exe` every supported Windows ships.
-Nothing else is assumed on the machine.
+Zip and tar archives using Windows' archive components. `pack` and `unpack`
+use the system `tar.exe`. `list` uses the Unicode API in its companion
+`System32/archiveint.dll`, loaded only from the system directory; it checks
+every required entry point and fails clearly if the component is unavailable.
+No extra executable or archive library is installed.
 
 ```lua
 local archive = require("archive")
@@ -24,9 +27,21 @@ so an unpack stays under the directory you name.
 | code | meaning |
 |---|---|
 | `ARCHIVE notfound` | no archive, or no directory, at that path |
-| `ARCHIVE failed` | tar refused: not an archive, an unknown extension, a bad entry; the message is tar's own |
+| `ARCHIVE failed` | an invalid archive, unsupported format, or rejected entry; pack/unpack retain tar's diagnostic |
 | `ARCHIVE badvalue` | raised: wrong types, a negative `strip`, entries that leave the directory, an empty directory to pack |
-| `ARCHIVE timeout` | tar did not finish within `timeout` (default 30m) |
+| `ARCHIVE timeout` | the archive operation did not finish within `timeout` (default 30m) |
+| `ARCHIVE encoding` | an entry has no valid Unicode filename |
+| `ARCHIVE toobig` | listing exceeds 64 MiB of names, one million entries, or 64 MiB of encoded output |
+| `ARCHIVE oserror` | the required Windows component is unavailable |
+
+`list` returns UTF-8 names, including characters outside the system ANSI code
+page. Embedded newlines remain part of a name. Directories retain their trailing
+slash; backslashes become forward slashes to match Windows extraction semantics.
+It does not extract files or parse tar's lossy text listing. The native reader
+runs in a supervised copy of this same `kuu.exe`, so deadlines and cancellation
+terminate the reader without blocking the parent's scheduler. The internal
+`_archive` module is an implementation detail, not a supported public API.
+ZIP creation explicitly writes UTF-8 headers so names survive packing too.
 
 Fetching a prerequisite is these two capabilities together, and nothing more:
 

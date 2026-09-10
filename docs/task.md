@@ -66,8 +66,18 @@ declaring a name twice.
 | `desc` | one line for `kuu list` |
 | `deps` | names to run first, each once, in dependency order; a cycle is `TASK cycle` naming the chain, an unknown name is `TASK unknown` saying who needed it |
 | `args` | a [cli](cli.md) spec for the arguments after the task name; checked when declared, so a broken spec fails `kuu list` too |
-| `run` | `function(opts)`; `opts` is the parsed arguments, or an empty table |
+| `run` | `function(opts)`; `opts` is the parsed arguments, or an empty table; optional when `deps` is non-empty |
 | `hidden` | left out of `kuu list`; still runs by name |
+
+A task may group dependencies without doing additional work:
+
+```lua
+task "all" { deps = { "build", "test" } }
+```
+
+An aggregate follows the same planning, argument validation, failure propagation,
+and JSON reporting rules. Shared dependencies still run once. A declaration
+with neither a function nor non-empty dependencies is refused.
 
 `task.default "name"` names what `kuu run` alone runs; without it, `kuu run`
 alone lists the tasks and exits 2.

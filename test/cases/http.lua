@@ -141,4 +141,13 @@ return function(T)
   http.get(base .. "/quit")
   local exit = server:wait("5s")
   check("the fixture exits on /quit", exit and exit.status == "exit", exit and exit.status)
+  do
+    local result = proc.run {T.root .. "/build/test/http_error_fixture.exe"}
+    check("TLS client-key and proxy errors have actionable native diagnostics",
+      result and result.code == 0 and contains(result.out, "ERROR_WINHTTP_CLIENT_CERT_NO_PRIVATE_KEY")
+      and contains(result.out, "ERROR_WINHTTP_CLIENT_CERT_NO_ACCESS_PRIVATE_KEY")
+      and contains(result.out, "ERROR_WINHTTP_CLIENT_AUTH_CERT_NEEDED_PROXY")
+      and contains(result.out, "ERROR_WINHTTP_SECURE_FAILURE_PROXY"), result and result.err)
+  end
+
 end

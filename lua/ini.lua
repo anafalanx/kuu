@@ -31,13 +31,15 @@ local function unquote(v)
 end
 
 local function lines_of(text)
+  local bom = text:sub(1, 3) == "\239\187\191" and text:sub(1, 3) or ""
+  text = text:sub(#bom + 1)
   local newline = text:find("\r\n", 1, true) and "\r\n" or "\n"
   local list = {}
   local body = text
   if body:sub(-#newline) == newline then body = body:sub(1, -#newline - 1) end
-  if body == "" then return list, newline, text ~= "" end
+  if body == "" then return list, newline, text ~= "", bom end
   for line in (body .. "\n"):gmatch("(.-)\r?\n") do list[#list + 1] = line end
-  return list, newline, text:sub(-#newline) == newline
+  return list, newline, text:sub(-#newline) == newline, bom
 end
 
 local function section_of(line)
@@ -55,18 +57,28 @@ function ini.decode(text)
   if text:sub(1, 3) == "\239\187\191" then text = text:sub(4) end
   local result = { [""] = {} }
   local current = result[""]
+  local names, keys = { [""] = "" }, { [""] = {} }
+  local current_keys = keys[""]
   local lines = lines_of(text)
   for _, line in ipairs(lines) do
     local name = section_of(line)
     if name ~= nil then
-      current = result[name] or {}
-      result[name] = current
+      local canonical = names[name:lower()] or name
+      names[name:lower()] = canonical
+      current = result[canonical] or {}
+      result[canonical] = current
+      current_keys = keys[canonical] or {}
+      keys[canonical] = current_keys
     elseif not is_comment(line) then
       local key, value = line:match("^%s*(.-)%s*=%s*(.-)%s*$")
       if key == nil then
         key, value = trim(line), ""
       end
-      if key ~= "" then current[key] = unquote(value) end
+      if key ~= "" then
+        local canonical = current_keys[key:lower()] or key
+        current_keys[key:lower()] = canonical
+        current[canonical] = unquote(value)
+      end
     end
   end
   return result
@@ -79,7 +91,8 @@ local function value_text(v)
   elseif t == "number" or t == "boolean" then s = tostring(v)
   else error(err.new("INI", "badvalue", "a value must be a string, number, or boolean, not " .. t), 3) end
   if s:find("[\r\n]") then error(err.new("INI", "badvalue", "a value cannot span lines"), 3) end
-  if s ~= trim(s) or s:sub(1, 1) == ";" or s:sub(1, 1) == "#" then s = '"' .. s .. '"' end
+  if s ~= trim(s) or s:sub(1, 1) == ";" or s:sub(1, 1) == "#" or
+    (#s >= 2 and s:sub(1, 1) == '"' and s:sub(-1) == '"') then s = '"' .. s .. '"' end
   return s
 end
 
@@ -127,33 +140,30 @@ function ini.get(sections, section, key)
   return nil
 end
 
--- the line range [first, last] of a section, or nil; the header line index, or 0 for the top level
+-- All matching section ranges, in file order; duplicate sections merge.
 local function locate(lines, section)
   local wanted = (section or ""):lower()
-  local header, first, last
-  if wanted == "" then
-    header, first = 0, 1
-  end
+  local ranges, active = {}, nil
+  if wanted == "" then active = { header = 0, first = 1 } end
   for i, line in ipairs(lines) do
     local name = section_of(line)
     if name ~= nil then
-      if first ~= nil then last = i - 1 break end
-      if name:lower() == wanted then header, first = i, i + 1 end
+      if active then
+        active.last = i - 1
+        ranges[#ranges + 1] = active
+        active = nil
+      end
+      if name:lower() == wanted then active = { header = i, first = i + 1 } end
     end
   end
-  if first == nil then return nil end
-  return header, first, last or #lines
+  if active then active.last = #lines ranges[#ranges + 1] = active end
+  return ranges
 end
 
-local function key_line(lines, first, last, key)
-  for i = first, last do
-    local line = lines[i]
-    if not is_comment(line) and section_of(line) == nil then
-      local k = line:match("^%s*(.-)%s*=") or trim(line)
-      if k:lower() == key:lower() then return i end
-    end
-  end
-  return nil
+local function matches_key(line, key)
+  if is_comment(line) or section_of(line) ~= nil then return false end
+  local k = line:match("^%s*(.-)%s*=") or trim(line)
+  return k:lower() == key:lower()
 end
 
 -- ini.set(text, section, key, value) -> text
@@ -161,52 +171,60 @@ function ini.set(text, section, key, value)
   if type(text) ~= "string" then error(err.new("INI", "badvalue", "set wants the file's text"), 2) end
   if type(key) ~= "string" or key == "" or key:find("[=\r\n]") then error(err.new("INI", "badvalue", "a key must be a non-empty string without ="), 2) end
   local rendered = value_text(value)
-  local lines, newline, had_final = lines_of(text)
-  local header, first, last = locate(lines, section)
-  if header == nil then
+  local lines, newline, had_final, bom = lines_of(text)
+  local ranges = locate(lines, section)
+  if #ranges == 0 then
     -- a new section at the end
     if #lines > 0 and trim(lines[#lines]) ~= "" then lines[#lines + 1] = "" end
     lines[#lines + 1] = "[" .. section .. "]"
     lines[#lines + 1] = key .. "=" .. rendered
     had_final = true
   else
-    local at = key_line(lines, first, last, key)
+    local at
+    for k = #ranges, 1, -1 do
+      local range = ranges[k]
+      for i = range.last, range.first, -1 do
+        if matches_key(lines[i], key) then at = i break end
+      end
+      if at then break end
+    end
     if at ~= nil then
       local prefix, name, sep = lines[at]:match("^(%s*)(.-)(%s*=%s*)")
       if prefix == nil then prefix, name, sep = lines[at]:match("^(%s*)(.-)%s*$"), nil, "=" end
       lines[at] = prefix .. (name or key) .. sep .. rendered
     else
       -- after the section's last non-blank line, so blank lines before the next header stay where they are
-      local insert = last
-      while insert >= first and trim(lines[insert]) == "" do insert = insert - 1 end
+      local range = ranges[#ranges]
+      local insert = range.last
+      while insert >= range.first and trim(lines[insert]) == "" do insert = insert - 1 end
       table.insert(lines, insert + 1, key .. "=" .. rendered)
     end
   end
-  return table.concat(lines, newline) .. ((had_final or text == "") and newline or "")
+  return bom .. table.concat(lines, newline) .. ((had_final or text == bom) and newline or "")
 end
 
 -- ini.remove(text, section [, key]) -> text
 function ini.remove(text, section, key)
   if type(text) ~= "string" then error(err.new("INI", "badvalue", "remove wants the file's text"), 2) end
-  local lines, newline, had_final = lines_of(text)
-  local header, first, last = locate(lines, section)
-  if header == nil then return text end
-  if key == nil then
-    if header == 0 then
-      for _ = first, last do table.remove(lines, first) end
+  local lines, newline, had_final, bom = lines_of(text)
+  local ranges = locate(lines, section)
+  if #ranges == 0 then return text end
+  local changed = false
+  -- Remove backwards so earlier ranges keep their indices.
+  for k = #ranges, 1, -1 do
+    local range = ranges[k]
+    if key == nil then
+      local first = range.header == 0 and range.first or range.header
+      for i = range.last, first, -1 do table.remove(lines, i) changed = true end
     else
-      -- the header, its lines, and one blank line before the next section
-      local stop = last
-      for _ = header, stop do table.remove(lines, header) end
-      while lines[header] ~= nil and trim(lines[header]) == "" and header > 1 and trim(lines[header - 1]) == "" do table.remove(lines, header) end
+      for i = range.last, range.first, -1 do
+        if matches_key(lines[i], key) then table.remove(lines, i) changed = true end
+      end
     end
-  else
-    local at = key_line(lines, first, last, key)
-    if at == nil then return text end
-    table.remove(lines, at)
   end
-  if #lines == 0 then return "" end
-  return table.concat(lines, newline) .. (had_final and newline or "")
+  if not changed then return text end
+  if #lines == 0 then return bom end
+  return bom .. table.concat(lines, newline) .. (had_final and newline or "")
 end
 
 return ini

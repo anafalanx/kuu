@@ -1,6 +1,6 @@
 -- reg.lua -- the registry, typed, under a key of our own in HKCU.
 global none
-global <const> require, ipairs, tostring, tonumber, type, string, pcall, math, select, table
+global <const> require, ipairs, tostring, tonumber, type, string, pcall, math, select, table, pairs
 
 return function(T)
   local check = T.check
@@ -65,6 +65,48 @@ return function(T)
   end
   local build = reg.get("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "CurrentBuild")
   check("reading a system key agrees with sys.info", tonumber(build) == sys.info().windows.build, tostring(build))
+
+  do
+    local calls = {
+      function() return reg.get(base .. "\0ignored", "s") end,
+      function() return reg.set(base .. "\0ignored", "s", "changed") end,
+      function() return reg.create(base .. "\0ignored") end,
+      function() return reg.exists(base .. "\0ignored") end,
+      function() return reg.keys(base .. "\0ignored") end,
+      function() return reg.values(base .. "\0ignored") end,
+      function() return reg.remove(base .. "\0ignored") end,
+      function() return reg.get(base, "s\0ignored") end,
+      function() return reg.set(base, "s\0ignored", "changed") end,
+      function() return reg.delete(base, "s\0ignored") end,
+      function() return reg.set(base, "nul", "before\0after") end,
+      function() return reg.set(base, "nul", "before\0after", "expandstring") end,
+      function() return reg.set(base, "nul", { "before\0after" }) end,
+    }
+    for i, call in ipairs(calls) do
+      local ok, e = pcall(call)
+      check("registry native text refuses NUL, case " .. i, not ok and err.is(e, "REG", "badvalue"), tostring(e))
+    end
+    check("refused NUL arguments leave the real key intact", reg.exists(base) and reg.get(base, "d") == 42)
+    check("an empty registry string is still an empty string", reg.set(base, "empty", "") and reg.get(base, "empty") == "")
+    local proc = require "proc"
+    local r = proc.run { T.root .. "/build/test/reg_fixture.exe", base:sub(6) }
+    check("the fixture writes malformed registry text", r and r.code == 0, r and T.describe(r))
+    local expected = {
+      bad_string = { "string", string.pack("<I2I2", 0xd800, 0) },
+      bad_expand = { "expandstring", string.pack("<I2I2", 0xdc00, 0) },
+      bad_multi = { "multistring", string.pack("<I2I2I2I2I2", 97, 0, 0xd800, 0, 0) },
+      odd_string = { "string", "A" },
+    }
+    local entries = {}
+    for _, entry in ipairs(reg.values(base)) do entries[entry.name] = entry end
+    for name, want in pairs(expected) do
+      local value, e = reg.get(base, name)
+      check("get refuses malformed UTF-16: " .. name, value == nil and err.is(e, "REG", "encoding"), tostring(e))
+      local entry = entries[name]
+      check("values preserves malformed bytes and the type: " .. name,
+        entry and entry.type == want[1] and entry.value == nil and entry.bytes == want[2])
+    end
+  end
   check("remove deletes the tree", reg.remove(base) == true and reg.exists(base) == false and reg.exists(base .. "\\sub") == false)
   reg.remove("HKCU\\Software\\kuu-test-suite")
 end

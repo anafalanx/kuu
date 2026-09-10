@@ -5,6 +5,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define KU_ERR_META "kuu.err"
@@ -69,14 +70,15 @@ int ku_err_fail(lua_State *L, const char *domain, const char *code,
     return 2;
 }
 
-int ku_err_raise(lua_State *L, const char *domain, const char *code,
+[[noreturn]] int ku_err_raise(lua_State *L, const char *domain, const char *code,
                  const char *format, ...)
 {
     va_list args;
     va_start(args, format);
     push_err_v(L, domain, code, format, args);
     va_end(args);
-    return lua_error(L);
+    lua_error(L);
+    abort(); /* Lua never returns; keep the contract explicit to the compiler. */
 }
 
 /* err.new(domain, code, message [, extra]) */

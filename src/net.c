@@ -59,7 +59,18 @@ static const char *address_text(const struct sockaddr *sa, char *out, size_t cap
         return inet_ntop(AF_INET, &((const struct sockaddr_in *)sa)->sin_addr, out, cap);
     }
     if (sa->sa_family == AF_INET6) {
-        return inet_ntop(AF_INET6, &((const struct sockaddr_in6 *)sa)->sin6_addr, out, cap);
+        const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)sa;
+        if (inet_ntop(AF_INET6, &in6->sin6_addr, out, cap) == NULL) {
+            return NULL;
+        }
+        if (in6->sin6_scope_id != 0) {
+            size_t used = strlen(out);
+            int n = snprintf(out + used, cap - used, "%%%lu", (unsigned long)in6->sin6_scope_id);
+            if (n < 0 || (size_t)n >= cap - used) {
+                return NULL;
+            }
+        }
+        return out;
     }
     return NULL;
 }
@@ -208,7 +219,7 @@ static void resolve_timeout(ku_waiter *w)
 /* net.resolve(name [, timeout]) */
 static int l_net_resolve(lua_State *L)
 {
-    const char *name = luaL_checkstring(L, 1);
+    const char *name = ku_check_cstring(L, 1, "NET", "host name");
     int64_t timeout_ms = 0;
     optional_timeout(L, 2, &timeout_ms, "resolve");
     if (name[0] == '\0') {
@@ -337,10 +348,42 @@ static int probe_push(lua_State *L, ku_waiter *w)
     return fail_connect(L, outcome);
 }
 
+/* inet_pton parses the address only.  A numeric scope identifies the
+ * interface for link-local IPv6 and must reach ConnectEx unchanged. */
+static int parse_ipv6(const char *text, struct sockaddr_in6 *in6)
+{
+    const char *percent = strchr(text, '%');
+    char address[INET6_ADDRSTRLEN];
+    if (percent == NULL) {
+        return inet_pton(AF_INET6, text, &in6->sin6_addr) == 1;
+    }
+    size_t n = (size_t)(percent - text);
+    if (n == 0 || n >= sizeof address || percent[1] == '\0') {
+        return 0;
+    }
+    memcpy(address, text, n);
+    address[n] = '\0';
+    uint64_t scope = 0;
+    for (const char *p = percent + 1; *p != '\0'; p++) {
+        if (*p < '0' || *p > '9') {
+            return 0;
+        }
+        scope = scope * 10 + (unsigned)(*p - '0');
+        if (scope > UINT32_MAX) {
+            return 0;
+        }
+    }
+    if (inet_pton(AF_INET6, address, &in6->sin6_addr) != 1) {
+        return 0;
+    }
+    in6->sin6_scope_id = (ULONG)scope;
+    return 1;
+}
+
 /* net.probe(address, port [, timeout]) -- the C half; lua/net/probe.lua resolves names */
 static int l_net_probe(lua_State *L)
 {
-    const char *address = luaL_checkstring(L, 1);
+    const char *address = ku_check_cstring(L, 1, "NET", "address");
     lua_Integer port = luaL_checkinteger(L, 2);
     if (port < 1 || port > 65535) {
         return ku_err_raise(L, "NET", "badvalue", "the port must be 1 to 65535");
@@ -358,7 +401,7 @@ static int l_net_probe(lua_State *L)
         in4->sin_port = htons((unsigned short)port);
         ((struct sockaddr_in *)&local)->sin_family = AF_INET;
         length = sizeof *in4;
-    } else if (inet_pton(AF_INET6, address, &in6->sin6_addr) == 1) {
+    } else if (parse_ipv6(address, in6)) {
         in6->sin6_family = AF_INET6;
         in6->sin6_port = htons((unsigned short)port);
         ((struct sockaddr_in6 *)&local)->sin6_family = AF_INET6;

@@ -5,7 +5,7 @@
  *   kuu FILE [arg ...]        run a program file
  *   kuu - [arg ...]           run a program read from standard input
  *   kuu -e SCRIPT [arg ...]   run an inline script
- *   kuu --version | --help
+ *   kuu version | --version | --help
  *
  * The program runs inside a coroutine the host creates.  In this milestone
  * nothing waits, so a yield reaching the host is an error; from the scheduler
@@ -48,7 +48,7 @@ static void usage(FILE *to)
           "       kuu run [TASK [arg ...]]  run a task from the nearest tasks.lua\n"
           "       kuu list [--json]         list those tasks\n"
           "       kuu check [--json] [PATH ...]   parse, global declarations, requires\n"
-          "       kuu --version | --help\n",
+          "       kuu version | --version | --help\n",
           to);
 }
 
@@ -353,6 +353,145 @@ static LONG WINAPI crash_filter(EXCEPTION_POINTERS *info)
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
+/* Routes borrow argv; their early returns cannot leak its conversion. */
+static int run_entry(int argc, wchar_t **argv, char **words)
+{
+    const char *first = words[1];
+    if (strcmp(first, "--version") == 0 || strcmp(first, "version") == 0) {
+        if (argc != 2) return usage_fail("version takes no arguments; use ./version to run a file");
+        printf("%s %s (%s)\n", KUU_NAME, KUU_VERSION, LUA_RELEASE);
+        return KUU_EXIT_OK;
+    }
+    if (strcmp(first, "--help") == 0) {
+        usage(stdout);
+        return KUU_EXIT_OK;
+    }
+    if (strcmp(first, "docs") == 0) {
+        return docs_route(argc - 2, (const char *const *)(words + 2));
+    }
+    if (strcmp(first, "--crash-test") == 0) {
+        /* The crash handler's own test: a real access violation, raised. */
+        RaiseException(EXCEPTION_ACCESS_VIOLATION, EXCEPTION_NONCONTINUABLE, 0, NULL);
+        return KUU_EXIT_ENTRY;
+    }
+    /* Verbs are Lua programs carried in the payload under lua/cmd; they run
+     * like any program, with the arguments after the verb. */
+    char verb_name[128];
+    if (first[0] != '-' && strlen(first) < 100) {
+        snprintf(verb_name, sizeof verb_name, "lua/cmd/%s.lua", first);
+        const ku_payload_entry *verb = ku_payload_find(verb_name);
+        if (verb != NULL) {
+            ku_launch launch;
+            memset(&launch, 0, sizeof launch);
+            launch.exe = executable_path_utf8();
+            launch.route = "cmd";
+            launch.program = first;
+            launch.root = current_directory_utf8();
+            launch.argc = argc - 2;
+            launch.argv = (const char *const *)(words + 2);
+            if (launch.exe == NULL || launch.root == NULL) {
+                fprintf(stderr, "%s: ENTRY oserror: cannot determine the executable or current directory\n", KUU_NAME);
+                free((void *)launch.exe);
+                free((void *)launch.root);
+                return KUU_EXIT_ENTRY;
+            }
+            ku_program program;
+            program.owned = NULL;
+            program.text = (const char *)verb->bytes;
+            program.length = verb->length;
+            char chunkname[160];
+            snprintf(chunkname, sizeof chunkname, "=kuu/%s", verb_name);
+            int exit_code = run_program(&launch, &program, chunkname);
+            free((void *)launch.exe);
+            free((void *)launch.root);
+            return exit_code;
+        }
+    }
+
+    ku_launch launch;
+    memset(&launch, 0, sizeof launch);
+    launch.exe = executable_path_utf8();
+    if (launch.exe == NULL) {
+        fprintf(stderr, "%s: ENTRY oserror: cannot determine the executable path\n", KUU_NAME);
+        return KUU_EXIT_ENTRY;
+    }
+
+    ku_program program = {0};
+    ku_fail fail;
+    const char *chunkname;
+    char *owned_chunkname = NULL;
+    int exit_code = KUU_EXIT_ENTRY;
+    if (strcmp(first, "-e") == 0) {
+        if (argc < 3) {
+            exit_code = usage_fail("-e needs a script: kuu -e SCRIPT [arg ...]");
+            goto done;
+        }
+        launch.route = "eval";
+        launch.root = current_directory_utf8();
+        launch.argc = argc - 3;
+        launch.argv = (const char *const *)(words + 3);
+        size_t length = strlen(words[2]);
+        unsigned char *bytes = (unsigned char *)malloc(length > 0 ? length : 1);
+        if (bytes == NULL) {
+            fprintf(stderr, "%s: ENTRY oserror: out of memory\n", KUU_NAME);
+            goto done;
+        }
+        memcpy(bytes, words[2], length);
+        if (ku_program_from_bytes(bytes, length, "the inline script", &program, &fail) != 0) {
+            exit_code = report_fail(&fail);
+            goto done;
+        }
+        chunkname = "=(command line)";
+    } else if (strcmp(first, "-") == 0) {
+        launch.route = "stdin";
+        launch.root = current_directory_utf8();
+        launch.argc = argc - 2;
+        launch.argv = (const char *const *)(words + 2);
+        if (ku_program_read_stdin(&program, &fail) != 0) {
+            exit_code = report_fail(&fail);
+            goto done;
+        }
+        chunkname = "=stdin";
+    } else if (first[0] == '-') {
+        char message[256];
+        snprintf(message, sizeof message, "unknown option '%s'", first);
+        exit_code = usage_fail(message);
+        goto done;
+    } else {
+        launch.route = "file";
+        launch.program = first;
+        launch.root = program_directory_utf8(argv[1]);
+        launch.argc = argc - 2;
+        launch.argv = (const char *const *)(words + 2);
+        char what[KU_PROGRAM_WHAT_MAX];
+        snprintf(what, sizeof what, "program file '%s'", first);
+        if (ku_program_read_file(argv[1], what, &program, &fail) != 0) {
+            exit_code = report_fail(&fail);
+            goto done;
+        }
+        size_t length = strlen(first) + 2;
+        char *name = (char *)malloc(length);
+        if (name == NULL) {
+            fprintf(stderr, "%s: ENTRY oserror: out of memory\n", KUU_NAME);
+            goto done;
+        }
+        snprintf(name, length, "@%s", first);
+        chunkname = name;
+        owned_chunkname = name;
+    }
+    if (launch.root == NULL) {
+        fprintf(stderr, "%s: ENTRY oserror: cannot determine the program directory\n", KUU_NAME);
+        goto done;
+    }
+    exit_code = run_program(&launch, &program, chunkname);
+done:
+    free(owned_chunkname);
+    ku_program_free(&program);
+    free((void *)launch.exe);
+    free((void *)launch.root);
+    return exit_code;
+}
+
 int wmain(int argc, wchar_t **argv)
 {
     /* No dialog ever: an agent cannot click.  The crash filter reports and
@@ -386,124 +525,14 @@ int wmain(int argc, wchar_t **argv)
         if (words[i] == NULL) {
             fprintf(stderr, "%s: ENTRY encoding: argument %d is not valid UTF-16\n",
                     KUU_NAME, i);
+            for (int j = 1; j < i; j++) free(words[j]);
+            free(words);
             return KUU_EXIT_ENTRY;
         }
     }
 
-    const char *first = words[1];
-    if (strcmp(first, "--version") == 0) {
-        printf("%s %s (%s)\n", KUU_NAME, KUU_VERSION, LUA_RELEASE);
-        return KUU_EXIT_OK;
-    }
-    if (strcmp(first, "--help") == 0) {
-        usage(stdout);
-        return KUU_EXIT_OK;
-    }
-    if (strcmp(first, "docs") == 0) {
-        return docs_route(argc - 2, (const char *const *)(words + 2));
-    }
-    if (strcmp(first, "--crash-test") == 0) {
-        /* The crash handler's own test: a real access violation, raised. */
-        RaiseException(EXCEPTION_ACCESS_VIOLATION, EXCEPTION_NONCONTINUABLE, 0, NULL);
-        return KUU_EXIT_ENTRY;
-    }
-    /* Verbs are Lua programs carried in the payload under lua/cmd; they run
-     * like any program, with the arguments after the verb. */
-    char verb_name[128];
-    if (first[0] != '-' && strlen(first) < 100) {
-        snprintf(verb_name, sizeof verb_name, "lua/cmd/%s.lua", first);
-        const ku_payload_entry *verb = ku_payload_find(verb_name);
-        if (verb != NULL) {
-            ku_launch launch;
-            memset(&launch, 0, sizeof launch);
-            launch.exe = executable_path_utf8();
-            launch.route = "cmd";
-            launch.program = first;
-            launch.root = current_directory_utf8();
-            launch.argc = argc - 2;
-            launch.argv = (const char *const *)(words + 2);
-            if (launch.exe == NULL || launch.root == NULL) {
-                fprintf(stderr, "%s: ENTRY oserror: cannot determine the executable or current directory\n", KUU_NAME);
-                return KUU_EXIT_ENTRY;
-            }
-            ku_program program;
-            program.owned = NULL;
-            program.text = (const char *)verb->bytes;
-            program.length = verb->length;
-            char chunkname[160];
-            snprintf(chunkname, sizeof chunkname, "=kuu/%s", verb_name);
-            return run_program(&launch, &program, chunkname);
-        }
-    }
-
-    ku_launch launch;
-    memset(&launch, 0, sizeof launch);
-    launch.exe = executable_path_utf8();
-    if (launch.exe == NULL) {
-        fprintf(stderr, "%s: ENTRY oserror: cannot determine the executable path\n", KUU_NAME);
-        return KUU_EXIT_ENTRY;
-    }
-
-    ku_program program;
-    ku_fail fail;
-    const char *chunkname;
-    if (strcmp(first, "-e") == 0) {
-        if (argc < 3) {
-            return usage_fail("-e needs a script: kuu -e SCRIPT [arg ...]");
-        }
-        launch.route = "eval";
-        launch.root = current_directory_utf8();
-        launch.argc = argc - 3;
-        launch.argv = (const char *const *)(words + 3);
-        size_t length = strlen(words[2]);
-        unsigned char *bytes = (unsigned char *)malloc(length > 0 ? length : 1);
-        if (bytes == NULL) {
-            fprintf(stderr, "%s: ENTRY oserror: out of memory\n", KUU_NAME);
-            return KUU_EXIT_ENTRY;
-        }
-        memcpy(bytes, words[2], length);
-        if (ku_program_from_bytes(bytes, length, "the inline script", &program, &fail) != 0) {
-            return report_fail(&fail);
-        }
-        chunkname = "=(command line)";
-    } else if (strcmp(first, "-") == 0) {
-        launch.route = "stdin";
-        launch.root = current_directory_utf8();
-        launch.argc = argc - 2;
-        launch.argv = (const char *const *)(words + 2);
-        if (ku_program_read_stdin(&program, &fail) != 0) {
-            return report_fail(&fail);
-        }
-        chunkname = "=stdin";
-    } else if (first[0] == '-') {
-        char message[256];
-        snprintf(message, sizeof message, "unknown option '%s'", first);
-        return usage_fail(message);
-    } else {
-        launch.route = "file";
-        launch.program = first;
-        launch.root = program_directory_utf8(argv[1]);
-        launch.argc = argc - 2;
-        launch.argv = (const char *const *)(words + 2);
-        char what[KU_PROGRAM_WHAT_MAX];
-        snprintf(what, sizeof what, "program file '%s'", first);
-        if (ku_program_read_file(argv[1], what, &program, &fail) != 0) {
-            return report_fail(&fail);
-        }
-        size_t length = strlen(first) + 2;
-        char *name = (char *)malloc(length);
-        if (name == NULL) {
-            fprintf(stderr, "%s: ENTRY oserror: out of memory\n", KUU_NAME);
-            return KUU_EXIT_ENTRY;
-        }
-        snprintf(name, length, "@%s", first);
-        chunkname = name;
-    }
-    if (launch.root == NULL) {
-        fprintf(stderr, "%s: ENTRY oserror: cannot determine the program directory\n", KUU_NAME);
-        return KUU_EXIT_ENTRY;
-    }
-    int exit_code = run_program(&launch, &program, chunkname);
-    ku_program_free(&program);
+    int exit_code = run_entry(argc, argv, words);
+    for (int i = 1; i < argc; i++) free(words[i]);
+    free(words);
     return exit_code;
 }

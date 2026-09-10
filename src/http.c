@@ -18,6 +18,7 @@
  * in something that matters.  HTTP status codes are results, never errors.
  */
 #include "err.h"
+#include "http_error.h"
 #include "fspath.h"
 #include "loop.h"
 #include "values.h"
@@ -106,9 +107,7 @@ static void worker_fail(http_request *q, const char *code, const char *what, DWO
         return;
     }
     q->code = code;
-    char *text = ku_win_error_message(error);
-    snprintf(q->message, sizeof q->message, "%s: %s (error %lu)", what, text != NULL ? text : "", (unsigned long)error);
-    free(text);
+    ku_http_error_message(q->message, sizeof q->message, what, error);
 }
 
 /* Take the request handle away from whoever else might close it. */
@@ -117,34 +116,6 @@ static HINTERNET take_request(http_request *q)
     return (HINTERNET)InterlockedExchangePointer(&q->cancel_handle, NULL);
 }
 
-static const char *code_for(DWORD error)
-{
-    switch (error) {
-    case ERROR_WINHTTP_TIMEOUT:
-        return "timeout";
-    case ERROR_WINHTTP_NAME_NOT_RESOLVED:
-        return "notfound";
-    case ERROR_WINHTTP_CANNOT_CONNECT:
-    case ERROR_WINHTTP_CONNECTION_ERROR:
-        return "connect";
-    case ERROR_WINHTTP_SECURE_FAILURE:
-    case ERROR_WINHTTP_SECURE_CERT_CN_INVALID:
-    case ERROR_WINHTTP_SECURE_CERT_DATE_INVALID:
-    case ERROR_WINHTTP_SECURE_INVALID_CA:
-    case ERROR_WINHTTP_SECURE_INVALID_CERT:
-    case ERROR_WINHTTP_SECURE_CERT_REV_FAILED:
-    case ERROR_WINHTTP_SECURE_CERT_REVOKED:
-    case ERROR_WINHTTP_SECURE_CERT_WRONG_USAGE:
-    case ERROR_WINHTTP_SECURE_CHANNEL_ERROR:
-    case ERROR_WINHTTP_CLIENT_AUTH_CERT_NEEDED:
-        return "tls";
-    case ERROR_WINHTTP_INVALID_URL:
-    case ERROR_WINHTTP_UNRECOGNIZED_SCHEME:
-        return "badvalue";
-    default:
-        return "oserror";
-    }
-}
 
 static int append_data(http_request *q, const unsigned char *bytes, DWORD n)
 {
@@ -228,13 +199,13 @@ static DWORD WINAPI http_worker(LPVOID arg)
     DWORD response_timeout = q->timeout_ms;
     connection = WinHttpConnect(session, q->host, q->port, 0);
     if (connection == NULL) {
-        worker_fail(q, code_for(GetLastError()), "cannot connect", GetLastError());
+        worker_fail(q, ku_http_error_code(GetLastError()), "cannot connect", GetLastError());
         goto done;
     }
     request = WinHttpOpenRequest(connection, q->method, q->path, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
                                  q->secure ? WINHTTP_FLAG_SECURE : 0);
     if (request == NULL) {
-        worker_fail(q, code_for(GetLastError()), "cannot open the request", GetLastError());
+        worker_fail(q, ku_http_error_code(GetLastError()), "cannot open the request", GetLastError());
         goto done;
     }
     /* Every phase gets the timeout, on the request since the session is
@@ -264,11 +235,11 @@ static DWORD WINAPI http_worker(LPVOID arg)
     if (!WinHttpSendRequest(request, q->headers != NULL ? q->headers : WINHTTP_NO_ADDITIONAL_HEADERS,
                             q->headers != NULL ? (DWORD)-1 : 0, q->body_len > 0 ? q->body : WINHTTP_NO_REQUEST_DATA,
                             (DWORD)q->body_len, (DWORD)q->body_len, 0)) {
-        worker_fail(q, code_for(GetLastError()), "the request failed", GetLastError());
+        worker_fail(q, ku_http_error_code(GetLastError()), "the request failed", GetLastError());
         goto done;
     }
     if (!WinHttpReceiveResponse(request, NULL)) {
-        worker_fail(q, code_for(GetLastError()), "no response", GetLastError());
+        worker_fail(q, ku_http_error_code(GetLastError()), "no response", GetLastError());
         goto done;
     }
     DWORD status = 0, size = sizeof status;
@@ -316,7 +287,7 @@ static DWORD WINAPI http_worker(LPVOID arg)
     for (;;) {
         DWORD available = 0;
         if (!WinHttpQueryDataAvailable(request, &available)) {
-            worker_fail(q, code_for(GetLastError()), "the body stopped", GetLastError());
+            worker_fail(q, ku_http_error_code(GetLastError()), "the body stopped", GetLastError());
             goto done;
         }
         if (available == 0) {
@@ -325,7 +296,7 @@ static DWORD WINAPI http_worker(LPVOID arg)
         DWORD want = available > KU_HTTP_CHUNK ? KU_HTTP_CHUNK : available;
         DWORD got = 0;
         if (!WinHttpReadData(request, chunk, want, &got)) {
-            worker_fail(q, code_for(GetLastError()), "the body stopped", GetLastError());
+            worker_fail(q, ku_http_error_code(GetLastError()), "the body stopped", GetLastError());
             goto done;
         }
         if (got == 0) {

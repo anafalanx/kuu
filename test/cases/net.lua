@@ -92,4 +92,17 @@ return function(T)
   check("addresses includes the IPv4 loopback marked as such; each has adapter, prefix, up",
     loopback4 and type(addresses[1].adapter) == "string" and math.type(addresses[1].prefix) == "integer" and type(addresses[1].up) == "boolean",
     tostring(#addresses))
+  do
+    local ok, e = pcall(net.resolve, "localhost\0ignored")
+    check("resolve refuses a NUL in the name", not ok and err.is(e, "NET", "badvalue"), tostring(e))
+    ok, e = pcall(net.probe, "127.0.0.1\0ignored", 80)
+    check("probe refuses a NUL in the host", not ok and err.is(e, "NET", "badvalue"), tostring(e))
+    local scoped, se = net.resolve("fe80::1%1")
+    check("resolving a scoped IPv6 literal preserves its interface",
+      scoped and #scoped == 1 and scoped[1].family == "ipv6" and scoped[1].address == "fe80::1%1", tostring(se or (scoped and scoped[1].address)))
+    local accepted, result, failure = pcall(net.probe, "fe80::1%1", 1, "100ms")
+    check("probe accepts scoped IPv6 and returns a network outcome",
+      accepted and (result ~= nil or err.is(failure, "NET", "timeout") or err.is(failure, "NET", "unreachable") or err.is(failure, "NET", "refused")), tostring(failure or result))
+  end
+
 end

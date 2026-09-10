@@ -20,6 +20,7 @@
  */
 #include "err.h"
 #include "state.h"
+#include "values.h"
 #include "wintext.h"
 
 #include "lauxlib.h"
@@ -31,9 +32,8 @@
 
 static wchar_t *checked_name(lua_State *L, int idx)
 {
-    size_t length = 0;
-    const char *name = luaL_checklstring(L, idx, &length);
-    if (length == 0 || strchr(name, '=') != NULL) {
+    const char *name = ku_check_cstring(L, idx, "ENV", "variable name");
+    if (name[0] == '\0' || strchr(name, '=') != NULL) {
         ku_err_raise(L, "ENV", "badvalue", "a variable name is non-empty and has no =");
     }
     wchar_t *wide = ku_utf8_to_wide(name);
@@ -47,23 +47,9 @@ static wchar_t *checked_name(lua_State *L, int idx)
 static int l_env_get(lua_State *L)
 {
     wchar_t *name = checked_name(L, 1);
-    DWORD need = GetEnvironmentVariableW(name, NULL, 0);
-    if (need == 0) {
-        free(name);
-        lua_pushnil(L);
-        return 1;
-    }
-    wchar_t *value = (wchar_t *)malloc((size_t)need * sizeof(wchar_t));
-    if (value == NULL || GetEnvironmentVariableW(name, value, need) == 0) {
-        free(name);
-        free(value);
-        lua_pushnil(L);
-        return 1;
-    }
+    char *utf8 = ku_getenv_utf8(name);
     free(name);
-    char *utf8 = ku_wide_to_utf8(value, -1);
-    free(value);
-    lua_pushstring(L, utf8 != NULL ? utf8 : "");
+    lua_pushstring(L, utf8);
     free(utf8);
     return 1;
 }
@@ -71,19 +57,18 @@ static int l_env_get(lua_State *L)
 /* env.set(name, value) */
 static int l_env_set(lua_State *L)
 {
-    wchar_t *name = checked_name(L, 1);
-    wchar_t *value = NULL;
+    const char *text = NULL;
     if (!lua_isnoneornil(L, 2) && !(lua_isboolean(L, 2) && !lua_toboolean(L, 2))) {
-        const char *text = lua_tostring(L, 2);
-        if (text == NULL) {
-            free(name);
+        if (!lua_isstring(L, 2)) {
             return ku_err_raise(L, "ENV", "badvalue", "a value is a string, or nil to remove");
         }
-        value = ku_utf8_to_wide(text);
-        if (value == NULL) {
-            free(name);
-            return ku_err_raise(L, "ENV", "badvalue", "the value is not valid UTF-8");
-        }
+        text = ku_check_cstring(L, 2, "ENV", "value");
+    }
+    wchar_t *name = checked_name(L, 1);
+    wchar_t *value = text != NULL ? ku_utf8_to_wide(text) : NULL;
+    if (text != NULL && value == NULL) {
+        free(name);
+        return ku_err_raise(L, "ENV", "badvalue", "the value is not valid UTF-8");
     }
     BOOL ok = SetEnvironmentVariableW(name, value);
     DWORD error = ok ? 0 : GetLastError();
@@ -131,7 +116,7 @@ static int l_env_all(lua_State *L)
 /* env.expand(text) */
 static int l_env_expand(lua_State *L)
 {
-    const char *text = luaL_checkstring(L, 1);
+    const char *text = ku_check_cstring(L, 1, "ENV", "text");
     wchar_t *wide = ku_utf8_to_wide(text);
     if (wide == NULL) {
         return ku_err_raise(L, "ENV", "badvalue", "the text is not valid UTF-8");
@@ -159,7 +144,7 @@ static const wchar_t *USER_KEY = L"Environment";
 /* the root and path for `scope` at `idx`; raises ENV badvalue */
 static HKEY scope_key(lua_State *L, int idx, const wchar_t **path)
 {
-    const char *scope = luaL_optstring(L, idx, "user");
+    const char *scope = lua_isnoneornil(L, idx) ? "user" : ku_check_cstring(L, idx, "ENV", "scope");
     if (strcmp(scope, "user") == 0) {
         *path = USER_KEY;
         return HKEY_CURRENT_USER;
@@ -230,7 +215,7 @@ static int l_env_persisted(lua_State *L)
 /* env.persist(name, value [, scope]) */
 static int l_env_persist(lua_State *L)
 {
-    const char *text = luaL_checkstring(L, 2);
+    const char *text = ku_check_cstring(L, 2, "ENV", "value");
     const wchar_t *path = NULL;
     HKEY root = scope_key(L, 3, &path);
     wchar_t *name = checked_name(L, 1);

@@ -12,12 +12,12 @@ return function(sync)
   -- sync.lock(name [, timeout]) -> lock | nil, err (SYNC busy after the timeout, default 30s)
   --   local lock <close> = assert(sync.lock("deploy", "10s"))
   function sync.lock(name, timeout)
-    local ms = 30000
+    local seconds = 30
     if timeout ~= nil then
-      ms = cli.duration(timeout)
-      if ms == nil then error(err.new("SYNC", "badvalue", "the timeout must be a duration such as \"10s\""), 2) end
+      seconds = cli.duration(timeout)
+      if seconds == nil then error(err.new("SYNC", "badvalue", "the timeout must be a duration such as \"10s\""), 2) end
     end
-    local deadline = sched.clock() + ms / 1000
+    local deadline = sched.clock() + seconds
     local pause = 1
     while true do
       local lock, e = sync.try(name)

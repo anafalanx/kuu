@@ -31,7 +31,8 @@ file with `fs.read`, edit, write it back with `fs.write`.
 - A line without `=` is a key with an empty value.
 - There are no inline comments: everything after `=` is the value, a `;`
   included, which is what Windows does too.
-- Duplicate keys: the last wins. Duplicate sections merge.
+- Duplicate keys: the last wins. Duplicate sections merge, ignoring case
+  and keeping the first spelling of each section and key in the table.
 - Values are strings; numbers and booleans given to `encode` or `set` are
   written with `tostring`.
 
@@ -42,12 +43,14 @@ ini.set(text, section, key, value)   -- text
 ini.remove(text, section [, key])    -- text
 ```
 
-`set` replaces the value on an existing key's line, keeping the key's own
+`set` replaces the last occurrence of an existing key across all matching
+sections, keeping the key's own
 spelling and the spacing around `=`; adds a missing key after the last
 line of its section, before the blank lines that precede the next header;
 appends a missing section at the end. `section` `""` means the top level.
-`remove` drops one key, or the whole section with its header when `key` is
-nil, and returns the text unchanged when there is nothing to remove.
+`remove` drops every occurrence of the key in matching sections, or every
+matching section with its header when `key` is nil. It returns the text
+unchanged when there is nothing to remove. Both edits preserve a UTF-8 BOM.
 
 ## Errors
 

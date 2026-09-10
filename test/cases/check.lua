@@ -65,4 +65,17 @@ return function(T)
     and #report.warnings == 1 and report.warnings[1].line == 3, tostring(report.warnings[1] and report.warnings[1].message))
   report = checker.file(project .. "/missing.lua", project)
   check("check.file on a missing file is one error", #report.errors == 1 and contains(report.errors[1].message, "FS notfound"))
+  do
+    local manual = fs.read(T.root .. "/docs/adopting.md")
+    local example = manual:match("```lua\r?\n(.-)\r?\n```")
+    check("the adopting page contains its Lua example", example ~= nil)
+    if example then
+      local path = fs.absolute(T.work .. "/adopting-example.lua")
+      fs.write(path, example)
+      local r = T.kuu { "check", path }
+      check("the adopting example passes kuu check without running setup",
+        r.code == 0 and contains(r.err, "0 errors, 0 warnings"), T.describe(r))
+    end
+  end
+
 end

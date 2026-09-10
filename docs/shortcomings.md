@@ -1,0 +1,185 @@
+# Shortcomings observed in real use
+
+Findings from adopting Kuu in real repositories. Record the trigger, impact,
+workaround, and verification status. A limitation or rough edge is not
+necessarily a runtime defect; fixes should follow reproduced evidence.
+
+## Time Actual adoption — 2026-09-10
+
+The local 0.6 implementation addresses seven runtime/API findings below. The
+Tcl sandbox limitation remains external; the windres recipe issue is resolved
+in Time Actual. Original observations and 0.5 workarounds are retained for context.
+
+### `kuu version` executes a repository's VERSION file
+
+- **Kind:** command-line diagnostic / discoverability.
+- **Observed:** in Time Actual, `kuu.exe version` resolves the case-insensitive
+  `VERSION` filename and reports `version:1: unexpected symbol near '0.58'`.
+- **Impact:** an intuitive version query produces an unrelated Lua parse error.
+- **Workaround:** use `kuu.exe --version`.
+- **Status:** Fixed in local 0.6. `version` is a reserved verb; `./version` still
+  executes a file. Both version forms reject extra arguments.
+
+### Dependency-only tasks require an empty function
+
+- **Kind:** task declaration friction.
+- **Observed:** declaring `test` with `deps` but no `run` passes `kuu check`,
+  then `kuu list` fails with `TASK badvalue: task 'test' needs a run function`.
+- **Impact:** aggregate tasks need boilerplate, and syntax checking alone
+  does not validate declarations.
+- **Workaround:** add `run = function() end`; run `kuu list` as well as `check`.
+- **Status:** Fixed in local 0.6. A task with non-empty dependencies may omit `run`;
+  cycles, failure propagation, argument checks, and JSON plans still apply.
+
+### Restricted networking produces an opaque WinHTTP error
+
+- **Kind:** error diagnostics / execution environment.
+- **Observed:** upstream HTTPS requests inside the agent's restricted sandbox
+  returned `HTTP oserror: ... Windows error 12185`. The same requests succeeded
+  with network permission, with no runtime or URL change.
+- **Impact:** the message gives little guidance about the network/proxy context.
+- **Diagnosis:** Windows defines 12185 as a client-certificate context without
+  an associated private key. The different execution contexts explain the
+  observed success/failure difference; the number alone does not prove a ban.
+  See [Microsoft's error reference](https://learn.microsoft.com/en-us/windows/win32/winhttp/error-messages).
+- **Workaround:** use the execution context with the required network and
+  certificate access; inspect its credential configuration when necessary.
+- **Status:** Diagnostic fixed in local 0.6. Errors 12185–12188 are `HTTP tls`, with
+  named client-key/proxy causes and actionable context. The hosting restriction itself
+  is external.
+
+### CLI durations cannot be passed directly to process timeouts
+
+- **Kind:** cross-module unit mismatch; confirmed during real task execution.
+- **Observed:** `cli` parses `--timeout 100ms` as the integer `100` (milliseconds).
+  Passing this value directly to `proc.run { timeout = opts.timeout }` sets a
+  **100-second** deadline, because numeric process durations are seconds.
+  A fixture sleeping for 30 seconds completed instead of timing out at 100 ms;
+  an enclosing 10-second deadline subsequently confirmed the mismatch.
+- **Impact:** natural composition silently lengthens a deadline by 1,000 times.
+  This remains after the duration grammar was unified in the 0.5 review fixes.
+- **Workaround:** pass `tostring(opts.timeout) .. "ms"` to the process API.
+  Time Actual retains this for 0.5 compatibility and exercises both runtime versions.
+- **Status:** Fixed in local 0.6. CLI results, bounds, and choices use seconds, matching
+  native consumers. This is an intentional API change; see [migration
+  notes](upgrading-0.6.md). Time Actual handles both 0.5 and 0.6 explicitly.
+
+### Tcl path normalization fails inside the agent's filesystem sandbox
+
+- **Kind:** hosting-environment limitation, not established as a Kuu defect.
+- **Observed:** the same locally built Tcl 9.0.3 normalized
+  `C:/Users/.../HEAD/dev/_timeactual/.tools/twapi` into a path missing
+  `HEAD/dev` inside the agent sandbox. TWAPI loading failed, and the packaged
+  GUI self-test timed out before producing its report.
+- **Control:** outside that sandbox, the same interpreter returned the exact
+  path, loaded TWAPI 5.2.0, and the packaged app passed its self-test.
+- **Workaround:** execute affected Tcl/GUI tasks in a normal Windows process
+  with the agent's required execution permission. Headless engine/task tests
+  can still run inside the sandbox.
+- **Status:** External limitation remains. Normal Windows execution passes; no Kuu
+  runtime defect was demonstrated.
+
+### `archive.list` returns non-UTF-8 filenames on Windows
+
+- **Kind:** encoding defect at an API boundary.
+- **Observed:** listing the official Go 1.27.1 Windows ZIP returns two names
+  under `go/test/fixedbugs/issue27836.dir/` containing the single byte `0xDE`.
+  `utf8.len` rejects both at byte 34; saving the inventory with `json.encode`
+  fails with `JSON encoding: a string is not valid UTF-8`.
+- **Impact:** extracted files are usable, but archive listings do not compose
+  safely with Kuu's UTF-8/JSON/file APIs. A prerequisite task can fail after
+  successfully unpacking its tool.
+- **Workaround:** if a listing has invalid UTF-8, inventory extracted files
+  with `fs.glob` and `fs.relative`, which return native Unicode paths. Time
+  Actual uses this fallback for its installation record.
+- **Status:** Fixed in local 0.6. A supervised native reader uses the Unicode API in
+  Windows archiveint.dll, without extraction or ANSI-output guessing. Unicode, JSON,
+  empty archives, and cancellation have regression coverage.
+
+### Downstream tools can reintroduce shell quoting problems
+
+- **Kind:** external tool limitation encountered through process orchestration.
+- **Observed:** a moved Time Actual checkout named `Time Actual` reached the
+  native resource build, then windres failed because its internal preprocessor
+  command split the path at the space. Kuu had passed the original argv intact.
+- **Workaround:** use windres's `--use-temp-file` mode, run it in `build/`, and
+  pass relative resource/include paths. The moved checkout then built and
+  passed its tests with the original toolchain directories unavailable.
+- **Status:** Resolved in the Time Actual recipe. The internal-command boundary and
+  windres workaround are documented in [proc](proc.md); no Kuu quoting defect was
+  demonstrated.
+
+### Process metadata and filesystem paths use different separators
+
+- **Kind:** API composition friction; native Windows paths are both valid.
+- **Observed:** `proc.tree` returned executable paths with backslashes, while
+  `fs.absolute` returned forward slashes. A case-insensitive string comparison
+  missed the expected child and could have hidden survivors in a cleanup test.
+- **Workaround:** normalize the process path with `fs.absolute` before comparing
+  it with another absolute path. Use canonical file identity when aliases matter.
+- **Status:** Fixed in local 0.6. Process `exe` paths use forward slashes like
+  `fs.absolute`; command lines remain unchanged. Regression coverage checks a real child
+  process.
+
+### ZIP creation loses names outside the system code page
+
+- **Kind:** confirmed encoding defect in the archive wrapper's writer options.
+- **Observed:** the Unicode regression packed `漢字.txt` using Windows tar's
+  default ZIP settings. The archive contained `??.txt`, which extracted as
+  `__.txt`. Tar-family archives preserved the same name.
+- **Impact:** a successful ZIP pack could silently rename a source file.
+- **Fix:** pass `--options zip:hdrcharset=UTF-8` for ZIP creation.
+- **Status:** fixed in local 0.6; the regression compares the source name,
+  Unicode listing, and extracted file for ZIP and compressed tar formats.
+
+### Intermittent access denied while replacing files
+
+- **Kind:** observed file-access failure; underlying cause not isolated.
+- **Observed:** one full Kuu run reported Windows error 5 during an atomic
+  `mem.update` write. That stopped one concurrent counter and caused two related
+  checks to fail. Later, Time Actual's native `strip.exe` reported permission
+  denied replacing a freshly linked executable. The file was not read-only,
+  and no running application held that executable when inspected.
+- **Control:** the memory case passed alone, then passed five consecutive
+  runs; the complete Kuu suite subsequently passed. The exact strip operation
+  passed on retry, followed by a successful complete Time Actual build/test.
+- **Status:** observed, not reproduced deterministically. Do not attribute it
+  to a Kuu locking defect, antivirus, or the filesystem sandbox without more
+  evidence. No permission bypass or unconditional retry was added.
+
+### Entry routes leave startup allocations to process teardown
+
+- **Kind:** native allocation cleanup found by GCC analysis, not a reported
+  long-running workload failure.
+- **Observed:** failed UTF-16 argument conversion returned without freeing the
+  partially converted argument array. Reviewing that path also found argument,
+  launch-path, and chunk-name allocations left to process teardown on other
+  entry routes.
+- **Status:** fixed locally. The entry dispatcher borrows converted arguments;
+  its caller releases them, and file/eval/stdin routes share explicit cleanup.
+  GCC analysis and the entry regression cases pass.
+
+## Validation of the local 0.6 build
+
+- Full Kuu suite: **834 checks passed**, including **23 new adoption checks**;
+  reconfirmed after native cleanup and hardening-gate work on 2026-09-10.
+- `make analyze`: all authored host C files pass GCC `-fanalyzer` with warnings
+  as errors. The shared error raiser now declares its non-returning contract,
+  allowing GCC to follow Lua error paths correctly without suppressing warnings.
+- `make fuzz`: **30,000 cases per family** across command lines, durations,
+  dates, and paths (**120,000 randomized cases**), plus fixed boundary cases
+  and valid-value/round-trip checks. All three fixed seeds pass. Workers are
+  bounded by deadlines; this is not a proof of memory safety.
+- Time Actual: build, **2,191 engine checks**, **nine task checks**, and the
+  packaged GUI self-test passed with root `kuu.exe` at 0.6.
+- All **27 pinned prerequisite archives** listed successfully: **42,849 UTF-8
+  names**. The Go archive's two formerly corrupted names matched extracted files.
+- The original restricted HTTP request now reports `HTTP tls`, error 12185,
+  its symbolic name, and client-certificate context. Native fixtures also cover
+  errors 12186–12188 without changing certificate stores or TLS policy.
+- Time Actual retains explicit compatibility for published 0.5; its task and
+  application checks pass with that binary as well. The installed root runtime
+  is restored to 0.6 after compatibility testing.
+
+The intermittent file-access failures above remain recorded despite passing
+reruns. These are local changes; no release, signing, or remote CI was triggered.

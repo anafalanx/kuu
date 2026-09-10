@@ -94,3 +94,29 @@ char *ku_win_error_message(unsigned long error)
     }
     return text;
 }
+
+char *ku_getenv_utf8(const wchar_t *name)
+{
+    for (;;) {
+        SetLastError(ERROR_SUCCESS);
+        DWORD need = GetEnvironmentVariableW(name, NULL, 0);
+        if (need == 0) {
+            return GetLastError() == ERROR_SUCCESS ? _strdup("") : NULL;
+        }
+        wchar_t *value = (wchar_t *)malloc((size_t)need * sizeof(wchar_t));
+        if (value == NULL) {
+            return NULL;
+        }
+        SetLastError(ERROR_SUCCESS);
+        DWORD got = GetEnvironmentVariableW(name, value, need);
+        DWORD error = GetLastError();
+        if (got >= need) {
+            free(value); /* the value grew between the two calls */
+            continue;
+        }
+        char *utf8 = got == 0 ? (error == ERROR_SUCCESS ? _strdup("") : NULL)
+                             : ku_wide_to_utf8(value, (int)got);
+        free(value);
+        return utf8;
+    }
+}

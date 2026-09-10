@@ -5,7 +5,7 @@ program and, milestone by milestone, gives it correct native control over
 processes, files, and the network. Kuu is Finnish for moon, as Lua is
 Portuguese for it.
 
-Version 0.5 makes kuu the tool an agent holds on a Windows machine instead of
+Kuu is the tool an agent holds on a Windows machine instead of
 PowerShell: to set up, configure, run, test, script, control, and keep in
 check. Programs run as coroutines on one event loop; `proc` gives them
 children with decided lifetimes under Windows Job Objects and finds the
@@ -30,7 +30,7 @@ kuu run [TASK [arg ...]]  a task from the nearest tasks.lua
 kuu list [--json]         those tasks
 kuu check [PATH ...]      parse, global declarations, requires, without running
 kuu docs [PAGE | search TEXT]   the manual
-kuu --version | --help
+kuu version | --version | --help
 ```
 
 ```lua
@@ -47,6 +47,12 @@ The manual starts at [docs/index.md](docs/index.md). Agents should read
 [docs/pitfalls.md](docs/pitfalls.md) once; it is the only page about the
 language. [docs/powershell.md](docs/powershell.md) maps each PowerShell habit
 to the kuu call that replaces it. [docs/roadmap.md](docs/roadmap.md) records the decisions.
+[docs/shortcomings.md](docs/shortcomings.md) tracks problems observed during
+real repository adoption, with evidence and workarounds.
+
+The local 0.6 development version fixes issues observed during repository
+adoption. CLI durations now use seconds throughout; see
+[upgrading to 0.6](docs/upgrading-0.6.md) for the API changes from published 0.5.
 
 ## Building
 
@@ -64,6 +70,9 @@ there. Nothing in the repository runs kuu to build kuu.
 
 The build produces `build/kuu.exe`; the tests are Lua, run by the built kuu,
 which spawns itself as a child and compares bytes.
+The same make command accepts `analyze` for GCC static analysis and `fuzz`
+for deterministic parser checks; [toolchain](docs/toolchain.md#verification)
+documents the gates and how to replay a seed.
 
 ## Layout
 

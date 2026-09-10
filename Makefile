@@ -2,6 +2,8 @@
 #
 #   make            build build/kuu.exe
 #   make test       build, then run the test suite with the built kuu
+#   make analyze    run GCC static analysis on authored native code
+#   make fuzz       run deterministic parser fuzzing (FUZZ cases per seed)
 #   make clean      remove build/
 #
 # The compiler is the MSYS2 UCRT64 gcc copied into .tools (docs/toolchain.md).
@@ -52,7 +54,7 @@ LINK_LIBS  := -lbcrypt -lwinhttp -liphlpapi -lws2_32
 
 # Test fixtures: small C programs the suite drives as children.
 FIXTURE_SRC := test/fixtures
-FIXTURES    := $(BUILD)/test/http_fixture.exe
+FIXTURES    := $(BUILD)/test/http_fixture.exe $(BUILD)/test/reg_fixture.exe $(BUILD)/test/http_error_fixture.exe
 
 LUA_C    := $(filter-out $(LUA_SRC)/lua.c $(LUA_SRC)/luac.c,$(wildcard $(LUA_SRC)/*.c))
 LUA_O    := $(patsubst $(LUA_SRC)/%.c,$(BUILD)/obj/lua/%.o,$(LUA_C))
@@ -61,6 +63,7 @@ PCRE2_C  := $(wildcard $(PCRE2_SRC)/pcre2_*.c)
 PCRE2_O  := $(patsubst $(PCRE2_SRC)/%.c,$(BUILD)/obj/pcre2/%.o,$(PCRE2_C))
 HOST_C   := $(wildcard $(HOST_SRC)/*.c)
 HOST_O   := $(patsubst $(HOST_SRC)/%.c,$(BUILD)/obj/host/%.o,$(HOST_C))
+ANALYZE_O := $(patsubst $(HOST_SRC)/%.c,$(BUILD)/analyze/%.o,$(HOST_C))
 
 # The payload: kuu's own Lua and the manual, turned into C by tools/embed.c
 # (compiled here, run by make; kuu is never used to build kuu).
@@ -104,6 +107,15 @@ $(YYJSON_O): $(YYJSON_SRC)/yyjson.c $(YYJSON_SRC)/yyjson.h | $(BUILD)/obj/vendor
 $(BUILD)/obj/host/%.o: $(HOST_SRC)/%.c | $(BUILD)/obj/host
 	$(CC) $(HOST_FLAGS) -MMD -MP -c $< -o $@
 
+# Analyze without optimization so GCC retains the paths it needs to inspect.
+# Separate objects keep this gate independent of the normal optimized build.
+$(BUILD)/analyze/%.o: $(HOST_SRC)/%.c | $(BUILD)/analyze
+	$(CC) $(filter-out -O2,$(HOST_FLAGS)) -O0 -fanalyzer -MMD -MP -c $< -o $@
+
+.PHONY: analyze
+analyze: $(ANALYZE_O)
+	@echo native static analysis passed
+
 $(EMBED): tools/embed.c | $(BUILD)
 	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -o $@ $<
 
@@ -113,10 +125,16 @@ $(PAYLOAD_C): $(EMBED) $(PAYLOAD_IN) | $(BUILD)/gen
 $(PAYLOAD_O): $(PAYLOAD_C) $(HOST_SRC)/payload.h | $(BUILD)/obj/gen
 	$(CC) -std=c23 -O1 -I$(HOST_SRC) -c $< -o $@
 
+$(BUILD)/test/http_error_fixture.exe: $(FIXTURE_SRC)/http_error_fixture.c $(HOST_SRC)/http_error.c $(HOST_SRC)/http_error.h $(HOST_SRC)/wintext.c | $(BUILD)/test
+	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 -I$(HOST_SRC) -o $@ $(FIXTURE_SRC)/http_error_fixture.c $(HOST_SRC)/http_error.c $(HOST_SRC)/wintext.c
+
+$(BUILD)/test/parser_fuzz.exe: $(FIXTURE_SRC)/parser_fuzz.c $(HOST_SRC)/cmdline.c $(HOST_SRC)/cmdline.h $(HOST_SRC)/wintext.c $(HOST_SRC)/wintext.h | $(BUILD)/test
+	$(CC) $(HOST_FLAGS) -static -o $@ $(FIXTURE_SRC)/parser_fuzz.c $(HOST_SRC)/cmdline.c $(HOST_SRC)/wintext.c -lshell32
+
 $(BUILD)/test/%.exe: $(FIXTURE_SRC)/%.c | $(BUILD)/test
 	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 -o $@ $< -lws2_32
 
-$(BUILD) $(BUILD)/gen $(BUILD)/test $(BUILD)/obj/lua $(BUILD)/obj/host $(BUILD)/obj/vendor $(BUILD)/obj/pcre2 $(BUILD)/obj/gen:
+$(BUILD) $(BUILD)/analyze $(BUILD)/gen $(BUILD)/test $(BUILD)/obj/lua $(BUILD)/obj/host $(BUILD)/obj/vendor $(BUILD)/obj/pcre2 $(BUILD)/obj/gen:
 	@if not exist "$(subst /,\,$@)" mkdir "$(subst /,\,$@)"
 
 .PHONY: fixtures
@@ -128,7 +146,14 @@ test: $(OUT) $(FIXTURES)
 clean:
 	@if exist $(BUILD) rmdir /s /q $(BUILD)
 
--include $(LUA_O:.o=.d) $(HOST_O:.o=.d) $(PCRE2_O:.o=.d)
+-include $(LUA_O:.o=.d) $(HOST_O:.o=.d) $(PCRE2_O:.o=.d) $(ANALYZE_O:.o=.d)
+
+# Deterministic, bounded parser fuzzing, with a single-seed replay option.
+FUZZ ?= 10000
+FUZZ_SEED ?=
+.PHONY: fuzz
+fuzz: $(OUT) $(BUILD)/test/parser_fuzz.exe
+	$(subst /,\,$(OUT)) test\fuzz.lua $(FUZZ) $(FUZZ_SEED)
 
 # Soak: kuu under volume for SOAK seconds (default 60), on demand, with the fixture.
 SOAK ?= 60

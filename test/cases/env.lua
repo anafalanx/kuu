@@ -1,6 +1,6 @@
 -- env.lua -- the live environment and the persisted one, under a variable of our own.
 global none
-global <const> require, tostring, type, string, pcall, os, select, pairs, next
+global <const> require, tostring, type, string, pcall, os, select, pairs, next, ipairs
 
 return function(T)
   local check = T.check
@@ -43,4 +43,30 @@ return function(T)
   end
   local path = env.persisted("Path")
   check("the user's persisted Path reads unexpanded, or is absent", path == nil or type(path) == "string")
+  do
+    env.set(name, "")
+    check("an empty live variable remains distinct from an unset one",
+      env.get(name) == "" and os.getenv(name) == "" and env.all()[name] == "")
+    local child = proc.run { T.exe, "-e", "assert(os.getenv('" .. name .. "') == ''); io.write('empty')" }
+    check("a child inherits an empty variable", child and child.code == 0 and child.out == "empty")
+    local calls = {
+      function() return env.get(name .. "\0ignored") end,
+      function() return os.getenv(name .. "\0ignored") end,
+      function() return env.set(name .. "\0ignored", "wrong") end,
+      function() return env.set(name, "before\0after") end,
+      function() return env.expand("before\0after") end,
+      function() return env.persisted(name .. "\0ignored") end,
+      function() return env.persist(name .. "\0ignored", "wrong") end,
+      function() return env.persist(name, "before\0after") end,
+      function() return env.forget(name .. "\0ignored") end,
+    }
+    for i, call in ipairs(calls) do
+      local ok, e = pcall(call)
+      check("environment native text refuses NUL, case " .. i, not ok and err.is(e, "ENV", "badvalue"), tostring(e))
+    end
+    check("refused NUL arguments do not change or persist the real variable", env.get(name) == "" and env.persisted(name) == nil)
+    env.set(name, nil)
+    check("removing an empty variable makes it absent", env.get(name) == nil and os.getenv(name) == nil)
+  end
+
 end

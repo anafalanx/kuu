@@ -304,4 +304,41 @@ return function(T)
     end
   end
 
+  do
+    local r = T.kuu { "-e", [=[
+      local proc, rt = require "proc", require "rt"
+      local root <close> = assert(proc.start {
+        rt.exe, rt.args[1], "31", stream = true, timeout = "30s",
+      })
+      assert(root:read("line", "20s") == "ready", "chain did not become ready")
+      local node = assert(proc.tree(root.pid))
+      local pids = {}
+      while node do
+        pids[#pids + 1] = node.pid
+        assert(#node.children <= 1)
+        node = node.children[1]
+      end
+      assert(#pids == 31, "wrong depth: " .. #pids)
+      root:kill()
+      assert(root:wait("10s"))
+      for _, pid in ipairs(pids) do assert(not proc.alive(pid), "surviving descendant") end
+      io.write("31 closed")
+    ]=], T.fixtures .. "/process_chain.lua" }
+    check("tree handles a 31-process chain and killing the root ends every descendant",
+      r.status == "exit" and r.code == 0 and r.out == "31 closed", T.describe(r))
+  end
+
+  do
+    local fs, rt = require "fs", require "rt"
+    local child <close> = proc.start {rt.exe, "-e", "require('sched').sleep('5s')"}
+    local listed = proc.find {pid=child.pid}
+    local tree = proc.tree(child.pid)
+    local expected = fs.absolute(rt.exe):lower()
+    check("process paths match fs.absolute without separator repairs",
+      #listed == 1 and listed[1].exe:lower() == expected and tree.exe:lower() == expected)
+    check("normalizing process paths leaves command lines intact", tree.cmdline:find("require('sched')", 1, true) ~= nil)
+    child:kill()
+    child:wait("5s")
+  end
+
 end

@@ -37,3 +37,6 @@ offset says what is meant.
 |---|---|
 | `badvalue` | `nil, err` from `parse` for a text that is not an instant; raised for a bad zone, a bad duration, a bad format, or an instant out of range |
 | `oserror` | raised: Windows could not report the zone |
+Malformed text passed to `time.parse`, including signed date/time fields
+or an offset beyond +/-14:00, returns `nil, TIME badvalue`. Invalid
+explicit zone arguments remain programming errors and raise.

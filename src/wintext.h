@@ -33,4 +33,8 @@ int ku_utf8_valid(const unsigned char *bytes, size_t length);
  * removed.  Never NULL: falls back to "Windows error N". Caller frees. */
 char *ku_win_error_message(unsigned long error);
 
+/* Read the live environment; an empty value is an allocated empty string,
+ * NULL means absent or unreadable.  The caller frees the returned UTF-8. */
+char *ku_getenv_utf8(const wchar_t *name);
+
 #endif /* KUU_WINTEXT_H */

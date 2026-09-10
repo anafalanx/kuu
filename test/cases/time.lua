@@ -1,7 +1,7 @@
 -- time.lua -- instants, zones, ISO 8601: now, iso, parse, parts, make,
 -- format, zone, duration, human, and the refusals.
 global none
-global <const> require, tostring, type, string, math, os, pcall
+global <const> require, tostring, type, string, math, os, pcall, ipairs
 
 return function(T)
   local check, contains = T.check, T.contains
@@ -60,4 +60,24 @@ return function(T)
   check("make needs a year", not ok and err.is(raised, "TIME", "badvalue"))
   ok, raised = pcall(time.duration, "soon")
   check("a bad duration raises TIME badvalue", not ok and err.is(raised, "TIME", "badvalue"))
+  do
+    local invalid = {
+      "2026-09-09T-1:00:00Z", "2026-09-09T12:-1:00Z", "2026-09-09T12:00:-1Z",
+      "2026-09-09T12:00:00+99:00", "2026-09-09T12:00:00+14:01", "2026-09-09T12:00:00-14:01",
+      "2026-09-09T12:00:00+2:00", "2026-09-09T12:00:00+02:0", "2026-09-09T12:00:00+02:-1",
+      "2026- 9-09", "2026-09-09T 1:00Z", "2026-09-09T12:00: 1Z", "2026-09-09\0ignored",
+      "", "2", "2026-09-09T", "2026-09-09T12:00:", "2026-09-09T12:00:00.",
+    }
+    for _, text in ipairs(invalid) do
+      local ok, value, e = pcall(time.parse, text)
+      check("malformed ISO text returns nil and an error without raising: " .. text:gsub("%z", "\\0"),
+        ok and value == nil and err.is(e, "TIME", "badvalue"), tostring(e or value))
+    end
+    check("the +/-14:00 limits and short offsets remain valid",
+      time.parse("2026-09-09T12:00:00+14:00") ~= nil and time.parse("2026-09-09T12:00:00-1400") ~= nil and
+      time.parse("2026-09-09T12:00:00+02") == time.parse("2026-09-09T10:00:00Z"))
+    local ok, value, e = pcall(time.parse, "0000-01-01", "local")
+    check("an unconvertible local date is a returned error", ok and value == nil and err.is(e, "TIME", "badvalue"))
+  end
+
 end

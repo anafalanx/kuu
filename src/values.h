@@ -24,4 +24,8 @@ int ku_parse_bytes(const char *text, int64_t *bytes);
 int ku_check_duration(lua_State *L, int idx, int64_t *ms);
 int ku_check_bytes(lua_State *L, int idx, int64_t *bytes);
 
+/* A Lua string passed to a NUL-terminated native API must not name a prefix
+ * of what the caller supplied.  This check allocates no native memory. */
+const char *ku_check_cstring(lua_State *L, int idx, const char *domain, const char *what);
+
 #endif /* KUU_VALUES_H */

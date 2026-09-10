@@ -11,7 +11,7 @@ kuu runs on Windows 11 version 25H2 and later, and on the equivalent Windows
 Server releases. Nothing else, on purpose: the process, console, and file
 system features it builds on are used without fallbacks.
 
-This is version 0.5: the runner, the scheduler, processes (its own children
+This is development version 0.6: the runner, the scheduler, processes (its own children
 and the others on the machine), files, JSON, CSV, INI, HTTP, archives,
 hashing, text encodings, regular expressions, time, logging, argument
 parsing, a repository's tasks, a memory across runs, the machine's own facts,
@@ -46,7 +46,7 @@ array of the `rt` module. There is no `arg` global.
 ```lua
 local rt = require("rt")
 print(rt.version, rt.lua, rt.route, rt.exe, rt.program, #rt.args)
--- 0.5  Lua 5.5.1  file  C:\work\app\.tools\kuu.exe  build.lua  2
+-- 0.6  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
 ```
 
 `rt.route` is `"file"`, `"stdin"`, `"eval"`, or `"cmd"` for a verb such as
@@ -143,6 +143,8 @@ Failures kuu detects before the program runs are spelled
 - [check](check.md): what `kuu check` finds without running a file.
 - [Toolchain](toolchain.md): what kuu's own `.tools` holds and where it comes
   from.
+- [Upgrading to 0.6](upgrading-0.6.md): duration units and adoption fixes.
+- [Observed shortcomings](shortcomings.md): reproductions, fixes, and external limitations.
 - [Roadmap](roadmap.md): decisions taken and milestones ahead.
 - [Inheritance](inheritance.md): laws, traps, and contracts carried over from
   machteld, the z estate, and the archived projects.

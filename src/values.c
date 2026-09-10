@@ -1,5 +1,7 @@
 /* values.c -- durations and byte sizes; see values.h. */
 #include "values.h"
+#include "err.h"
+#include "lauxlib.h"
 
 #include <errno.h>
 #include <math.h>
@@ -131,7 +133,9 @@ int ku_check_duration(lua_State *L, int idx, int64_t *ms)
         return 0;
     }
     if (lua_type(L, idx) == LUA_TSTRING) {
-        return ku_parse_duration_ms(lua_tostring(L, idx), ms);
+        size_t length = 0;
+        const char *text = lua_tolstring(L, idx, &length);
+        return memchr(text, '\0', length) == NULL ? ku_parse_duration_ms(text, ms) : -1;
     }
     return -1;
 }
@@ -148,7 +152,19 @@ int ku_check_bytes(lua_State *L, int idx, int64_t *bytes)
         return 0;
     }
     if (lua_type(L, idx) == LUA_TSTRING) {
-        return ku_parse_bytes(lua_tostring(L, idx), bytes);
+        size_t length = 0;
+        const char *text = lua_tolstring(L, idx, &length);
+        return memchr(text, '\0', length) == NULL ? ku_parse_bytes(text, bytes) : -1;
     }
     return -1;
+}
+
+const char *ku_check_cstring(lua_State *L, int idx, const char *domain, const char *what)
+{
+    size_t length = 0;
+    const char *text = luaL_checklstring(L, idx, &length);
+    if (memchr(text, '\0', length) != NULL) {
+        ku_err_raise(L, domain, "badvalue", "the %s cannot contain NUL", what);
+    }
+    return text;
 }

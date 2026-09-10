@@ -50,4 +50,18 @@ return function(T)
   check("a header can be left out", csv.encode({ { name = "x" } }, { columns = { "name" }, header = false }) == "x\r\n")
   local oke, ee = pcall(csv.encode, { { {} } })
   check("a table as a field is CSV badvalue", not oke and err.is(ee, "CSV", "badvalue"), tostring(ee))
+  do
+    local records = csv.decode('name\r\n""\r\nbob', { header = true })
+    check("a quoted empty field is a record, including in header mode",
+      records and #records == 2 and records[1].name == "" and records[2].name == "bob")
+    local encoded = csv.encode { { "" } }
+    local back = csv.decode(encoded)
+    check("one empty field encodes distinctly from a blank line and round-trips",
+      encoded == '""\r\n' and back and #back == 1 and #back[1] == 1 and back[1][1] == "")
+    local mixed = csv.decode('\n""\n\n""\n\n')
+    check("blank lines beside quoted empty rows are still skipped", mixed and #mixed == 2)
+    back = csv.decode(csv.encode({ {} }, { columns = { "name" } }), { header = true })
+    check("a record with one missing field round-trips as an empty field", back and #back == 1 and back[1].name == "")
+  end
+
 end

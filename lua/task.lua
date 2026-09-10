@@ -36,17 +36,20 @@ local function declare(name, spec)
     bad("a task name must be a plain word, got " .. tostring(name))
   end
   local where = "task '" .. name .. "'"
-  if type(spec) ~= "table" then bad(where .. " needs a table with a run function") end
+  if type(spec) ~= "table" then bad(where .. " needs a task specification table") end
   for k in pairs(spec) do
     if not ATTRIBUTES[k] then bad(where .. ": unknown attribute '" .. tostring(k) .. "'") end
   end
-  if type(spec.run) ~= "function" then bad(where .. " needs a run function") end
+  if spec.run ~= nil and type(spec.run) ~= "function" then bad(where .. ": run must be a function") end
   if spec.desc ~= nil and type(spec.desc) ~= "string" then bad(where .. ": desc must be a string") end
   if spec.deps ~= nil then
     if type(spec.deps) ~= "table" then bad(where .. ": deps must be an array of task names") end
     for _, dep in ipairs(spec.deps) do
       if type(dep) ~= "string" then bad(where .. ": deps must be task names") end
     end
+  end
+  if spec.run == nil and (spec.deps == nil or #spec.deps == 0) then
+    bad(where .. " needs a run function or non-empty deps")
   end
   if spec.hidden ~= nil and type(spec.hidden) ~= "boolean" then bad(where .. ": hidden must be a boolean") end
   if spec.args ~= nil then
@@ -133,6 +136,7 @@ end
 -- Calls run with parsed arguments and normalises the outcome.  Dependencies
 -- are the caller's business (see task.plan).
 function task.execute(entry, opts)
+  if entry.run == nil then return true end -- dependency-only aggregate
   local ok, result, e = pcall(entry.run, opts or {})
   if not ok then
     if err.is(result) then return nil, result end

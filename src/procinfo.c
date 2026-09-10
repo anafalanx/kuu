@@ -17,6 +17,7 @@
 #include "procinfo.h"
 
 #include "err.h"
+#include "hold.h"
 #include "ports.h"
 #include "wintext.h"
 
@@ -104,6 +105,8 @@ static void add_details(lua_State *L, DWORD pid)
     wchar_t path[4096];
     DWORD length = sizeof path / sizeof path[0];
     if (QueryFullProcessImageNameW(h, 0, path, &length)) {
+        /* Match fs.absolute's separator convention; command lines stay verbatim. */
+        for (DWORD i = 0; i < length; i++) if (path[i] == L'\\') path[i] = L'/';
         set_wide(L, "exe", path, (int)length);
     }
     FILETIME created, exited, kernel, user;
@@ -275,6 +278,8 @@ int ku_proc_find(lua_State *L)
 
 static void push_tree(lua_State *L, const ku_pentry *list, size_t count, size_t index, int depth)
 {
+    /* Each level retains its entry and children while the next level runs. */
+    luaL_checkstack(L, 8, "process tree is too deep");
     push_entry(L, &list[index], 1);
     lua_newtable(L);
     lua_Integer children = 0;
@@ -296,18 +301,19 @@ int ku_proc_tree(lua_State *L)
         return ku_err_raise(L, "PROC", "badvalue", "pid out of range");
     }
     size_t count = 0;
+    ku_hold *hold = ku_hold_new(L, free);
+    lua_toclose(L, -1);
     ku_pentry *list = ku_proc_snapshot(&count);
+    hold->ptr = list;
     if (list == NULL) {
         return fail_snapshot(L);
     }
     for (size_t i = 0; i < count; i++) {
         if (list[i].pid == (DWORD)v) {
             push_tree(L, list, count, i, 0);
-            free(list);
             return 1;
         }
     }
-    free(list);
     return ku_err_fail(L, "PROC", "notfound", "no process %lld", (long long)v);
 }
 

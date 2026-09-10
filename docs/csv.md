@@ -24,7 +24,9 @@ csv.decode(text [, options])   -- rows | nil, err
 Every field is a string; nothing guesses at numbers, dates, or booleans.
 Quoted fields may hold the separator, quotes (written doubled), and line
 ends. CRLF, LF, and CR all end a line; a final line end is not an extra row;
-blank lines are skipped; a leading UTF-8 byte order mark is dropped.
+blank lines are skipped; a leading UTF-8 byte order mark is dropped. A
+quoted empty field (`""`) is a row, and a row containing just one empty
+field is encoded that way so it survives a round trip.
 
 | option | default | |
 |---|---|---|

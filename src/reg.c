@@ -17,10 +17,11 @@
  * "unknown".  set without a type stores a string as string, an integer as
  * dword (qword when it does not fit), and a list as multistring.  kuu is a
  * 64-bit process and sees the 64-bit view.  Errors are REG: notfound,
- * access (run elevated), badvalue, oserror.
+ * access (run elevated), badvalue, encoding, oserror.
  */
 #include "err.h"
 #include "state.h"
+#include "values.h"
 #include "wintext.h"
 
 #include "lauxlib.h"
@@ -51,7 +52,7 @@ static const struct {
  * before they allocate anything a raise would leak. */
 static HKEY check_root(lua_State *L, int idx, const char **rest)
 {
-    const char *text = luaL_checkstring(L, idx);
+    const char *text = ku_check_cstring(L, idx, "REG", "key");
     const char *slash = strpbrk(text, "\\/");
     size_t root_length = slash != NULL ? (size_t)(slash - text) : strlen(text);
     HKEY root = NULL;
@@ -111,26 +112,39 @@ static int fail(lua_State *L, LSTATUS status, const char *what)
     return n;
 }
 
-static void push_wide(lua_State *L, const wchar_t *wide, size_t count)
+static int push_wide(lua_State *L, const wchar_t *wide, size_t count)
 {
     while (count > 0 && wide[count - 1] == L'\0') {
         count--;
     }
+    if (count == 0) {
+        lua_pushliteral(L, "");
+        return 1;
+    }
     char *utf8 = ku_wide_to_utf8(wide, (int)count);
-    lua_pushstring(L, utf8 != NULL ? utf8 : "");
+    if (utf8 == NULL) {
+        return 0;
+    }
+    lua_pushstring(L, utf8);
     free(utf8);
+    return 1;
 }
 
-/* Push the value and its type name (two values). */
-static void push_value(lua_State *L, DWORD type, const unsigned char *data, DWORD size)
+/* Push value and type, or return 0 without pushing for invalid UTF-16. */
+static int push_value(lua_State *L, DWORD type, const unsigned char *data, DWORD size)
 {
     switch (type) {
     case REG_SZ:
     case REG_EXPAND_SZ:
-        push_wide(L, (const wchar_t *)data, size / sizeof(wchar_t));
+        if (size % sizeof(wchar_t) != 0 || !push_wide(L, (const wchar_t *)data, size / sizeof(wchar_t))) {
+            return 0;
+        }
         lua_pushstring(L, type == REG_SZ ? "string" : "expandstring");
-        return;
+        return 1;
     case REG_MULTI_SZ: {
+        if (size % sizeof(wchar_t) != 0) {
+            return 0;
+        }
         const wchar_t *w = (const wchar_t *)data;
         size_t n = size / sizeof(wchar_t), i = 0;
         lua_Integer count = 0;
@@ -140,19 +154,22 @@ static void push_value(lua_State *L, DWORD type, const unsigned char *data, DWOR
             while (i < n && w[i] != L'\0') {
                 i++;
             }
-            push_wide(L, w + start, i - start);
+            if (!push_wide(L, w + start, i - start)) {
+                lua_pop(L, 1);
+                return 0;
+            }
             lua_rawseti(L, -2, ++count);
             i++;
         }
         lua_pushstring(L, "multistring");
-        return;
+        return 1;
     }
     case REG_DWORD: {
         DWORD v = 0;
         memcpy(&v, data, size < sizeof v ? size : sizeof v);
         lua_pushinteger(L, (lua_Integer)v);
         lua_pushstring(L, "dword");
-        return;
+        return 1;
     }
     case REG_DWORD_BIG_ENDIAN: {
         DWORD v = 0;
@@ -161,25 +178,25 @@ static void push_value(lua_State *L, DWORD type, const unsigned char *data, DWOR
         }
         lua_pushinteger(L, (lua_Integer)v);
         lua_pushstring(L, "dword");
-        return;
+        return 1;
     }
     case REG_QWORD: {
         unsigned long long v = 0;
         memcpy(&v, data, size < sizeof v ? size : sizeof v);
         lua_pushinteger(L, (lua_Integer)v);
         lua_pushstring(L, "qword");
-        return;
+        return 1;
     }
     default:
         lua_pushlstring(L, (const char *)data, size);
         lua_pushstring(L, type == REG_BINARY ? "binary" : type == REG_NONE ? "none" : "unknown");
-        return;
+        return 1;
     }
 }
 
 static wchar_t *value_name(lua_State *L, int idx)
 {
-    const char *name = luaL_optstring(L, idx, "");
+    const char *name = lua_isnoneornil(L, idx) ? "" : ku_check_cstring(L, idx, "REG", "value name");
     wchar_t *wide = ku_utf8_to_wide(name);
     if (wide == NULL) {
         ku_err_raise(L, "REG", "badvalue", "the value name is not valid UTF-8");
@@ -224,8 +241,11 @@ static int l_reg_get(lua_State *L)
         free(data);
         return fail(L, st, "get");
     }
-    push_value(L, type, data, size);
+    int valid = push_value(L, type, data, size);
     free(data);
+    if (!valid) {
+        return ku_err_fail(L, "REG", "encoding", "the value is not valid UTF-16");
+    }
     return 2;
 }
 
@@ -233,7 +253,7 @@ static int l_reg_get(lua_State *L)
 static unsigned char *encode_value(lua_State *L, const char *type_name, DWORD *type, DWORD *size)
 {
     if (strcmp(type_name, "string") == 0 || strcmp(type_name, "expandstring") == 0) {
-        const char *s = luaL_checkstring(L, 3);
+        const char *s = ku_check_cstring(L, 3, "REG", "text value");
         wchar_t *wide = ku_utf8_to_wide(s);
         if (wide == NULL) {
             ku_err_raise(L, "REG", "badvalue", "the value is not valid UTF-8");
@@ -252,7 +272,8 @@ static unsigned char *encode_value(lua_State *L, const char *type_name, DWORD *t
                 ku_err_raise(L, "REG", "badvalue", "a multistring is a list of strings");
             }
             size_t len = 0;
-            const char *s = lua_tolstring(L, -1, &len);
+            const char *s = ku_check_cstring(L, -1, "REG", "multistring entry");
+            lua_tolstring(L, -1, &len);
             if (len == 0) {
                 ku_err_raise(L, "REG", "badvalue", "a multistring cannot hold an empty string");
             }
@@ -332,7 +353,7 @@ static unsigned char *encode_value(lua_State *L, const char *type_name, DWORD *t
 static int l_reg_set(lua_State *L)
 {
     luaL_checkstring(L, 1);
-    const char *type_name = luaL_optstring(L, 4, NULL);
+    const char *type_name = lua_isnoneornil(L, 4) ? NULL : ku_check_cstring(L, 4, "REG", "type");
     if (type_name == NULL) {
         switch (lua_type(L, 3)) {
         case LUA_TSTRING:
@@ -356,7 +377,7 @@ static int l_reg_set(lua_State *L)
     /* every check that can raise comes before the first allocation */
     const char *rest = NULL;
     HKEY root = check_root(L, 1, &rest);
-    const char *value_name_text = luaL_optstring(L, 2, "");
+    const char *value_name_text = lua_isnoneornil(L, 2) ? "" : ku_check_cstring(L, 2, "REG", "value name");
     DWORD type = 0, size = 0;
     unsigned char *data = encode_value(L, type_name, &type, &size);
     wchar_t *name = ku_utf8_to_wide(value_name_text);
@@ -470,11 +491,22 @@ static int l_reg_values(lua_State *L)
             break;
         }
         lua_createtable(L, 0, 3);
-        push_wide(L, name, name_length);
+        if (!push_wide(L, name, name_length)) {
+            RegCloseKey(h);
+            free(name);
+            free(data);
+            return ku_err_fail(L, "REG", "encoding", "a value name is not valid UTF-16");
+        }
         lua_setfield(L, -2, "name");
-        push_value(L, type, data, size);
-        lua_setfield(L, -3, "type");
-        lua_setfield(L, -2, "value");
+        if (push_value(L, type, data, size)) {
+            lua_setfield(L, -3, "type");
+            lua_setfield(L, -2, "value");
+        } else {
+            lua_pushstring(L, type == REG_SZ ? "string" : type == REG_EXPAND_SZ ? "expandstring" : "multistring");
+            lua_setfield(L, -2, "type");
+            lua_pushlstring(L, (const char *)data, size);
+            lua_setfield(L, -2, "bytes");
+        }
         lua_rawseti(L, -2, ++n);
         i++;
     }
@@ -511,7 +543,11 @@ static int l_reg_keys(lua_State *L)
         if (st != ERROR_SUCCESS) {
             break;
         }
-        push_wide(L, name, name_length);
+        if (!push_wide(L, name, name_length)) {
+            RegCloseKey(h);
+            free(name);
+            return ku_err_fail(L, "REG", "encoding", "a key name is not valid UTF-16");
+        }
         lua_rawseti(L, -2, ++n);
     }
     RegCloseKey(h);

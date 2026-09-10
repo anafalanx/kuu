@@ -7,8 +7,8 @@ so that another machine, or another person, can reproduce it.
 
 Projects kuu drives are the same: each fetches its own prerequisites by url
 and hash into its own `.tools`, with [`http`](http.md) and
-[`archive`](archive.md), and carries its own `kuu.exe` there, copied in by
-hand. Nothing is shared between projects, and there is no lock: the agent
+[`archive`](archive.md), and carries its own `kuu.exe` directly in the
+project root, copied in by hand. Nothing is shared between projects, and there is no lock: the agent
 knows what a project needs, and kuu gives it the means.
 
 ## What `.tools` holds
@@ -65,6 +65,40 @@ kuu's own compiler is not fetched by kuu, by the owner's decision: kuu does not
 build or bootstrap itself, and its repository runs no kuu. The versions above
 are a record.
 
+## Verification
+
+Run the regression suite and both hardening gates from the checkout root:
+
+```text
+.tools\msys2\ucrt64\bin\mingw32-make.exe test
+.tools\msys2\ucrt64\bin\mingw32-make.exe -j4 analyze
+.tools\msys2\ucrt64\bin\mingw32-make.exe fuzz
+```
+
+`analyze` compiles all authored `src/*.c` files separately into `build/analyze`
+with GCC's `-fanalyzer`, no optimization, and the normal warning-as-error gate.
+It does not analyze vendored libraries or claim to prove memory safety.
+
+`fuzz` defaults to 10,000 cases per parser family for each of three fixed
+seeds: 1, 12648430, and 3735928559. It checks durations, dates/zones, lexical
+paths, and Windows command-line quoting. Inputs include arbitrary bytes,
+mutated boundary cases, valid Unicode, independently known arithmetic, and
+round trips. Native quoting is compared with `CommandLineToArgvW`; batch
+quoting also checks newline rejection. Fuzzed strings are never executed as
+commands or opened as filesystem paths. Each worker has a five-minute
+deadline; any crash, nonzero exit, timeout, or truncated output fails the gate.
+
+For a longer run or a deterministic replay:
+
+```text
+.tools\msys2\ucrt64\bin\mingw32-make.exe fuzz FUZZ=100000 FUZZ_SEED=12648430
+```
+
+Assertion failures print the seed, case, and input bytes in hexadecimal.
+A native crash or deadline failure identifies the worker and seed; rerun
+that seed, reducing `FUZZ` to narrow the failing prefix if needed. The gates
+are bounded regression tools, not coverage-guided fuzzing or a sanitizer.
+
 ## Releasing
 
 A release is make, cmd recipes, and two plain C tools, never kuu. Every build
@@ -90,6 +124,6 @@ refused.
 whose defaults fit the owner's machine; `GH` names the gh executable when it
 is not on `PATH`.
 
-A project takes a release by copying `kuu.exe` into its own `.tools`, after
+A project takes a release by copying `kuu.exe` directly into its root, after
 checking the download against the sidecar, and states the version it expects
 at the top of its `tasks.lua`.

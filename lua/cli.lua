@@ -8,13 +8,13 @@
 --     { "dir",        type = "string", default = ".", help = "directory to watch" },
 --     { "files",      type = "string", rest = true, help = "files to process" },
 --   }
---   local opts, e = cli.parse(rt.args, spec)     -- opts.interval (ms), opts.format, opts.all, opts.dir, opts.files
+--   local opts, e = cli.parse(rt.args, spec)     -- opts.interval (seconds), opts.format, opts.all, opts.dir, opts.files
 --   if not opts then io.stderr:write(tostring(e), "\n"); os.exit(2) end
 --   if opts.help then io.write(cli.usage(spec, "watchit")); return end
 --
 -- The spec is an array, so positionals take declaration order.  A name
 -- starting with `--` is an option; anything else is positional.  Types are
--- flag, string, int, number, duration (to milliseconds), and size (to bytes).
+-- flag, string, int, number, duration (to seconds), and size (to bytes).
 -- Parsing never prints and never exits: `--help` comes back as `opts.help`,
 -- and a wrong command line is `nil, err` with CLI usage whose message ends
 -- with the generated usage text.  A wrong spec raises CLI badvalue at once,
@@ -33,18 +33,9 @@ local function bad(message)
   error(err.new("CLI", "badvalue", message))
 end
 
--- Durations and sizes, the same grammar as the runtime's options.
-local function parse_duration(text)
-  if type(text) == "number" then
-    if text < 0 then return nil end
-    return math.floor(text * 1000 + 0.5)
-  end
-  local number, unit = tostring(text):match("^(%d+%.?%d*)(%a+)$")
-  if number == nil then return nil end
-  local scale = ({ ms = 1, s = 1000, m = 60000, h = 3600000 })[unit]
-  if scale == nil then return nil end
-  return math.floor(tonumber(number) * scale + 0.5)
-end
+-- The native loader supplies the runtime's duration parser. Its result is
+-- seconds, ready for proc, sched, sync, http, and net timeout arguments.
+local parse_duration = ...
 
 local function parse_size(text)
   if type(text) == "number" then

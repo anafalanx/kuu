@@ -38,6 +38,12 @@ otherwise, and a list as `multistring`; give the type to store an
 `expandstring`, a `binary`, or a small `qword`. Floats have no registry
 type and raise.
 
+Text values must be valid UTF-16. `get` returns `nil, REG encoding` when
+one is malformed; `values` keeps its `name` and `type` and supplies the
+original `bytes` instead of `value`. An empty string is still `""`.
+Keys, value names, and text passed to `set` cannot contain NUL; binary
+values can.
+
 ## Functions
 
 ```lua
@@ -58,4 +64,5 @@ Writing under `HKLM` needs an elevated kuu; without it the answer is
 ## Errors
 
 Domain `REG`: `notfound` (no such key or value), `access` (run elevated),
-`badvalue` (raised: a bad root, type, or value), `oserror`.
+`badvalue` (raised: a bad root, type, value, or embedded NUL), `encoding`
+(text cannot be represented as UTF-8), `oserror`.

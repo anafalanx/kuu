@@ -63,3 +63,12 @@ is sent with the next. A caller who wants a cookie sends the `Cookie` header.
 | `badvalue` | raised: a malformed url, header, timeout, size, or redirect value |
 | `usage` | raised: an unknown option, or no url |
 | `oserror` | anything else, with the Windows message |
+
+TLS client-certificate errors 12185/12186 and proxy TLS errors 12187/12188 are
+`HTTP tls`. Their messages include the Windows error symbol, number, and the
+certificate, private-key permission, or proxy setting to inspect. For example,
+12185 means the client-certificate context has no associated private key; it
+does not by itself prove a network ban. See Microsoft's
+[WinHTTP error reference](https://learn.microsoft.com/en-us/windows/win32/winhttp/error-messages).
+An execution sandbox or a different account can change available credentials;
+the diagnostic describes the reported failure without bypassing TLS validation.

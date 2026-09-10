@@ -21,7 +21,7 @@ int ku_err_fail(lua_State *L, const char *domain, const char *code,
                 const char *format, ...);
 
 /* Raise an error table; never returns. */
-int ku_err_raise(lua_State *L, const char *domain, const char *code,
+[[noreturn]] int ku_err_raise(lua_State *L, const char *domain, const char *code,
                  const char *format, ...);
 
 /* Open the `err` module (package.preload loader). */

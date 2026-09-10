@@ -4,6 +4,7 @@
 #include "payload.h"
 #include "program.h"
 #include "wintext.h"
+#include "values.h"
 
 #include "lauxlib.h"
 #include "lualib.h"
@@ -192,34 +193,12 @@ static int ku_searcher(lua_State *L)
  * value such as "ünïcode" would come back mangled and stale. */
 static int ku_getenv(lua_State *L)
 {
-    const char *name = luaL_checkstring(L, 1);
-    wchar_t *wname = ku_utf8_to_wide(name);
-    if (wname == NULL) {
-        lua_pushnil(L);
-        return 1;
-    }
-    DWORD need = GetEnvironmentVariableW(wname, NULL, 0);
-    if (need == 0) {
-        free(wname);
-        lua_pushnil(L);
-        return 1;
-    }
-    wchar_t *value = (wchar_t *)malloc((size_t)need * sizeof(wchar_t));
-    if (value == NULL || GetEnvironmentVariableW(wname, value, need) == 0) {
-        free(value);
-        free(wname);
-        lua_pushnil(L);
-        return 1;
-    }
-    char *utf8 = ku_wide_to_utf8(value, -1);
+    const char *name = ku_check_cstring(L, 1, "ENV", "variable name");
+    wchar_t *wide = ku_utf8_to_wide(name);
+    char *value = wide != NULL ? ku_getenv_utf8(wide) : NULL;
+    free(wide);
+    lua_pushstring(L, value);
     free(value);
-    free(wname);
-    if (utf8 == NULL) {
-        lua_pushnil(L);
-        return 1;
-    }
-    lua_pushstring(L, utf8);
-    free(utf8);
     return 1;
 }
 
@@ -293,6 +272,33 @@ static int open_sync_full(lua_State *L)
 static int open_net_full(lua_State *L)
 {
     return open_hybrid(L, ku_open_net, "lua/net/probe.lua");
+}
+
+/* CLI durations have the same public numeric unit as time, proc, sched,
+ * sync, and net: seconds. The Lua chunk receives this parser as `...`. */
+static int cli_duration(lua_State *L)
+{
+    int64_t ms = 0;
+    if (ku_check_duration(L, 1, &ms) != 0) {
+        lua_pushnil(L);
+    } else {
+        lua_pushnumber(L, (lua_Number)ms / 1000.0);
+    }
+    return 1;
+}
+
+static int open_cli_full(lua_State *L)
+{
+    const ku_payload_entry *entry = ku_payload_find("lua/cli.lua");
+    if (entry == NULL) {
+        return luaL_error(L, "kuu is missing lua/cli.lua");
+    }
+    if (luaL_loadbufferx(L, (const char *)entry->bytes, entry->length, "=kuu/lua/cli.lua", "t") != LUA_OK) {
+        return lua_error(L);
+    }
+    lua_pushcfunction(L, cli_duration);
+    lua_call(L, 1, 1);
+    return 1;
 }
 
 lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
@@ -379,6 +385,8 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "json");
     lua_pushcfunction(L, open_fs_full);
     lua_setfield(L, -2, "fs");
+    lua_pushcfunction(L, ku_open_archive_native);
+    lua_setfield(L, -2, "_archive"); /* private, synchronous worker; archive.list supervises it */
     lua_pushcfunction(L, ku_open_http);
     lua_setfield(L, -2, "http");
     lua_pushcfunction(L, ku_open_sys);
@@ -395,6 +403,8 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "reg");
     lua_pushcfunction(L, ku_open_env);
     lua_setfield(L, -2, "env");
+    lua_pushcfunction(L, open_cli_full);
+    lua_setfield(L, -2, "cli");
     lua_pop(L, 2);
     return L;
 }

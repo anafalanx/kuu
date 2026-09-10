@@ -10,7 +10,7 @@ return function(T)
 
   -- identity and usage ------------------------------------------------------
   local r = kuu { "--version" }
-  check("version line", r.code == 0 and r.out == "kuu 0.5 (Lua 5.5.1)\n", describe(r))
+  check("version line", r.code == 0 and r.out == "kuu 0.6 (Lua 5.5.1)\n", describe(r))
 
   r = kuu { "--help" }
   check("help exits 0 on stdout", r.code == 0 and contains(r.out, "usage: kuu FILE") and r.err == "", describe(r))
@@ -43,7 +43,7 @@ return function(T)
   check("inline arguments arrive as ...", r.out == "2\ta\tb c\n", describe(r))
 
   r = kuu { "-e", "local rt = require('rt'); print(rt.version, rt.lua, rt.route, #rt.args, rt.args[2], rt.program, rt.exe ~= nil)", "x", "y" }
-  check("rt module describes the launch", r.out == "0.5\tLua 5.5.1\teval\t2\ty\tnil\ttrue\n", describe(r))
+  check("rt module describes the launch", r.out == "0.6\tLua 5.5.1\teval\t2\ty\tnil\ttrue\n", describe(r))
 
   local accented = "héllo wörld €"
   r = kuu { "-e", "io.write(...)", accented }
@@ -182,4 +182,21 @@ return function(T)
 
   r = kuu({ hello, "with-stdin" }, { stdin = "ignored input" })
   check("stdin given to the file route is left alone", r.code == 0 and r.out == "hello\twith-stdin\n", describe(r))
+  do
+    local fs = require "fs"
+    local dir = fs.absolute(T.work .. "/version-route")
+    fs.mkdir(dir)
+    fs.write(dir .. "/VERSION", "0.58\n")
+    local version = kuu({ "version" }, { cwd = dir })
+    check("version is a verb even beside a VERSION data file",
+      version.code == 0 and version.out == "kuu 0.6 (Lua 5.5.1)\n" and version.err == "", describe(version))
+    fs.write(dir .. "/VERSION", "io.write('explicit file')\n")
+    local file = kuu({ "./version" }, { cwd = dir })
+    check("an explicit path still executes a file named version", file.code == 0 and file.out == "explicit file", describe(file))
+    for _,verb in ipairs { "version", "--version" } do
+      local bad = kuu { verb, "extra" }
+      check(verb .. " refuses extra arguments", bad.code == 2 and contains(bad.err, "version takes no arguments"), describe(bad))
+    end
+  end
+
 end

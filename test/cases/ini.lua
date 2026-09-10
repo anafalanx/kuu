@@ -47,4 +47,30 @@ return function(T)
   check("remove of something absent returns the text unchanged", ini.remove(text, "Nope", "x") == text and ini.remove(text, "Server", "nope") == text)
   local okq, eq = pcall(ini.set, text, "S", "k", "a\nb")
   check("a value spanning lines is INI badvalue", not okq and err.is(eq, "INI", "badvalue"), tostring(eq))
+  do
+    local duplicates = "[S]\nx=1\nx=2\n[Other]\nx=stay\n[S]\nx=3\n"
+    local edited = ini.set(duplicates, "S", "x", "4")
+    check("set changes the last key across duplicate sections",
+      ini.decode(edited).S.x == "4" and edited == duplicates:gsub("x=3", "x=4"), edited)
+    local removed = ini.remove(duplicates, "S", "x")
+    check("remove drops every duplicate key without touching another section",
+      ini.decode(removed).S.x == nil and ini.decode(removed).Other.x == "stay", removed)
+    removed = ini.remove(duplicates, "S")
+    check("remove drops every occurrence of a section", ini.decode(removed).S == nil and ini.decode(removed).Other.x == "stay")
+    local mixed = "[Server]\nPort=1\n[server]\nPORT=2\n"
+    check("case-insensitive duplicate sections and keys have a deterministic last value",
+      ini.get(ini.decode(mixed), "SERVER", "port") == "2" and
+      ini.get(ini.decode(ini.set(mixed, "server", "port", "3")), "Server", "PORT") == "3")
+    local bom = "\239\187\191"
+    edited = ini.set(bom .. "[S]\nx=1\r\n", "S", "x", "2")
+    check("set and remove recognise and preserve a UTF-8 BOM",
+      edited:sub(1, 3) == bom and ini.decode(edited).S.x == "2" and
+      ini.remove(bom .. "[S]\nx=1\n", "S", "x") == bom .. "[S]\n")
+    check("literal surrounding quotes survive encode and set",
+      ini.decode(ini.encode { S = { x = '"hello"' } }).S.x == '"hello"' and
+      ini.decode(ini.set("[S]\nx=1\n", "S", "x", '"hello"')).S.x == '"hello"')
+    check("a new key belongs to the last duplicate section",
+      ini.set("[S]\nx=1\n[Other]\ny=2\n[S]\nz=3\n", "S", "added", "4"):sub(-8) == "added=4\n")
+  end
+
 end
