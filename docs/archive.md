@@ -2,9 +2,12 @@
 
 Zip and tar archives using Windows' archive components. `pack` and `unpack`
 use the system `tar.exe`. `list` uses the Unicode API in its companion
-`System32/archiveint.dll`, loaded only from the system directory; it checks
-every required entry point and fails clearly if the component is unavailable.
-No extra executable or archive library is installed.
+`System32/archiveint.dll`, the libarchive that Windows ships beside `tar.exe`
+since Windows 10 1803. It is loaded only from the system directory and every
+entry point is checked; it is not a documented Windows API, so on a Windows
+without it, or one that changes it, `list` fails with `ARCHIVE oserror`
+naming the library while `pack` and `unpack` keep working. No extra
+executable or archive library is installed.
 
 ```lua
 local archive = require("archive")

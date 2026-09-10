@@ -19,6 +19,7 @@
 #include "err.h"
 #include "hold.h"
 #include "ports.h"
+#include "values.h"
 #include "wintext.h"
 
 #include "lauxlib.h"
@@ -178,8 +179,13 @@ static int fail_snapshot(lua_State *L)
 
 int ku_proc_list(lua_State *L)
 {
+    /* The snapshot belongs to the stack: a raise while the entries are built
+     * frees it through the holder instead of leaking it. */
+    ku_hold *hold = ku_hold_new(L, free);
+    lua_toclose(L, -1);
     size_t count = 0;
     ku_pentry *list = ku_proc_snapshot(&count);
+    hold->ptr = list;
     if (list == NULL) {
         return fail_snapshot(L);
     }
@@ -188,7 +194,6 @@ int ku_proc_list(lua_State *L)
         push_entry(L, &list[i], 1);
         lua_rawseti(L, -2, (lua_Integer)i + 1);
     }
-    free(list);
     return 1;
 }
 
@@ -215,21 +220,18 @@ int ku_proc_find(lua_State *L)
     if (has_name + has_pid + has_port != 1) {
         return ku_err_raise(L, "PROC", "badvalue", "find takes exactly one of name, pid, or port");
     }
-    wchar_t *wanted = NULL;
+    /* every argument is checked before anything is allocated; the args table
+     * at index 1 keeps the name string alive after the fields are popped */
+    const char *name = has_name ? ku_check_cstring(L, -3, "PROC", "name") : NULL;
     DWORD pid = 0;
     unsigned short port = 0;
-    if (has_name) {
-        wanted = ku_utf8_to_wide(luaL_checkstring(L, -3));
-        if (wanted == NULL) {
-            return ku_err_raise(L, "PROC", "encoding", "the name is not valid UTF-8");
-        }
-    } else if (has_pid) {
+    if (has_pid) {
         lua_Integer v = luaL_checkinteger(L, -2);
         if (v < 0 || v > 0xffffffffLL) {
             return ku_err_raise(L, "PROC", "badvalue", "pid out of range");
         }
         pid = (DWORD)v;
-    } else {
+    } else if (has_port) {
         lua_Integer v = luaL_checkinteger(L, -1);
         if (v < 1 || v > 65535) {
             return ku_err_raise(L, "PROC", "badvalue", "port must be 1 to 65535");
@@ -237,17 +239,34 @@ int ku_proc_find(lua_State *L)
         port = (unsigned short)v;
     }
     lua_pop(L, 3);
+    /* three native buffers, each owned by the stack until this call returns */
+    ku_hold *hold_wanted = ku_hold_new(L, free);
+    lua_toclose(L, -1);
+    wchar_t *wanted = NULL;
+    if (name != NULL) {
+        wanted = ku_utf8_to_wide(name);
+        hold_wanted->ptr = wanted;
+        if (wanted == NULL) {
+            return ku_err_raise(L, "PROC", "encoding", "the name is not valid UTF-8");
+        }
+    }
+    ku_hold *hold_list = ku_hold_new(L, free);
+    lua_toclose(L, -1);
     size_t count = 0;
     ku_pentry *list = ku_proc_snapshot(&count);
+    hold_list->ptr = list;
     if (list == NULL) {
-        free(wanted);
         return fail_snapshot(L);
     }
+    ku_hold *hold_listeners = ku_hold_new(L, free);
+    lua_toclose(L, -1);
     ku_listener *listeners = NULL;
     size_t listener_count = 0;
-    if (has_port && ku_tcp_listeners(&listeners, &listener_count) != 0) {
-        free(list);
-        return ku_err_raise(L, "PROC", "oserror", "cannot read the TCP tables");
+    if (has_port) {
+        if (ku_tcp_listeners(&listeners, &listener_count) != 0) {
+            return ku_err_raise(L, "PROC", "oserror", "cannot read the TCP tables");
+        }
+        hold_listeners->ptr = listeners;
     }
     lua_newtable(L);
     lua_Integer found = 0;
@@ -270,9 +289,6 @@ int ku_proc_find(lua_State *L)
             lua_rawseti(L, -2, ++found);
         }
     }
-    free(listeners);
-    free(list);
-    free(wanted);
     return 1;
 }
 

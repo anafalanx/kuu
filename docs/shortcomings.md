@@ -218,6 +218,6 @@ release or signing was performed.
   paused and remain incomplete. Tcl/Tk's compiled tree still rebuilds in
   place after invalidating its completion record.
 
-See [the dated handoff](handoff-2026-09-10_193511.md) for the exact paused
+See [the dated handoff](../notes/handoff-2026-09-10_193511.md) for the exact paused
 state, local evidence and remaining work. Earlier full application results
 above do not establish completion of the new recovery recipe's validation.

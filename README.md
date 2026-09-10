@@ -82,6 +82,7 @@ documents the gates and how to replay a seed.
 | `vendor/lua-5.5.1/` | PUC Lua 5.5.1 as released, compiled as C |
 | `lua/` | kuu's own Lua: `log`, `cli`, `task`, `project`, `archive`, `check`, and the verbs under `lua/cmd/` |
 | `docs/` | the manual, shipped inside the executable |
+| `notes/` | dated handoff documents between the owner's machines; not shipped |
 | `test/` | the Lua test suite: `run.lua`, `cases/`, `fixtures/` |
 | `Makefile` | the build |
 | `.tools/` | the compiler and make, local to this checkout |

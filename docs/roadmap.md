@@ -22,7 +22,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
 | process lifetime | the no-orphans law, first thing in the palette | every child is born into a kill-on-close job; only `detach`, and a child's own deliberate breakaway, step outside it |
 | what stays out | `store` (SQLite), publishing, Tk, a wrap verb, any Tcl, PATH lookup, `io.popen`, `os.execute` | tools or hazards, not organs |
-| projects share nothing | every project carries its own `kuu.exe` directly in its root, copied in by hand; nothing on `PATH`, no machine changes, no bootstrap scripts | the owner ended estate-wide management; a small executable is copied, not fetched by glue |
+| projects share nothing | every project carries its own `kuu.exe`, copied in by hand, directly in its root since 0.6 (0.4 and 0.5 put it in `.tools`); nothing on `PATH`, no machine changes, no bootstrap scripts | the owner ended estate-wide management; a small executable is copied, not fetched by glue |
 | what a project may fetch | upstream downloads only, into its own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger fetches from the same public sources |
 | kuu's own repository | free of kuu: build and release are make, gcc, and cmd recipes; no `tasks.lua` there | self-reference is unwelcome, for release steps too |
 | releases | anafalanx/kuu public; GitHub Releases carry `kuu.exe` and its `.sha256`; signed with the owner's existing Certum certificate through the Windows SDK's signtool | the estate already signs this way, and public releases need no credentials to fetch |
@@ -117,7 +117,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      discipline els already has in Tcl; `kuu.exe` and its `.sha256`
      published as a GitHub Release of the public repository. Done when
      `kuu-test-project` runs its tasks end to end under the released
-     `kuu.exe` copied directly into its root.
+     `kuu.exe` copied into its `.tools` (the root became the place in 0.6).
    - Done 2026-09-09, the same day it was decided. 509 checks. The soak test
      found a handle leak on its first run and a standalone probe traced it
      to WinHTTP itself, one handle per session opened and closed; kuu now
@@ -303,5 +303,5 @@ workaround belongs to the consuming build recipe and is now documented.
 Cold setup testing also found and fixed `hash.file`'s long-path boundary.
 The complete suite now passes 838 checks plus native analysis. Time Actual's
 new recovery fixture passes 17 checks on 0.5 and 0.6; full cold toolchain and
-relocation validation is paused. See the [2026-09-10 handoff](handoff-2026-09-10_193511.md)
+relocation validation is paused. See the [2026-09-10 handoff](../notes/handoff-2026-09-10_193511.md)
 for the remaining work. No 0.6 release has been made by this checkpoint.
