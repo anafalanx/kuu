@@ -54,11 +54,12 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `kuu run --dry-run`; a crash handler so kuu never dies silently; soak and stress tests on demand | 0.4 |
 | the from-PowerShell page of the manual: each cmdlet an agent reaches for, and the kuu call | 0.4 onward |
 | a version resource, Certum signing, a GitHub Release, by make; `kuu-test-project` under the released kuu | 0.4 |
-| `pty` over ConPTY with `expect`; VT processing and size on kuu's own console | deferred, on a real project need |
+| `pty` over ConPTY with `expect`, provisional | 0.7 |
 | `re` on PCRE2; `time`; `debug.traceback` and `debug.getinfo` only; `csv`, `ini`; the adopting page of the manual | 0.5 |
 | `reg`; `env`: the live environment and the persisted one, with the change broadcast | 0.5 |
 | `proc.list`, `proc.find`, `proc.tree`; `net.probe`, `net.listeners`, `net.resolve`, `net.addresses` | 0.5 |
-| `svc` via the Service Control Manager; `evt`, the event logs; `worker` processes; `serve`; `check` learns the palette's names | deferred, on a real project need |
+| `svc`; `evt`; `check` learns the palette's names; `proc` limits; `sched.deadline` and `task.defaults`; `sys.signature`; the cookbook, the stability statement, `make gate` with a sanitizer build | 0.7 |
+| `worker` processes; `serve` | deferred, on a real project need |
 | review fixes, dependency-only tasks, duration units, Unicode archives, TLS diagnostics, process path consistency; analysis and parser fuzz gates | 0.6 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
@@ -161,10 +162,18 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      complete test task from a path with spaces, all passing. One external
      limitation surfaced: Tcl/Tk will not rebuild from a path with spaces.
      Recorded in the observations log.
-7. **1.0.** Criteria for the owner to set. Proposed: three projects driven
+7. **0.7, the last capabilities before the freeze.** Decided 2026-09-10:
+   `proc` limits on children, `sched.deadline` and `task.defaults`, `svc`,
+   `check` learning the palette's names, `sys.signature`, `evt`, and a
+   provisional `pty` with `expect`; an API consistency pass, a stability
+   statement, a cookbook, the PowerShell map completed, `make gate` with a
+   sanitizer build. The plan, with each design, is the dated handoff in
+   `notes/` written that day.
+8. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
-   verdict.
+   verdict. Between 0.7 and 1.0: the freeze, the month of use, and 0.8 with
+   only what that month finds.
 
 ## The 0.5 review: fixes implemented
 
