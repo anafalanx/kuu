@@ -50,7 +50,7 @@ HOST_FLAGS := -std=c23 -O2 -Wall -Wextra -Wpedantic -Wformat=2 -Wundef -Werror \
 # wmain entry, libgcc and winpthread static, unused sections dropped, symbols
 # stripped.  The C runtime stays the system's ucrtbase.dll; bcrypt is Windows'.
 LINK_FLAGS := -municode -static -static-libgcc -Wl,--gc-sections -s
-LINK_LIBS  := -lbcrypt -lwinhttp -liphlpapi -lws2_32 -ladvapi32 -lwintrust -lcrypt32
+LINK_LIBS  := -lbcrypt -lwinhttp -liphlpapi -lws2_32 -ladvapi32 -lwintrust -lcrypt32 -lwevtapi
 
 # Test fixtures: small C programs the suite drives as children.
 FIXTURE_SRC := test/fixtures

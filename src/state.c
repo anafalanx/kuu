@@ -410,6 +410,8 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "env");
     lua_pushcfunction(L, open_svc_full);
     lua_setfield(L, -2, "svc");
+    lua_pushcfunction(L, ku_open_evt);
+    lua_setfield(L, -2, "evt");
     lua_pushcfunction(L, open_cli_full);
     lua_setfield(L, -2, "cli");
     lua_pop(L, 2);
