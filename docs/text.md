@@ -36,3 +36,5 @@ bytes and paired surrogates; byte-order marks are not interpreted or produced.
 | `unencodable` | the string has characters the target encoding lacks |
 | `unsupported` | the code page is not available on this system |
 | `badvalue` | raised: an unknown encoding name |
+| `toobig` | the input is too long for Windows' case mapping |
+| `oserror` | raised: allocation or Windows case mapping failed |

@@ -10,8 +10,9 @@ local ini = require "ini"
 
 local t = ini.decode(text)                  -- { [""] = { top-level keys }, Section = { key = "value" } }
 t.Server.port                               -- "8080": always a string
-ini.get(t, "server", "PORT")                -- the same, ignoring case as Windows does
+ini.get(t, "server", "PORT")                -- the same, ignoring ASCII letter case
 ini.encode(t)                               -- sections and keys sorted; deterministic
+ini.encode(t, { newline = "\r\n" })        -- LF by default; CRLF when requested
 ini.set(text, "Server", "port", "9090")     -- the text with that one change, the rest untouched
 ini.remove(text, "Server", "port")          -- without that key; without the whole section when key is nil
 ```
@@ -19,7 +20,8 @@ ini.remove(text, "Server", "port")          -- without that key; without the who
 Two ways of working, on purpose. `decode` and `encode` read a file into a
 table and write a file of your own. `set` and `remove` edit a file that
 belongs to something else: comments, order, spacing, and the line ending
-style survive, and section and key names match ignoring case. Read the
+style survive, and section and key names match ignoring ASCII letter case.
+Non-ASCII bytes are compared exactly. Read the
 file with `fs.read`, edit, write it back with `fs.write`.
 
 ## Rules
@@ -51,6 +53,8 @@ appends a missing section at the end. `section` `""` means the top level.
 `remove` drops every occurrence of the key in matching sections, or every
 matching section with its header when `key` is nil. It returns the text
 unchanged when there is nothing to remove. Both edits preserve a UTF-8 BOM.
+Files using one line-ending style retain it; mixed LF/CRLF input is normalized
+to CRLF if any CRLF is present, otherwise LF.
 
 ## Errors
 

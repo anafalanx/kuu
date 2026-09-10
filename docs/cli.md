@@ -59,3 +59,7 @@ This changed in 0.6: 0.5 returned milliseconds. See
 [Upgrading to 0.6](upgrading-0.6.md) before reusing an older spec. Rounding and
 floating-point precision match `time.duration`; results are numbers of seconds,
 not exact integer millisecond counts at arbitrarily large magnitudes.
+
+The complete CLI code set is `usage` (returned for invalid command-line
+arguments) and `badvalue` (raised for an invalid specification). `duration`
+and `size` return nil for text they cannot parse.

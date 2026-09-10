@@ -13,7 +13,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | platform | Windows 11 25H2 and later, and the equivalent Windows Server releases; nothing else | the strength comes from using the modern process, console, and file APIs without fallbacks |
 | language for programs | Lua 5.5.1, vendored, compiled as C | agents write it correctly from a hundred-page manual; coroutines make waiting read as straight-line code; `global none` turns the classic typo into a compile error; errors are `longjmp`, so C, never C++ |
 | host language | C, the els method's subset | the host lives on two C boundaries, Win32 and the Lua API, and machteld's process-lifetime and text-boundary code transfers verbatim |
-| compiler | gcc 16.1 from MSYS2 UCRT64, copied into `.tools` | the estate's proven recipe; the Zig toolchain was weighed and stays an option |
+| compiler | gcc 16.1 from MSYS2 UCRT64, copied into `.tools` | the estate's proven recipe; gcc and GNU make are the chosen production build, with Clang only for sanitizer tests |
 | build | GNU make from the same `.tools`, recipes under `cmd.exe` | no PowerShell in the repository, and kuu never builds kuu: the build is make and gcc, the tests are Lua run by the built kuu |
 | self-hosting | none, by owner decision | kuu is not required to bootstrap or build itself; a person with `.tools` populated runs `make` |
 | versions | `Major.Minor`, both natural numbers | 0.1, 0.2, ...; no patch component |
@@ -46,7 +46,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | live child streams with backpressure (`read`, `read_err`, `lines`, `write`, `close_stdin`), `inherit = true`, `proc.wait_any`, `proc.wait_all` | 0.2 |
 | `http` on WinHTTP: get, post, request, streaming to a file, a wall-clock deadline of kuu's own | 0.3 |
 | `toolchain` hydrate/verify/path from a prescriptive lock; `kuu hydrate`, `kuu verify` | 0.3, removed in 0.4 |
-| `task`, `tasks.lua`, `kuu run`, `kuu list`, `--json` envelopes on every verb; `fs.chdir`, `rt.root`, `rt.source` | 0.3 |
+| `task`, `tasks.lua`, `kuu run`, `kuu list`, their `--json` reports; `fs.chdir`, `rt.root`, `rt.source` | 0.3 |
 | `kuu check`: parse, global declarations, `require` resolution, without running; no arity checking, by design | 0.3 |
 | verification as a capability: `http.get { to, sha256 }`, `fs.unpack`, `fs.pack` over the tar.exe Windows ships | 0.4 |
 | `fs.glob`, `fs.join`, `fs.dirname`, `fs.basename`, `fs.ext`, `fs.relative`, `fs.tempfile`, `fs.tempdir`, `fs.space` | 0.4 |
@@ -54,13 +54,18 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `kuu run --dry-run`; a crash handler so kuu never dies silently; soak and stress tests on demand | 0.4 |
 | the from-PowerShell page of the manual: each cmdlet an agent reaches for, and the kuu call | 0.4 onward |
 | a version resource, Certum signing, a GitHub Release, by make; `kuu-test-project` under the released kuu | 0.4 |
-| `pty` over ConPTY with `expect`, provisional | 0.7 |
 | `re` on PCRE2; `time`; `debug.traceback` and `debug.getinfo` only; `csv`, `ini`; the adopting page of the manual | 0.5 |
 | `reg`; `env`: the live environment and the persisted one, with the change broadcast | 0.5 |
 | `proc.list`, `proc.find`, `proc.tree`; `net.probe`, `net.listeners`, `net.resolve`, `net.addresses` | 0.5 |
-| `svc`; `evt`; `check` learns the palette's names; `proc` limits; `sched.deadline` and `task.defaults`; `sys.signature`; the cookbook, the stability statement, `make gate` with a sanitizer build | 0.7 |
 | `worker` processes; `serve` | deferred, on a real project need |
 | review fixes, dependency-only tasks, duration units, Unicode archives, TLS diagnostics, process path consistency; analysis and parser fuzz gates | 0.6 |
+| job-wide `proc` limits on memory, user CPU time, and active processes; result `status = "limit"` with its kind | 0.7 |
+| `sched.deadline` across waits; `task.defaults { timeout = ... }`; `task.exec` leaves the caller's options table untouched | 0.7 |
+| `svc` for service state and transitions; `evt` for bounded event-log queries; `sys.signature` for embedded Authenticode trust and identity | 0.7 |
+| `check` verifies palette export names through local aliases and lexical scopes, with suggestions and JSON finding kinds | 0.7 |
+| `pty` over ConPTY with `expect`, a plain-text view, and supervised child lifetime; provisional, outside the future freeze | 0.7 |
+| ten executable cookbook programs; public stability statement and minimum-version guards; complete module map and JSON schemas | 0.7 |
+| `make gate`: suite, analysis, expanded parser fuzzing, soak; separate pinned Clang AddressSanitizer build required for release | 0.7 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
 
@@ -162,13 +167,27 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      complete test task from a path with spaces, all passing. One external
      limitation surfaced: Tcl/Tk will not rebuild from a path with spaces.
      Recorded in the observations log.
-7. **0.7, the last capabilities before the freeze.** Decided 2026-09-10:
-   `proc` limits on children, `sched.deadline` and `task.defaults`, `svc`,
-   `check` learning the palette's names, `sys.signature`, `evt`, and a
-   provisional `pty` with `expect`; an API consistency pass, a stability
-   statement, a cookbook, the PowerShell map completed, `make gate` with a
-   sanitizer build. The plan, with each design, is the dated handoff in
-   `notes/` written that day.
+7. **0.7, the last capabilities before the freeze.** Implemented from the
+   2026-09-10 handoff. Children can be bounded by committed memory, user CPU
+   time, and process count; their result identifies a breached limit.
+   `sched.deadline` bounds a scope's waits and composes with nested deadlines;
+   `task.defaults` sets the default timeout of `task.exec`. `svc` controls
+   Windows services, `evt` reads bounded event snapshots, and `sys.signature`
+   verifies embedded Authenticode trust and certificate identity. The checker
+   follows direct local require bindings through lexical scopes and catches
+   unknown exports without running project code. `pty` drives console prompts
+   through ConPTY and stays provisional.
+   - The [cookbook](cookbook.md) gives ten complete programs, extracted and
+     checked by the suite and exercised with safe fixtures. The
+     [stability statement](stability.md) names the future 1.x contract and
+     replaces exact-version guards with numeric minimums. The module pages,
+     PowerShell map, error-code sets, and JSON schemas are documented together;
+     [upgrading to 0.7](upgrading-0.7.md) records the changes from 0.6.
+   - `make gate` combines the suite, GCC analysis, deterministic fuzzing, and
+     soak. The parser corpus now includes CSV, INI decode and edits, JSON,
+     and registry key text. `make asan` builds a separate test executable
+     with pinned MSYS2 CLANG64 packages and runs the suite under
+     AddressSanitizer; it is a required separate release check.
 8. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a

@@ -1,7 +1,7 @@
 # sync
 
-One at a time, across processes: a named lock that two kuu processes on one
-machine, or two tasks in one, take turns on.
+One at a time, across processes: a named lock that two kuu processes in the
+same Windows session, or two tasks in one, take turns on.
 
 ```lua
 local sync = require("sync")
@@ -29,7 +29,8 @@ reference is enough, though only `release` and `<close>` are prompt. It is
 exclusive within one kuu as well: a second `try` from the
 same process is `busy`, although Windows would have let the same thread in
 again. Names are 1 to 200 bytes without backslashes or control characters,
-and are the same across every kuu on the machine.
+and are the same across every kuu in that session. A different logon session
+has its own `Local` namespace and does not share these locks.
 
 `mem` holds one of these while it reads, merges, and writes its file.
 

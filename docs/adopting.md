@@ -15,8 +15,9 @@ repo/
   src/               whatever the repository is about
 ```
 
-The examples target 0.6. A repository still on 0.5 has the older duration
-convention; the [upgrade notes](upgrading-0.6.md) describe the differences.
+The examples require 0.7 or later. Read [upgrading to 0.7](upgrading-0.7.md)
+when moving from 0.6; a repository still on 0.5 also needs the
+[duration migration](upgrading-0.6.md).
 
 ## 1. Give the repository its kuu
 
@@ -38,33 +39,40 @@ Add to `.gitignore`:
 
 ## 2. Write tasks.lua
 
-`tasks.lua` sits at the repository root. It states the kuu it was written
-for, lists what the repository needs, and declares the tasks. [Tasks](task.md)
+`tasks.lua` sits at the repository root. It states the minimum kuu version
+it needs, lists the prerequisites, and declares the tasks. [Tasks](task.md)
 has the full contract; this is the shape:
 
 ```lua
 global none
-global <const> require, ipairs, print, error
+global <const> require, ipairs, print, error, tonumber
 
-local KUU = "0.6" -- the kuu this repository was made for
+local NEED_MAJOR, NEED_MINOR = 0, 7
 
 local rt = require "rt"
 local task = require "task"
 local http = require "http"
 local archive = require "archive"
-local proc = require "proc"
 local fs = require "fs"
 local hash = require "hash"
 local err = require "err"
 
-if rt.version ~= KUU then
-  error(err.new("PROJECT", "version", "made for kuu " .. KUU .. ", this is " .. rt.version .. "; copy the right kuu.exe into the repository root"))
+local major, minor = rt.version:match("^(%d+)%.(%d+)$")
+major, minor = tonumber(major), tonumber(minor)
+if not major or major < NEED_MAJOR or (major == NEED_MAJOR and minor < NEED_MINOR) then
+  error(err.new("PROJECT", "version", "requires kuu 0.7 or later, found " .. rt.version .. "; copy a supported kuu.exe into the repository root"))
 end
+task.defaults { timeout = "10m" }
 
 -- What this repository needs, by url and hash.  Nothing else is looked up anywhere.
 local PACKAGES = {
   { url = "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-make-4.4.1-5-any.pkg.tar.zst",
     sha256 = "871f760657a360279f29b945a7fd7d9655fe46a3e1e06dd783c9e74514aa0b27" },
+  -- make imports gettext's libintl, which also needs libiconv.
+  { url = "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gettext-0.22.4-3-any.pkg.tar.zst",
+    sha256 = "adb418766c639868e513ab76a1c4676fc63900a183264e7ffa9c1d21a254c45d" },
+  { url = "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
+    sha256 = "9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16" },
 }
 local MAKE = ".tools/msys2/ucrt64/bin/mingw32-make.exe"
 
@@ -129,9 +137,11 @@ Three habits make this work:
 .\kuu.exe check                tasks.lua and the repository's Lua, without running anything
 ```
 
-Exit codes: 0 when the task returned, 1 when it failed, 2 when kuu could
-not even start it. `kuu check` catches a misspelt module or an undeclared
-global before anything runs, so run it first after editing.
+Exit codes: 0 when the task returned, a child's nonzero code when `task.exec`
+failed, 1 for another task failure, and 2 when kuu could not start it.
+`kuu check` catches an unknown palette export or an undeclared global and
+warns about unresolved modules before anything runs, so run it first after
+editing.
 
 ## 4. Keep state, take turns, ask the machine
 
@@ -143,13 +153,23 @@ global before anything runs, so run it first after editing.
   for the children a task starts; [`proc`](proc.md) runs them with decided
   lifetimes and finds the ones already running; [`net`](net.md) tells
   whether the service came up.
+- [`svc`](svc.md) inspects and controls services; [`evt`](evt.md) reads the
+  event logs. [`sys.signature`](sys.md#syssignature) verifies an embedded
+  Authenticode signature before a project runs an installer.
+- [`sched.deadline`](sched.md#deadlines) bounds a sequence of waits, while
+  `task.defaults` and [`proc` limits](proc.md#limits) bound the children.
+  The [cookbook](cookbook.md) has complete programs for these jobs.
 
 ## 5. Upgrading kuu
 
-Copy the new `kuu.exe` over the old one in the repository root, change the `KUU`
-constant, run `check`, run the tasks. The [roadmap](roadmap.md) lists what
-changed per version. Repositories upgrade one at a time; there is no
-machine-wide state to keep in step.
+Copy the new `kuu.exe` over the old one in the repository root, read the
+intervening upgrading notes, run `check`, and run the tasks. Raise
+`NEED_MAJOR` and `NEED_MINOR` only when the recipes begin to require a newer
+feature. Compare the components numerically: 0.10 is newer than 0.9. The
+[stability statement](stability.md) defines this minimum guard and the future
+1.x promise; the [roadmap](roadmap.md) lists what changed per version.
+Repositories upgrade one at a time; there is no machine-wide state to keep
+in step.
 
 ## What not to do
 

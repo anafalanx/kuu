@@ -30,6 +30,11 @@ argument; `find`, `match`, and `exec` take an `init` before the flags, as
 more than the methods; `compile` is for a pattern used many times or for its
 `groups` and `names`.
 
+`gsub` takes an optional replacement count before its flags:
+`re.gsub(s, pattern, replacement, n, flags)` or `rx:gsub(s, replacement, n)`.
+Omitting `n` replaces every match; zero makes no replacements. For flags
+without a count, pass nil in that slot.
+
 | flag | meaning |
 |---|---|
 | `i` | caseless |
@@ -67,3 +72,4 @@ a megabyte of `gsub` well under a second.
 | `badvalue` | raised: an unknown flag, `b` with `u`, a bad `$` in a replacement, a replacement that is not a string |
 | `invalid` | raised: the subject is not UTF-8, or `init` is inside a character; flag `b` matches bytes |
 | `limit` | raised: the match exceeded the engine's limits |
+| `oserror` | raised: allocation failed, or the engine returned another internal error |

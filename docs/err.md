@@ -4,17 +4,21 @@ The one error shape.
 
 ```lua
 local err = require("err")
-local e = err.new("TASK", "failed", "the build returned 1", { code = 1 })
+local e = err.new("TASK", "failed", "the build returned 1", { exit = 1 })
 tostring(e)                 -- "TASK failed: the build returned 1"
-e.domain, e.code, e.message, e.code
+e.domain, e.code, e.message, e.exit
 err.is(e)                   -- true: it is one of these
 err.is(e, "TASK")           -- true
 err.is(e, "TASK", "failed") -- true
 ```
 
-Every failure kuu reports to a program is such a table, with a closed set of
-domains and codes documented per module. The convention, which kuu's own
-modules follow and yours should too:
+The optional fourth argument adds fields to the error. Keep `domain`, `code`,
+and `message` out of that table: extra fields replace existing fields.
+
+kuu's classified failures use such a table, with a closed set of domains and
+codes documented per module. Lua's argument-type checks can still raise a
+string error, and errors from user callbacks propagate unchanged. The
+convention for classified failures is:
 
 - An expected failure returns `nil, e`: a program that is not installed, a
   child that timed out waiting, a file that is not there.

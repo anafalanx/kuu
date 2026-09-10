@@ -54,6 +54,7 @@ at an existing broken link.
 
 ```lua
 fs.mkdir("build/out/deep")                  -- parents created; existing is fine
+fs.mkdir("build/out", { parents = false })  -- the parent must already exist
 fs.remove("build/out/deep/file.txt")
 fs.remove("build/out", { recursive = true })
 fs.rename(from, to, { replace = true })
@@ -85,7 +86,7 @@ entered, and their `links` row says so (`action = "nofollow"`). Hidden
 directories are included. Nothing is omitted silently: a branch that could not
 be read is an `errors` row with the raw Windows code, and the counts add up.
 `depth` omitted is unlimited; `depth = 0` is the root alone. Prune patterns
-use `*` and `?`, match base names, and ignore case.
+use `*` and `?`, match base names, and ignore case; at most 64 are accepted.
 
 ## Watching
 
@@ -95,6 +96,8 @@ local events, e = w:read("30s")       -- nil, FS timeout when nothing changed
 for _, ev in ipairs(events) do print(ev.action, ev.path, ev.from) end
 w:info()                              -- { directory, recursive, pending, dropped, armed }
 ```
+
+The options are `recursive` (default true) and `raw` (default false).
 
 Actions are `added`, `removed`, `modified`, `renamed` (with `from`), and
 `overflow`. Paths are relative to the watched directory with forward slashes.
@@ -166,3 +169,7 @@ refused before anything is created.
 | `timeout` | `watch:read` waited its whole duration |
 | `closed` | raised: a closed watch was used |
 | `oserror` | anything else, with the Windows message |
+
+`read` with `encoding` keeps conversion failures in the `TEXT` domain, as
+documented in [text](text.md). A surrounding `sched.deadline` can interrupt
+a watch read with `SCHED deadline`; it does not preempt synchronous file I/O.

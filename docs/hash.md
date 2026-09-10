@@ -18,6 +18,10 @@ h:update(part1):update(part2)
 h:final()                                    -- hex; the hasher is finished
 ```
 
+`sum` and `file` accept `{ raw = true }` as the third argument, `hmac` as
+the fourth, and `h:final` as its options argument. All default to lowercase
+hex; raw results are digest bytes.
+
 Strings are bytes, so what you pass is what is hashed, and
 `hash.sum("sha256", "abc")` agrees with every other implementation. The list
 `hash.algorithms()` returns is the list the binary has; an unknown name raises
@@ -32,5 +36,6 @@ the filename before that byte.
 |---|---|
 | `badvalue` | raised: unknown algorithm, a count out of range, an oversized key, or NUL in a filename; returned for an ambiguous path |
 | `encoding` | `hash.file`: the path is not valid UTF-8 |
-| `notfound`, `access`, `oserror` | `hash.file`: the file cannot be opened or read |
+| `notfound`, `access` | `hash.file`: the file cannot be opened or read |
+| `oserror` | file I/O failed, or raised when Windows' cryptographic provider failed |
 | `closed` | raised: a finished hasher was used again |

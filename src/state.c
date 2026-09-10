@@ -274,14 +274,14 @@ static int open_net_full(lua_State *L)
     return open_hybrid(L, ku_open_net, "lua/net/probe.lua");
 }
 
-static int open_svc_full(lua_State *L)
-{
-    return open_hybrid(L, ku_open_svc, "lua/svc/wait.lua");
-}
-
 static int open_sched_full(lua_State *L)
 {
     return open_hybrid(L, ku_open_sched, "lua/sched/deadline.lua");
+}
+
+static int open_svc_full(lua_State *L)
+{
+    return open_hybrid(L, ku_open_svc, "lua/svc/wait.lua");
 }
 
 static int open_pty_full(lua_State *L)

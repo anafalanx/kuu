@@ -30,7 +30,7 @@ field is encoded that way so it survives a round trip.
 
 | option | default | |
 |---|---|---|
-| `separator` | `","` | one character; `";"` for European Excel, `"\t"` for TSV |
+| `separator` | `","` | one byte; `";"` for European Excel, `"\t"` for TSV |
 | `header` | `false` | the first row names the columns; the result is records keyed by name, with `columns` alongside |
 | `ragged` | `false` | allow rows with a different number of fields than the first row |
 

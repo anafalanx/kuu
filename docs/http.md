@@ -61,8 +61,14 @@ is sent with the next. A caller who wants a cookie sends the `Cookie` header.
 | `mismatch` | the body did not hash to `sha256`; the message carries both digests |
 | `status` | a non-2xx answer to a request that gave `sha256` |
 | `badvalue` | raised: a malformed url, header, timeout, size, or redirect value |
+| `encoding` | raised: a URL or header is not valid UTF-8 |
 | `usage` | raised: an unknown option, or no url |
 | `oserror` | anything else, with the Windows message |
+
+A refused download destination path keeps the path helper's `FS` domain
+(`badvalue`, `encoding`, or `oserror`) and is raised before the request starts.
+An enclosing `sched.deadline` propagates `SCHED deadline` while cancelling the
+request, independently of the request's own `HTTP timeout`.
 
 TLS client-certificate errors 12185/12186 and proxy TLS errors 12187/12188 are
 `HTTP tls`. Their messages include the Windows error symbol, number, and the

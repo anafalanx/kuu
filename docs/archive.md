@@ -16,6 +16,10 @@ archive.unpack("build/zig.zip", ".tools/zig", { strip = 1 })   -- true | nil, er
 archive.pack("build/out.zip", "build/stage")                   -- everything in the directory
 archive.pack("build/src.tar.gz", ".", { "src", "Makefile" })   -- named entries, relative to the directory
 archive.list("build/zig.zip")                                  -- { "zig-x86_64-windows-0.16.0/", ... }
+
+archive.unpack(file, dir, { strip = 1, timeout = "10m" })
+archive.pack(file, dir, nil, { timeout = "10m" })   -- options are fourth, after entries
+archive.list(file, { timeout = "10m" })
 ```
 
 The format follows the archive's extension: `.zip`, `.tar`, `.tar.gz` or
@@ -31,18 +35,24 @@ so an unpack stays under the directory you name.
 |---|---|
 | `ARCHIVE notfound` | no archive, or no directory, at that path |
 | `ARCHIVE failed` | an invalid archive, unsupported format, or rejected entry; pack/unpack retain tar's diagnostic |
-| `ARCHIVE badvalue` | raised: wrong types, a negative `strip`, entries that leave the directory, an empty directory to pack |
+| `ARCHIVE badvalue` | raised: wrong paths, a negative `strip`, or entries that leave the directory; returned for an empty directory to pack |
 | `ARCHIVE timeout` | the archive operation did not finish within `timeout` (default 30m) |
 | `ARCHIVE encoding` | an entry has no valid Unicode filename |
 | `ARCHIVE toobig` | listing exceeds 64 MiB of names, one million entries, or 64 MiB of encoded output |
 | `ARCHIVE oserror` | the required Windows component is unavailable |
 
+Filesystem setup and process launch failures retain their `FS` and `PROC`
+domains. Invalid timeout values raise `PROC badvalue`. An enclosing
+`sched.deadline` propagates `SCHED deadline` as with other waiting calls.
+
 `list` returns UTF-8 names, including characters outside the system ANSI code
 page. Embedded newlines remain part of a name. Directories retain their trailing
 slash; backslashes become forward slashes to match Windows extraction semantics.
 It does not extract files or parse tar's lossy text listing. The native reader
-runs in a supervised copy of this same `kuu.exe`, so deadlines and cancellation
-terminate the reader without blocking the parent's scheduler. The internal
+runs in a supervised copy of this same `kuu.exe`, with its own `timeout`,
+without blocking the parent's scheduler. An enclosing `sched.deadline`
+interrupts the wait; the worker can continue until it finishes, reaches its
+own timeout, or the parent exits, as with `proc.run`. The internal
 `_archive` module is an implementation detail, not a supported public API.
 ZIP creation explicitly writes UTF-8 headers so names survive packing too.
 

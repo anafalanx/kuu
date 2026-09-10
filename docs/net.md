@@ -14,8 +14,9 @@ net.listeners()                         -- { { port = 135, address = "0.0.0.0", 
 net.addresses()                         -- { { adapter = "Ethernet", address = "192.168.1.20", family = "ipv4", prefix = 24, up = true, ... }, ... }
 ```
 
-Nothing here blocks the program. Resolving and probing park the calling
-task and let the others run; both take a timeout, five seconds unless given.
+Resolving and probing park the calling task and let the others run; both
+take a timeout, five seconds unless given. `listeners` and `addresses` take
+synchronous snapshots of Windows' local tables.
 
 ## net.resolve
 

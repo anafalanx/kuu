@@ -5,7 +5,7 @@ Strict reading, exact writing.
 ```lua
 local json = require("json")
 local v, e = json.decode(text)            -- nil, err JSON parse | depth | duplicate
-local s = json.encode(v)                  -- raises JSON badvalue | encoding | depth
+local s = json.encode(v)                  -- raises JSON badvalue | encoding | depth | oserror
 local pretty = json.encode(v, { pretty = true })
 ```
 
@@ -45,6 +45,10 @@ the byte offset. Encoding raises for values JSON has no spelling for: NaN and
 infinity, functions and userdata other than `json.null`, tables mixing array
 and string keys, non-string keys, strings that are not valid UTF-8, and cycles,
 which surface as `JSON depth`.
+
+The complete code set is `parse`, `duplicate`, and `depth` for decoding;
+`badvalue`, `encoding`, `depth`, and `oserror` for encoding. `oserror` means
+the encoder could not allocate its document.
 
 Output is compact by default, with the seven short escapes, lowercase
 `\u00xx` for other control characters, and UTF-8 left raw.
