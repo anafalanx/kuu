@@ -6,7 +6,7 @@ necessarily a runtime defect; fixes should follow reproduced evidence.
 
 ## Time Actual adoption — 2026-09-10
 
-The local 0.6 implementation addresses seven runtime/API findings below. The
+0.6 addresses seven runtime/API findings below. The
 Tcl sandbox limitation remains external; the windres recipe issue is resolved
 in Time Actual. Original observations and 0.5 workarounds are retained for context.
 
@@ -17,7 +17,7 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   `VERSION` filename and reports `version:1: unexpected symbol near '0.58'`.
 - **Impact:** an intuitive version query produces an unrelated Lua parse error.
 - **Workaround:** use `kuu.exe --version`.
-- **Status:** Fixed in local 0.6. `version` is a reserved verb; `./version` still
+- **Status:** Fixed in 0.6. `version` is a reserved verb; `./version` still
   executes a file. Both version forms reject extra arguments.
 
 ### Dependency-only tasks require an empty function
@@ -28,7 +28,7 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
 - **Impact:** aggregate tasks need boilerplate, and syntax checking alone
   does not validate declarations.
 - **Workaround:** add `run = function() end`; run `kuu list` as well as `check`.
-- **Status:** Fixed in local 0.6. A task with non-empty dependencies may omit `run`;
+- **Status:** Fixed in 0.6. A task with non-empty dependencies may omit `run`;
   cycles, failure propagation, argument checks, and JSON plans still apply.
 
 ### Restricted networking produces an opaque WinHTTP error
@@ -44,7 +44,7 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   See [Microsoft's error reference](https://learn.microsoft.com/en-us/windows/win32/winhttp/error-messages).
 - **Workaround:** use the execution context with the required network and
   certificate access; inspect its credential configuration when necessary.
-- **Status:** Diagnostic fixed in local 0.6. Errors 12185–12188 are `HTTP tls`, with
+- **Status:** Diagnostic fixed in 0.6. Errors 12185–12188 are `HTTP tls`, with
   named client-key/proxy causes and actionable context. The hosting restriction itself
   is external.
 
@@ -60,7 +60,7 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   This remains after the duration grammar was unified in the 0.5 review fixes.
 - **Workaround:** pass `tostring(opts.timeout) .. "ms"` to the process API.
   Time Actual retains this for 0.5 compatibility and exercises both runtime versions.
-- **Status:** Fixed in local 0.6. CLI results, bounds, and choices use seconds, matching
+- **Status:** Fixed in 0.6. CLI results, bounds, and choices use seconds, matching
   native consumers. This is an intentional API change; see [migration
   notes](upgrading-0.6.md). Time Actual handles both 0.5 and 0.6 explicitly.
 
@@ -93,7 +93,7 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   with `fs.glob` and `fs.relative`, which return native Unicode paths. Time
   Actual initially used this fallback. Its current recovery installer
   inventories extracted files directly with an anchored `fs.list` walk.
-- **Status:** Fixed in local 0.6. A supervised native reader uses the Unicode API in
+- **Status:** Fixed in 0.6. A supervised native reader uses the Unicode API in
   Windows archiveint.dll, without extraction or ANSI-output guessing. Unicode, JSON,
   empty archives, and cancellation have regression coverage.
 
@@ -118,7 +118,7 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   missed the expected child and could have hidden survivors in a cleanup test.
 - **Workaround:** normalize the process path with `fs.absolute` before comparing
   it with another absolute path. Use canonical file identity when aliases matter.
-- **Status:** Fixed in local 0.6. Process `exe` paths use forward slashes like
+- **Status:** Fixed in 0.6. Process `exe` paths use forward slashes like
   `fs.absolute`; command lines remain unchanged. Regression coverage checks a real child
   process.
 
@@ -130,7 +130,7 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   `__.txt`. Tar-family archives preserved the same name.
 - **Impact:** a successful ZIP pack could silently rename a source file.
 - **Fix:** pass `--options zip:hdrcharset=UTF-8` for ZIP creation.
-- **Status:** fixed in local 0.6; the regression compares the source name,
+- **Status:** fixed in 0.6; the regression compares the source name,
   Unicode listing, and extracted file for ZIP and compressed tar formats.
 
 ### Intermittent access denied while replacing files
@@ -160,7 +160,7 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   its caller releases them, and file/eval/stdin routes share explicit cleanup.
   GCC analysis and the entry regression cases pass.
 
-## Validation of the local 0.6 build
+## Validation of 0.6 before its release
 
 - Full Kuu suite: **834 checks passed**, including **23 new adoption checks**;
   reconfirmed after native cleanup and hardening-gate work on 2026-09-10.
@@ -221,3 +221,48 @@ release or signing was performed.
 See [the dated handoff](../notes/handoff-2026-09-10_193511.md) for the exact paused
 state, local evidence and remaining work. Earlier full application results
 above do not establish completion of the new recovery recipe's validation.
+
+## Cold setup and recovery on a second machine — 2026-09-10
+
+Step 2 of the [dated handoff](../notes/handoff-2026-09-10_193511.md), run
+on the owner's other machine with the 0.6 build at commit 9abab18.
+
+- **Main checkout, empty `.tools`.** `prereqs --all` fetched all 27 pinned
+  archives and built Tcl/Tk 9.0.3 shared and static in 22 min 50 s. `env`
+  verified gcc 16.2.0, Python 3.14.6, and Tcl 9.0.3. The complete `test`
+  task passed in 1 min 41 s: 9 task checks, 17 recovery checks, the build
+  (6,428,720 bytes), 2,191 engine checks, and the application self-test at
+  `status=ok`.
+- **Cold lab, a second clone with an empty `.tools`.** 23 min 18 s to the
+  same state. Then twelve fault-injection and relocation steps passed: a
+  changed byte in `ar.exe` repaired from the cached archives (0 downloads,
+  21 unpacks, 445 s); a deleted Python record rebuilt (8 s); a corrupt cached
+  Python archive plus a missing `python.exe` fetched again, verified, and
+  repaired (1 download, 11 s); a deleted Tcl/Tk record rebuilt in place
+  (662 s); the checkout moved to `cold lab moved` with the original path gone
+  and the inherited tool environment replaced by junk paths, after which
+  `env` (6 s), reuse (10 s, 0 downloads, 0 unpacks), repair of a damaged tool
+  from the cache (0 downloads, 181 s), and the complete `test` task (69 s,
+  every check as above) all passed from the moved path.
+- **CI.** The checkpoint push's GitHub run succeeded in 7 min 34 s on
+  windows-latest with published 0.5.
+
+Observations, none of them a kuu defect:
+
+- **Tcl/Tk cannot be rebuilt from a path with spaces.** The thirteenth step
+  removed the Tcl/Tk record in the moved checkout and asked for a rebuild.
+  Tcl 9.0.3's `win/configure` and Makefile fail with `cd: too many
+  arguments` and `No rule to make target '.../cold'` when the source or
+  prefix path holds a space. Using the already built Tcl/Tk from such a path
+  works, as the moved test run showed. Time Actual's recipe now refuses the
+  rebuild with that explanation instead of make's output. An upstream
+  build-system limitation.
+- **Repair is bundle-granular.** One damaged byte re-extracts and
+  re-inventories the whole destination: for the MSYS2 bundle 21 archives and
+  some 22,000 files, 3 to 7 minutes here. The design trades repair time for
+  one simple, verifiable record per destination.
+- **The first verification after a repair is slow.** `env` took 87 s right
+  after the MSYS2 repair and 5 to 10 s at every other time: freshly written
+  files are read once by the on-access scanner. Hosting, not kuu.
+- **`env` printed a stray `1`** after the Python and Tcl versions, `gsub`'s
+  count reaching `print`. Fixed in the recipe.

@@ -15,9 +15,8 @@ repo/
   src/               whatever the repository is about
 ```
 
-The examples below target development version 0.6. Published 0.5 remains
-usable with its older duration convention; [upgrade notes](upgrading-0.6.md)
-describe the differences.
+The examples target 0.6. A repository still on 0.5 has the older duration
+convention; the [upgrade notes](upgrading-0.6.md) describe the differences.
 
 ## 1. Give the repository its kuu
 

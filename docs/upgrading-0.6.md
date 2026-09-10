@@ -1,6 +1,7 @@
 # Upgrading to 0.6
 
-0.6 is a local development version; no release has been published by this work.
+0.6 is the release that carries the 0.5 review fixes and the fixes from the
+first real repository driven by kuu.
 Keep `kuu.exe` directly in the project root and declare the supported runtime
 version in `tasks.lua`. The previous 0.5 review fixes are included.
 
@@ -21,8 +22,8 @@ The string grammar and millisecond rounding remain shared with `time.duration`.
 If an unusually large duration must preserve an exact integer millisecond count,
 keep the unit-bearing string and pass it directly to the consuming native API.
 
-Time Actual currently accepts 0.5 and 0.6 with explicit compatibility branches,
-so its pinned published CI binary stays usable before a 0.6 release.
+Time Actual accepts 0.5 and 0.6 with explicit compatibility branches; its CI
+pins the 0.6 release.
 
 ## Other changes
 

@@ -11,7 +11,7 @@ kuu runs on Windows 11 version 25H2 and later, and on the equivalent Windows
 Server releases. Nothing else, on purpose: the process, console, and file
 system features it builds on are used without fallbacks.
 
-This is development version 0.6: the runner, the scheduler, processes (its own children
+This is version 0.6: the runner, the scheduler, processes (its own children
 and the others on the machine), files, JSON, CSV, INI, HTTP, archives,
 hashing, text encodings, regular expressions, time, logging, argument
 parsing, a repository's tasks, a memory across runs, the machine's own facts,

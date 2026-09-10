@@ -50,9 +50,9 @@ to the kuu call that replaces it. [docs/roadmap.md](docs/roadmap.md) records the
 [docs/shortcomings.md](docs/shortcomings.md) tracks problems observed during
 real repository adoption, with evidence and workarounds.
 
-The local 0.6 development version fixes issues observed during repository
-adoption. CLI durations now use seconds throughout; see
-[upgrading to 0.6](docs/upgrading-0.6.md) for the API changes from published 0.5.
+Version 0.6 fixes what the 0.5 review and the first real repository found.
+CLI durations use seconds throughout; see
+[upgrading to 0.6](docs/upgrading-0.6.md) for the API changes since 0.5.
 
 ## Building
 

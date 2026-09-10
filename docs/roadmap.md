@@ -59,7 +59,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `reg`; `env`: the live environment and the persisted one, with the change broadcast | 0.5 |
 | `proc.list`, `proc.find`, `proc.tree`; `net.probe`, `net.listeners`, `net.resolve`, `net.addresses` | 0.5 |
 | `svc` via the Service Control Manager; `evt`, the event logs; `worker` processes; `serve`; `check` learns the palette's names | deferred, on a real project need |
-| review fixes, dependency-only tasks, duration units, Unicode archives, TLS diagnostics, process path consistency; analysis and parser fuzz gates | local 0.6 |
+| review fixes, dependency-only tasks, duration units, Unicode archives, TLS diagnostics, process path consistency; analysis and parser fuzz gates | 0.6 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
 
@@ -151,14 +151,16 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    Unicode archive listing and ZIP creation, process path consistency, and
    actionable TLS diagnostics. GCC analysis and deterministic parser fuzzing
    supplement the regression suite. See the [migration notes](upgrading-0.6.md)
-   and [observations log](shortcomings.md). These changes are local and
-   verified; signing and publication remain separate release work.
+   and [observations log](shortcomings.md). Released 2026-09-10, after the cold
+   setup and recovery run of Time Actual on a second machine.
    - The earlier console/control plan is deferred. `pty`, `svc`, `evt`,
      `worker`, `serve`, and export-aware `check` are not implemented in 0.6.
      Add capabilities when a consuming project demonstrates the need.
-   - The next adoption check is clean setup and recovery: missing tools,
-     interrupted downloads, damaged installations, and a moved checkout.
-     Existing build/test results do not establish those guarantees.
+   - Clean setup and recovery were then run end to end on a second machine:
+     two cold setups, twelve fault-injection and relocation steps, and the
+     complete test task from a path with spaces, all passing. One external
+     limitation surfaced: Tcl/Tk will not rebuild from a path with spaces.
+     Recorded in the observations log.
 7. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
@@ -168,7 +170,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 
 The external review of 0.5 (commit 3811edf, 2026-09-09) found the items
 below, listed in its priority order. All twelve fixes are implemented with
-regression tests; they are not in a release yet. The native defects were
+regression tests and shipped in 0.6. The native defects were
 addressed first. The old in-progress stash is not needed.
 
 1. **`re`: a callback that matches with the same pattern clobbers the outer
@@ -237,7 +239,6 @@ structured mutations, round trips, and supervised child deadlines. The
 Windows command-line parser provides an independent quoting check. See
 [toolchain](toolchain.md) for replay commands. Analysis also made the error
 raiser's non-returning contract explicit and led to entry-allocation cleanup.
-Signing and publication of 0.6 remain separate release work.
 
 ## Open decisions
 
@@ -292,7 +293,7 @@ step so far.
 ## 0.6: fixes from real repository adoption
 
 Time Actual exposed cross-module duration units, lossy archive names, process
-path inconsistency, and task/entry friction. The local 0.6 build uses numeric
+path inconsistency, and task/entry friction. 0.6 uses numeric
 seconds throughout, supports dependency-only tasks and `kuu version`, returns
 Unicode archive inventories, writes UTF-8 ZIP headers, normalizes process
 executable paths, and identifies client-key/proxy TLS failures. See
@@ -303,5 +304,6 @@ workaround belongs to the consuming build recipe and is now documented.
 Cold setup testing also found and fixed `hash.file`'s long-path boundary.
 The complete suite now passes 838 checks plus native analysis. Time Actual's
 new recovery fixture passes 17 checks on 0.5 and 0.6; full cold toolchain and
-relocation validation is paused. See the [2026-09-10 handoff](../notes/handoff-2026-09-10_193511.md)
-for the remaining work. No 0.6 release has been made by this checkpoint.
+relocation validation is paused. The [2026-09-10 handoff](../notes/handoff-2026-09-10_193511.md) recorded
+that pause; the remaining work was completed the same day on the second
+machine, recorded in the observations log, and 0.6 was released.
