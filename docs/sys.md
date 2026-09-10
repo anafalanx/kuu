@@ -31,3 +31,45 @@ Drive types are `fixed`, `removable`, `remote`, `cdrom`, `ramdisk`, or
 where the older calls lie to programs without a manifest. `elevated` is what a
 PowerShell script means by `IsInRole(Administrator)`: this process, now, with
 this token. Nothing here is cached and nothing here writes.
+
+## sys.signature
+
+```lua
+local signature, e = sys.signature("installer.exe")
+local signature, e = sys.signature("installer.exe", { revocation = true })
+```
+
+An unsigned file returns `{ signed = false }`. An embedded signed file returns
+`{ signed = true, valid = true, signer, issuer, thumbprint, timestamped }`.
+`signer` and `issuer` are the certificate display names, and `thumbprint` is
+the leaf certificate's 40-character uppercase SHA-1 identifier. `timestamped`
+reports the presence of a countersignature or RFC 3161 timestamp attribute.
+It is separate from validity; an invalid timestamp can still be present.
+
+A failed trust check returns `signed = true, valid = false, reason = ...`.
+Reasons are `expired`, `untrusted`, `tampered`, `revoked`, `distrusted`,
+`revocation` (the revocation check could not complete), `timestamp`, `usage`,
+or `invalid` (another trust failure). Certificate identity fields can be absent
+if a damaged signature could not be decoded. A trust failure is a result,
+not `nil, err`.
+
+Only embedded Authenticode signatures are inspected. Files signed only through
+a Windows catalog report `signed = false`; no catalog lookup is performed.
+Revocation checks and network certificate retrieval are disabled by default.
+`revocation = true` enables chain revocation checking and may use the network.
+Verification runs on a worker so the Lua loop keeps running. A surrounding
+`sched.deadline` can abandon the wait, but Windows' verification itself cannot
+be cancelled; its resources remain owned until it finishes. Shutdown waits
+for an outstanding verification to finish before freeing the loop.
+
+`valid` means Windows accepted the signature under the selected trust policy.
+Before running an installer, also match its signer or pinned thumbprint to the
+identity you expect. Signature inspection opens the file for reading and
+prevents writes while checking it; it does not reserve the path after return.
+
+## Errors
+
+The complete SYS code set is `notfound` (missing signature path), `access`
+(the file cannot be read or is open for writing), `badvalue` (raised for a
+malformed path, a directory, or signature options), and `oserror` (other
+Windows or allocation failures). `sys.info` has no expected error return.

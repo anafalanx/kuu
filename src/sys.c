@@ -18,6 +18,7 @@
  */
 #include "err.h"
 #include "state.h"
+#include "signature.h"
 #include "wintext.h"
 
 #include "lauxlib.h"
@@ -202,6 +203,7 @@ int ku_open_sys(lua_State *L)
 {
     static const luaL_Reg functions[] = {
         {"info", l_sys_info},
+        {"signature", ku_sys_signature},
         {NULL, NULL},
     };
     luaL_newlib(L, functions);
