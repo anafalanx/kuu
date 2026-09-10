@@ -23,8 +23,14 @@ Strings are bytes, so what you pass is what is hashed, and
 `hash.algorithms()` returns is the list the binary has; an unknown name raises
 `HASH badvalue` and says so.
 
+`hash.file` uses the same normalized Unicode paths as `fs`, including paths
+beyond 260 characters. Ambiguous drive-relative, device, or trailing-dot/space
+paths are refused; a path containing NUL raises instead of silently hashing
+the filename before that byte.
+
 | HASH code | when |
 |---|---|
-| `badvalue` | raised: unknown algorithm, a count out of range, an oversized key |
+| `badvalue` | raised: unknown algorithm, a count out of range, an oversized key, or NUL in a filename; returned for an ambiguous path |
+| `encoding` | `hash.file`: the path is not valid UTF-8 |
 | `notfound`, `access`, `oserror` | `hash.file`: the file cannot be opened or read |
 | `closed` | raised: a finished hasher was used again |

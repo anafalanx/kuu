@@ -91,7 +91,8 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   successfully unpacking its tool.
 - **Workaround:** if a listing has invalid UTF-8, inventory extracted files
   with `fs.glob` and `fs.relative`, which return native Unicode paths. Time
-  Actual uses this fallback for its installation record.
+  Actual initially used this fallback. Its current recovery installer
+  inventories extracted files directly with an anchored `fs.list` walk.
 - **Status:** Fixed in local 0.6. A supervised native reader uses the Unicode API in
   Windows archiveint.dll, without extraction or ANSI-output guessing. Unicode, JSON,
   empty archives, and cancellation have regression coverage.
@@ -182,4 +183,41 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   is restored to 0.6 after compatibility testing.
 
 The intermittent file-access failures above remain recorded despite passing
-reruns. These are local changes; no release, signing, or remote CI was triggered.
+reruns. These validation results preceded the source checkpoint push; no
+release or signing was performed.
+
+## Cold setup and recovery — 2026-09-10
+
+### File hashing fails on paths that the filesystem API can read
+
+- **Kind:** confirmed native path-boundary inconsistency.
+- **Observed:** `fs.read` successfully read a 376-character filename, but
+  `hash.file("sha256", path)` returned `HASH notfound`. Content verification
+  of a deeply nested installed tool could therefore reject a valid file.
+- **Fix:** use the shared normalized Unicode filesystem boundary in
+  `hash.file`, including extended-length paths, and reject embedded NUL.
+- **Status:** fixed in the source checkpoint. Four regressions cover long
+  paths, NUL, ambiguous trailing-dot paths and invalid UTF-8. The complete
+  suite passes **838 checks**, and native static analysis passes.
+- **Published 0.5 workaround:** Time Actual's installer supplies an explicit
+  extended-length Windows path until the fixed 0.6 binary is released.
+
+### Installation presence stamps accept damaged tools
+
+- **Kind:** consuming-project recipe defect, not a new Kuu runtime API.
+- **Observed:** a tool whose bytes were changed was accepted by the original
+  Time Actual presence-only recipe; malformed record data could instead
+  raise a Lua indexing error. Individually tracking overlapping archives
+  also risks repeated repairs after a later package overwrites an earlier one.
+- **Fix:** Time Actual inventories and hashes the final merged destination,
+  validates records, stages archive extraction and preserves a recoverable
+  old tree until promotion succeeds. Kuu supplies the existing primitives.
+- **Status:** **17 recovery fixture checks pass on 0.5 and 0.6**, including
+  corruption, interruptions, offline repair, relocation and concurrency.
+  Real cold toolchain setup and full recovery/relocation validation were
+  paused and remain incomplete. Tcl/Tk's compiled tree still rebuilds in
+  place after invalidating its completion record.
+
+See [the dated handoff](handoff-2026-09-10_193511.md) for the exact paused
+state, local evidence and remaining work. Earlier full application results
+above do not establish completion of the new recovery recipe's validation.

@@ -15,6 +15,8 @@
  * bcrypt.dll is part of Windows; nothing is vendored.
  */
 #include "err.h"
+#include "fspath.h"
+#include "values.h"
 #include "wintext.h"
 
 #include "lauxlib.h"
@@ -190,17 +192,18 @@ static int l_hash_hmac(lua_State *L)
 static int l_hash_file(lua_State *L)
 {
     const algorithm *a = find_algorithm(L, 1);
-    const char *path = luaL_checkstring(L, 2);
+    const char *path = ku_check_cstring(L, 2, "HASH", "file path");
     int raw = want_raw(L, 3);
-    wchar_t *wide = ku_utf8_to_wide(path);
-    if (wide == NULL) {
-        return ku_err_fail(L, "HASH", "encoding", "the path is not valid UTF-8");
+    ku_wpath wide;
+    ku_fail fail;
+    if (ku_wpath_make(path, &wide, &fail) != 0) {
+        return ku_err_fail(L, "HASH", fail.code, "%s", fail.message);
     }
-    HANDLE file = CreateFileW(wide, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+    HANDLE file = CreateFileW(wide.text, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
                               FILE_FLAG_SEQUENTIAL_SCAN, NULL);
-    free(wide);
+    DWORD error = file == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS;
+    ku_wpath_free(&wide);
     if (file == INVALID_HANDLE_VALUE) {
-        DWORD error = GetLastError();
         char *text = ku_win_error_message(error);
         const char *code = (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) ? "notfound"
                            : error == ERROR_ACCESS_DENIED                                    ? "access"

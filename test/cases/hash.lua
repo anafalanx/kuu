@@ -33,6 +33,25 @@ return function(T)
   local none, e2 = hash.file("sha256", T.work .. "/no-such-file.bin")
   check("a missing file is nil, HASH notfound", none == nil and err.is(e2, "HASH", "notfound"), tostring(e2))
 
+  do
+    local fs = require "fs"
+    local long = fs.absolute(T.work .. "/hash-long/" .. ("deep-component/"):rep(20) .. "tool.bin")
+    fs.mkdir(fs.dirname(long))
+    fs.write(long, "verified bytes")
+    local value, failure = hash.file("sha256", long)
+    check("file hashing agrees with fs.read beyond MAX_PATH",
+      #long > 260 and fs.read(long) == "verified bytes" and value == hash.sum("sha256", "verified bytes"), tostring(failure))
+    local ok, raised = pcall(hash.file, "sha256", path .. "\0ignored")
+    check("file hashing refuses NUL instead of hashing a different filename",
+      not ok and err.is(raised, "HASH", "badvalue"), tostring(raised))
+    local value, failure = hash.file("sha256", path .. ".")
+    check("file hashing rejects ambiguous trailing-dot paths",
+      value == nil and err.is(failure, "HASH", "badvalue"), tostring(failure))
+    value, failure = hash.file("sha256", "\255")
+    check("file hashing reports invalid UTF-8 paths",
+      value == nil and err.is(failure, "HASH", "encoding"), tostring(failure))
+  end
+
   local r1, r2 = hash.random(32), hash.random(32)
   check("random bytes have the asked length and differ", #r1 == 32 and #r2 == 32 and r1 ~= r2)
   ok, e = pcall(hash.random, 0)

@@ -299,3 +299,9 @@ executable paths, and identifies client-key/proxy TLS failures. See
 [migration notes](upgrading-0.6.md) and the [observations log](shortcomings.md).
 The Tcl sandbox issue remains an execution-environment limitation. The windres
 workaround belongs to the consuming build recipe and is now documented.
+
+Cold setup testing also found and fixed `hash.file`'s long-path boundary.
+The complete suite now passes 838 checks plus native analysis. Time Actual's
+new recovery fixture passes 17 checks on 0.5 and 0.6; full cold toolchain and
+relocation validation is paused. See the [2026-09-10 handoff](handoff-2026-09-10_193511.md)
+for the remaining work. No 0.6 release has been made by this checkpoint.
