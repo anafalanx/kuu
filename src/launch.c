@@ -369,14 +369,14 @@ static int launch_fail(ku_fail *fail, const char *what)
     return 1;
 }
 
-int ku_launch(const char *exe, int argc, const char *const *argv, const char *cwd,
-              HANDLE job, const ku_stdio *io, const wchar_t *env,
-              DWORD *pid, HANDLE *process, ku_fail *fail)
+static int launch_common(const char *exe, int argc, const char *const *argv, const char *cwd,
+                         HANDLE job, const ku_stdio *io, HPCON console, const wchar_t *env,
+                         DWORD *pid, HANDLE *process, ku_fail *fail)
 {
     if (exe == NULL || exe[0] == '\0' || argc <= 0 || argv == NULL) {
         return ku_fail_set(fail, "PROC", "usage", "a command is required");
     }
-    if (io == NULL || io->in == NULL || io->out == NULL || io->err == NULL) {
+    if (console == NULL && (io == NULL || io->in == NULL || io->out == NULL || io->err == NULL)) {
         return ku_fail_set(fail, "PROC", "oserror", "the child's standard handles are incomplete");
     }
     int rc = 1;
@@ -426,8 +426,13 @@ int ku_launch(const char *exe, int argc, const char *const *argv, const char *cw
      * caller's handles are never mutated and only the duplicates can be
      * inherited. */
     HANDLE self = GetCurrentProcess();
-    HANDLE originals[3] = {io->in, io->out, io->err};
-    for (int i = 0; i < 3; i++) {
+    HANDLE originals[3] = {NULL, NULL, NULL};
+    if (io != NULL) {
+        originals[0] = io->in;
+        originals[1] = io->out;
+        originals[2] = io->err;
+    }
+    for (int i = 0; console == NULL && i < 3; i++) {
         int prior = -1;
         for (int k = 0; k < i; k++) {
             if (originals[k] == originals[i]) {
@@ -465,7 +470,13 @@ int ku_launch(const char *exe, int argc, const char *const *argv, const char *cw
         launch_fail(fail, "cannot attach the job to the launch");
         goto done;
     }
-    if (!UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit,
+    if (console != NULL) {
+        if (!UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, console,
+                                       sizeof console, NULL, NULL)) {
+            launch_fail(fail, "cannot attach the pseudoconsole");
+            goto done;
+        }
+    } else if (!UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit,
                                    (SIZE_T)ninherit * sizeof(HANDLE), NULL, NULL)) {
         launch_fail(fail, "cannot restrict handle inheritance");
         goto done;
@@ -474,10 +485,13 @@ int ku_launch(const char *exe, int argc, const char *const *argv, const char *cw
     STARTUPINFOEXW startup;
     ZeroMemory(&startup, sizeof startup);
     startup.StartupInfo.cb = sizeof startup;
+    /* Explicitly discard redirected parent stdio for a pseudoconsole.
+     * Otherwise Windows can attach the child to ConPTY but still give it
+     * the parent's redirected handles for normal reads and writes. */
     startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-    startup.StartupInfo.hStdInput = duplicates[0];
-    startup.StartupInfo.hStdOutput = duplicates[1];
-    startup.StartupInfo.hStdError = duplicates[2];
+    startup.StartupInfo.hStdInput = console == NULL ? duplicates[0] : INVALID_HANDLE_VALUE;
+    startup.StartupInfo.hStdOutput = console == NULL ? duplicates[1] : INVALID_HANDLE_VALUE;
+    startup.StartupInfo.hStdError = console == NULL ? duplicates[2] : INVALID_HANDLE_VALUE;
     startup.lpAttributeList = attributes;
 
     PROCESS_INFORMATION info;
@@ -497,7 +511,7 @@ int ku_launch(const char *exe, int argc, const char *const *argv, const char *cw
     if (env != NULL) {
         flags |= CREATE_UNICODE_ENVIRONMENT;
     }
-    if (!CreateProcessW(wapp, wcmd, NULL, NULL, TRUE, flags, (LPVOID)env, wcwd,
+    if (!CreateProcessW(wapp, wcmd, NULL, NULL, console == NULL, flags, (LPVOID)env, wcwd,
                         &startup.StartupInfo, &info)) {
         DWORD error = GetLastError();
         char *text = ku_win_error_message(error);
@@ -529,4 +543,18 @@ done:
     free(cmdline);
     free(comspec);
     return rc;
+}
+
+int ku_launch(const char *exe, int argc, const char *const *argv, const char *cwd,
+              HANDLE job, const ku_stdio *io, const wchar_t *env,
+              DWORD *pid, HANDLE *process, ku_fail *fail)
+{
+    return launch_common(exe, argc, argv, cwd, job, io, NULL, env, pid, process, fail);
+}
+
+int ku_launch_console(const char *exe, int argc, const char *const *argv, const char *cwd,
+                      HANDLE job, HPCON console, const wchar_t *env,
+                      DWORD *pid, HANDLE *process, ku_fail *fail)
+{
+    return launch_common(exe, argc, argv, cwd, job, NULL, console, env, pid, process, fail);
 }

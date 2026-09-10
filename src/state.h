@@ -45,6 +45,7 @@ int ku_open_time(lua_State *L);
 int ku_open_net(lua_State *L);
 int ku_open_reg(lua_State *L);
 int ku_open_env(lua_State *L);
+int ku_open_pty(lua_State *L);
 int ku_open_evt(lua_State *L);
 int ku_open_svc(lua_State *L);
 

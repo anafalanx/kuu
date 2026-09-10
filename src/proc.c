@@ -26,6 +26,7 @@
 #include "launch.h"
 #include "loop.h"
 #include "procinfo.h"
+#include "pty.h"
 #include "values.h"
 #include "wintext.h"
 
@@ -82,6 +83,7 @@ struct ku_child {
     ku_source job_src, io_src;
     ku_loop *loop;
     HANDLE job, process;
+    HPCON console;
     DWORD pid;
     int stream, inherit;
     ku_stream out, err;
@@ -499,6 +501,9 @@ static void child_free(ku_child *c)
         free(w);
     }
     result_unref(c->result);
+    if (c->console != NULL) {
+        ClosePseudoConsole(c->console);
+    }
     free(c->out.data);
     free(c->err.data);
     free(c->in_data);
@@ -661,6 +666,11 @@ static void child_release(ku_child *c)
     if (!c->done) {
         child_kill(c);
     }
+    if (c->console != NULL) {
+        /* Windows 11 24H2+ closes asynchronously. Kuu requires 25H2+. */
+        ClosePseudoConsole(c->console);
+        c->console = NULL;
+    }
     if (c->out.io != NULL) {
         CancelIoEx(c->out.handle, &c->out.io->ov);
     }
@@ -691,6 +701,8 @@ typedef struct ku_spec {
     size_t maxout;
     ku_limits limits;
     int has_limits;
+    int console;
+    COORD dimensions;
 } ku_spec;
 
 static void parse_limits(lua_State *L, int idx, ku_limits *limits)
@@ -753,6 +765,9 @@ static void parse_spec(lua_State *L, ku_spec *spec, int allow_options)
     memset(spec, 0, sizeof *spec);
     spec->timeout_ms = -1;
     spec->maxout = KU_DEFAULT_MAXOUT;
+    spec->console = allow_options == 2;
+    spec->dimensions.X = 120;
+    spec->dimensions.Y = 30;
     int top = lua_gettop(L);
     lua_newtable(L);
     int keep = top + 1;
@@ -815,7 +830,18 @@ static void parse_spec(lua_State *L, ku_spec *spec, int allow_options)
         if (!allow_options) {
             ku_err_raise(L, "PROC", "usage", "option '%s' is not accepted here", key);
         }
-        if (strcmp(key, "cwd") == 0) {
+        if (spec->console && (strcmp(key, "cols") == 0 || strcmp(key, "rows") == 0)) {
+            if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) < 1 || lua_tointeger(L, -1) > 32767) {
+                ku_err_raise(L, "PTY", "badvalue", "%s must be an integer from 1 to 32767", key);
+            }
+            if (strcmp(key, "cols") == 0) {
+                spec->dimensions.X = (SHORT)lua_tointeger(L, -1);
+            } else {
+                spec->dimensions.Y = (SHORT)lua_tointeger(L, -1);
+            }
+        } else if (spec->console && (strcmp(key, "stdin") == 0 || strcmp(key, "stream") == 0 || strcmp(key, "inherit") == 0)) {
+            ku_err_raise(L, "PTY", "badvalue", "a pseudoconsole does not accept %s", key);
+        } else if (strcmp(key, "cwd") == 0) {
             size_t len = 0;
             const char *s = spec_string(L, -1, "cwd", &len);
             if (strlen(s) != len || len == 0) {
@@ -1004,7 +1030,23 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
                     (unsigned long)GetLastError());
         goto fail;
     }
-    if (c->inherit) {
+    if (spec->console) {
+        if (make_pipe(1, &c->out.handle, &their_out, fail) != 0 ||
+            make_pipe(0, &c->in_handle, &their_in, fail) != 0) {
+            goto fail;
+        }
+        c->err.eof = 1;
+        HRESULT hr = CreatePseudoConsole(spec->dimensions, their_in, their_out, 0, &c->console);
+        if (FAILED(hr)) {
+            ku_fail_set(fail, "PTY", "oserror", "cannot create the pseudoconsole (HRESULT 0x%08lx)", (unsigned long)hr);
+            goto fail;
+        }
+        if (ku_loop_attach(lp, c->out.handle, &c->io_src) != 0 ||
+            ku_loop_attach(lp, c->in_handle, &c->io_src) != 0) {
+            ku_fail_set(fail, "PTY", "oserror", "cannot attach console pipes to the loop");
+            goto fail;
+        }
+    } else if (c->inherit) {
         /* The child gets kuu's own console: colours, pagers, prompts.  A
          * missing standard handle (a GUI parent) falls back to the null
          * device per stream.  Nothing is captured and nothing is written. */
@@ -1057,17 +1099,29 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
     }
     ku_stdio io = {their_in, their_out, their_err};
     c->start_ms = ku_now_ms();
-    if (ku_launch(exe, spec->argc, spec->argv, spec->cwd, c->job, &io, env, &c->pid, &c->process, fail) != 0) {
+    int launched = spec->console
+        ? ku_launch_console(exe, spec->argc, spec->argv, spec->cwd, c->job, c->console, env, &c->pid, &c->process, fail)
+        : ku_launch(exe, spec->argc, spec->argv, spec->cwd, c->job, &io, env, &c->pid, &c->process, fail);
+    if (launched != 0) {
         goto fail;
     }
     /* From here the child exists: the job is live and will report. */
     ku_loop_expect(lp);
+    if (c->console != NULL) {
+        /* Let conhost exit once its last client leaves; keep HPCON for resize
+         * and final ClosePseudoConsole. This API is part of our minimum OS. */
+        ReleasePseudoConsole(c->console);
+    }
     if (!c->inherit) {
         CloseHandle(their_in == nul ? nul : their_in);
         CloseHandle(their_out);
-        CloseHandle(their_err);
+        if (their_err != NULL) {
+            CloseHandle(their_err);
+        }
         stream_post_read(c, &c->out);
-        stream_post_read(c, &c->err);
+        if (!spec->console) {
+            stream_post_read(c, &c->err);
+        }
         if (c->in_handle != NULL) {
             stdin_post(c); /* writes what is queued; an empty queue in stream mode just waits */
         }
@@ -1083,6 +1137,9 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
     return 0;
 
 fail:
+    if (c->console != NULL) {
+        ClosePseudoConsole(c->console);
+    }
     if (their_in != NULL && their_in != nul && !c->inherit) {
         CloseHandle(their_in);
     }
@@ -1219,6 +1276,44 @@ static int l_proc_start(lua_State *L)
         return ku_err_fail(L, fail.domain, fail.code, "%s", fail.message);
     }
     push_child_box(L, c);
+    return 1;
+}
+
+int ku_proc_pty_spawn(lua_State *L)
+{
+    luaL_checktype(L, 1, LUA_TTABLE);
+    ku_spec spec;
+    parse_spec(L, &spec, 2);
+    spec.stream = 1;
+    if (spec.maxout < 1) {
+        return ku_err_raise(L, "PTY", "badvalue", "maxout must be positive");
+    }
+    ku_child *c = NULL;
+    ku_fail fail;
+    if (child_launch(L, &spec, &c, &fail) != 0) {
+        return ku_err_fail(L, "PTY", fail.code, "%s", fail.message);
+    }
+    push_child_box(L, c);
+    return 1;
+}
+
+int ku_proc_pty_resize(lua_State *L)
+{
+    ku_child *c = check_child(L, 1);
+    if (c->console == NULL || c->done) {
+        return ku_err_fail(L, "PTY", "closed", "the pseudoconsole is closed");
+    }
+    if (!lua_isinteger(L, 2) || !lua_isinteger(L, 3) ||
+        lua_tointeger(L, 2) < 1 || lua_tointeger(L, 2) > 32767 ||
+        lua_tointeger(L, 3) < 1 || lua_tointeger(L, 3) > 32767) {
+        return ku_err_raise(L, "PTY", "badvalue", "cols and rows must be integers from 1 to 32767");
+    }
+    COORD dimensions = {(SHORT)lua_tointeger(L, 2), (SHORT)lua_tointeger(L, 3)};
+    HRESULT hr = ResizePseudoConsole(c->console, dimensions);
+    if (FAILED(hr)) {
+        return ku_err_fail(L, "PTY", "oserror", "cannot resize the pseudoconsole (HRESULT 0x%08lx)", (unsigned long)hr);
+    }
+    lua_pushboolean(L, 1);
     return 1;
 }
 

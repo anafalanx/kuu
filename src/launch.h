@@ -62,4 +62,8 @@ int ku_launch(const char *exe, int argc, const char *const *argv, const char *cw
               HANDLE job, const ku_stdio *io, const wchar_t *env,
               DWORD *pid, HANDLE *process, ku_fail *fail);
 
+int ku_launch_console(const char *exe, int argc, const char *const *argv, const char *cwd,
+                      HANDLE job, HPCON console, const wchar_t *env,
+                      DWORD *pid, HANDLE *process, ku_fail *fail);
+
 #endif /* KUU_LAUNCH_H */
