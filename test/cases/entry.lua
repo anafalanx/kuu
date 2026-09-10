@@ -22,8 +22,16 @@ return function(T)
   check("unknown option is refused", r.code == 2 and contains(r.err, "ENTRY usage: unknown option '--bogus'"), describe(r))
 
   r = kuu { "--crash-test" }
-  check("a structured exception is reported by name and address and exits 3, never silently", r.code == 3
-    and contains(r.err, "kuu: crashed: access violation (0xc0000005) at ") and contains(r.err, "a defect in kuu itself") and r.out == "", describe(r))
+  if require("env").get("KUU_TEST_ASAN") == "1" then
+    -- ASAN owns the unhandled-exception hook in this test-only build. Verify
+    -- that the deliberately raised access violation reaches its reporter.
+    check("the intentional structured exception reaches AddressSanitizer", r.code == 1
+      and contains(r.err, "ERROR: AddressSanitizer: access-violation")
+      and contains(r.err, "SUMMARY: AddressSanitizer:") and r.out == "", describe(r))
+  else
+    check("a structured exception is reported by name and address and exits 3, never silently", r.code == 3
+      and contains(r.err, "kuu: crashed: access violation (0xc0000005) at ") and contains(r.err, "a defect in kuu itself") and r.out == "", describe(r))
+  end
 
   r = kuu { "-e", "print(type(debug.traceback), type(debug.getinfo), debug.sethook, debug.getlocal, debug.setmetatable)" }
   check("of the debug library only traceback and getinfo survive", r.code == 0 and r.out == "function\tfunction\tnil\tnil\tnil\n", describe(r))

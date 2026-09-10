@@ -4,6 +4,8 @@
 #   make test       build, then run the test suite with the built kuu
 #   make analyze    run GCC static analysis on authored native code
 #   make fuzz       run deterministic parser fuzzing (FUZZ cases per seed)
+#   make gate       run test, analyze, fuzz, and soak in that order
+#   make asan       build with the test-only CLANG64 toolchain and run the suite
 #   make clean      remove build/
 #
 # The compiler is the MSYS2 UCRT64 gcc copied into .tools (docs/toolchain.md).
@@ -68,7 +70,9 @@ ANALYZE_O := $(patsubst $(HOST_SRC)/%.c,$(BUILD)/analyze/%.o,$(HOST_C))
 # The payload: kuu's own Lua and the manual, turned into C by tools/embed.c
 # (compiled here, run by make; kuu is never used to build kuu).
 EMBED      := $(BUILD)/embed.exe
-PAYLOAD_IN := $(wildcard lua/*.lua) $(wildcard lua/cmd/*.lua) $(wildcard lua/fs/*.lua) $(wildcard lua/sync/*.lua) $(wildcard lua/net/*.lua) $(wildcard lua/svc/*.lua) $(wildcard lua/sched/*.lua) $(wildcard lua/pty/*.lua) $(wildcard docs/*.md)
+PAYLOAD_DIRS := lua lua/cmd lua/fs lua/sync lua/net lua/svc lua/sched lua/pty docs
+PAYLOAD_DIRS := $(foreach dir,$(PAYLOAD_DIRS),$(if $(wildcard $(dir)/.),$(dir)))
+PAYLOAD_IN := $(foreach dir,$(PAYLOAD_DIRS),$(wildcard $(dir)/*.lua) $(wildcard $(dir)/*.md))
 PAYLOAD_C  := $(BUILD)/gen/payload.c
 PAYLOAD_O  := $(BUILD)/obj/gen/payload.o
 
@@ -120,7 +124,7 @@ $(EMBED): tools/embed.c | $(BUILD)
 	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -o $@ $<
 
 $(PAYLOAD_C): $(EMBED) $(PAYLOAD_IN) | $(BUILD)/gen
-	$(subst /,\,$(EMBED)) $@ lua lua/cmd lua/fs lua/sync lua/net lua/svc lua/sched lua/pty docs
+	$(subst /,\,$(EMBED)) $@ $(PAYLOAD_DIRS)
 
 $(PAYLOAD_O): $(PAYLOAD_C) $(HOST_SRC)/payload.h | $(BUILD)/obj/gen
 	$(CC) -std=c23 -O1 -I$(HOST_SRC) -c $< -o $@
@@ -160,6 +164,77 @@ SOAK ?= 60
 .PHONY: soak
 soak: $(OUT) $(FIXTURES)
 	$(subst /,\,$(OUT)) test\soak.lua $(SOAK)
+
+# Recursive makes deliberately serialize the gates even under `make -j gate`:
+# test and soak share scratch files and must never run alongside one another.
+.PHONY: gate
+gate:
+	$(MAKE) test
+	$(MAKE) analyze
+	$(MAKE) fuzz
+	$(MAKE) soak
+
+# AddressSanitizer is an independent, test-only CLANG64 build. Every host and
+# vendored object is instrumented; no production object or executable is reused.
+# The plain C payload/resource generators remain built by GCC, never by kuu.
+CLANG_TOOLS := .tools/msys2/clang64
+CLANG_WIN := $(subst /,\,$(CURDIR)/$(CLANG_TOOLS))
+CLANG := $(CLANG_WIN)\bin\clang.exe
+ASAN_DIR := $(BUILD)/asan
+ASAN_OUT := $(BUILD)/kuu-asan.exe
+ASAN_FLAGS := -O1 -g -fsanitize=address -fno-omit-frame-pointer -fno-optimize-sibling-calls
+ASAN_HOST_FLAGS := $(filter-out -O2,$(HOST_FLAGS)) $(ASAN_FLAGS)
+ASAN_VENDOR_FLAGS := $(filter-out -O2,$(VENDOR_FLAGS)) $(ASAN_FLAGS)
+ASAN_PCRE2_FLAGS := $(filter-out -O2,$(PCRE2_FLAGS)) $(ASAN_FLAGS)
+ASAN_HOST_O := $(patsubst $(HOST_SRC)/%.c,$(ASAN_DIR)/obj/host/%.o,$(HOST_C))
+ASAN_LUA_O := $(patsubst $(LUA_SRC)/%.c,$(ASAN_DIR)/obj/lua/%.o,$(LUA_C))
+ASAN_YYJSON_O := $(ASAN_DIR)/obj/vendor/yyjson.o
+ASAN_PCRE2_O := $(patsubst $(PCRE2_SRC)/%.c,$(ASAN_DIR)/obj/pcre2/%.o,$(PCRE2_C))
+ASAN_PAYLOAD_C := $(ASAN_DIR)/gen/payload.c
+ASAN_PAYLOAD_O := $(ASAN_DIR)/obj/gen/payload.o
+ASAN_VERSION_RC := $(ASAN_DIR)/gen/version.rc
+ASAN_VERSION_O := $(ASAN_DIR)/obj/gen/version.o
+
+# GCC accepts these va_list wrappers; Clang wants printf annotations on their
+# entire call chains. Keep that compiler-specific diagnostic out of those two
+# ASAN objects while retaining the production warning gate unchanged.
+$(ASAN_DIR)/obj/host/err.o $(ASAN_DIR)/obj/host/program.o: ASAN_HOST_FLAGS += -Wno-missing-format-attribute -Wno-format-nonliteral
+
+$(ASAN_DIR)/obj/host/%.o: $(HOST_SRC)/%.c | $(ASAN_DIR)/obj/host
+	$(CLANG) $(ASAN_HOST_FLAGS) -MMD -MP -c $< -o $@
+
+$(ASAN_DIR)/obj/lua/%.o: $(LUA_SRC)/%.c | $(ASAN_DIR)/obj/lua
+	$(CLANG) $(ASAN_VENDOR_FLAGS) -MMD -MP -c $< -o $@
+
+$(ASAN_YYJSON_O): $(YYJSON_SRC)/yyjson.c $(YYJSON_SRC)/yyjson.h | $(ASAN_DIR)/obj/vendor
+	$(CLANG) $(ASAN_VENDOR_FLAGS) -c $< -o $@
+
+$(ASAN_DIR)/obj/pcre2/%.o: $(PCRE2_SRC)/%.c | $(ASAN_DIR)/obj/pcre2
+	$(CLANG) $(ASAN_PCRE2_FLAGS) -MMD -MP -c $< -o $@
+
+$(ASAN_PAYLOAD_C): $(EMBED) $(PAYLOAD_IN) | $(ASAN_DIR)/gen
+	$(subst /,\,$(EMBED)) $@ $(PAYLOAD_DIRS)
+
+$(ASAN_PAYLOAD_O): $(ASAN_PAYLOAD_C) $(HOST_SRC)/payload.h | $(ASAN_DIR)/obj/gen
+	$(CLANG) -std=c23 $(ASAN_FLAGS) -I$(HOST_SRC) -c $< -o $@
+
+$(ASAN_VERSION_RC): $(VERSIONRC) | $(ASAN_DIR)/gen
+	$(subst /,\,$(VERSIONRC)) $@
+
+$(ASAN_VERSION_O): $(ASAN_VERSION_RC) | $(ASAN_DIR)/obj/gen
+	$(WINDRES) -O coff -o $@ $<
+
+$(ASAN_DIR)/gen $(ASAN_DIR)/obj/host $(ASAN_DIR)/obj/lua $(ASAN_DIR)/obj/vendor $(ASAN_DIR)/obj/pcre2 $(ASAN_DIR)/obj/gen:
+	@if not exist "$(subst /,\,$@)" mkdir "$(subst /,\,$@)"
+
+$(ASAN_OUT): $(ASAN_HOST_O) $(ASAN_LUA_O) $(ASAN_YYJSON_O) $(ASAN_PCRE2_O) $(ASAN_PAYLOAD_O) $(ASAN_VERSION_O)
+	$(CLANG) $(ASAN_FLAGS) -municode -o $@ $^ $(LINK_LIBS)
+
+.PHONY: asan
+asan: $(ASAN_OUT) $(FIXTURES)
+	set "PATH=$(CLANG_WIN)\bin;$(PATH)" && set "KUU_TEST_ASAN=1" && $(subst /,\,$(ASAN_OUT)) test\run.lua
+
+-include $(ASAN_HOST_O:.o=.d) $(ASAN_LUA_O:.o=.d) $(ASAN_PCRE2_O:.o=.d)
 
 # ---- release: sign, hash, publish -- make, cmd, and plain C tools; never kuu --------------
 # The certificate is selected by thumbprint and the signature timestamped by
@@ -202,6 +277,7 @@ release: $(BUILD)/kuu.exe.sha256
 GIT_HEAD  := $(shell git rev-parse HEAD)
 GIT_DIRTY := $(shell git status --porcelain)
 
-publish: release
+publish: gate
 	$(if $(GIT_DIRTY),$(error the tree has uncommitted changes; commit and push before publishing))
+	$(MAKE) release
 	$(GH) release create $(VERSION) $(OUT) $(BUILD)/kuu.exe.sha256 --target $(GIT_HEAD) --title "kuu $(VERSION)" --generate-notes

@@ -265,19 +265,20 @@ return function(T)
   do
     local sys = require "sys"
     local fs = require "fs"
+    local executable_name = fs.basename(exe):lower()
     local me = sys.info().pid
     local all = proc.list()
     local mine
     for _, p in ipairs(all) do if p.pid == me then mine = p end end
     check("list includes this process and is sorted by pid", mine ~= nil and #all > 1 and all[1].pid < all[#all].pid, tostring(#all))
     check("an entry names the executable and the parent and, for our own process, carries the details",
-      mine ~= nil and mine.name:lower() == "kuu.exe" and type(mine.parent) == "number" and type(mine.threads) == "number"
-      and type(mine.exe) == "string" and mine.exe:lower():sub(-7) == "kuu.exe"
+      mine ~= nil and mine.name:lower() == executable_name and type(mine.parent) == "number" and type(mine.threads) == "number"
+      and type(mine.exe) == "string" and fs.basename(mine.exe):lower() == executable_name
       and type(mine.cmdline) == "string" and contains(mine.cmdline:lower(), "run.lua")
       and type(mine.started) == "number" and mine.started > 1.7e9 and type(mine.cpu) == "number"
       and type(mine.memory) == "number" and mine.memory > 0 and type(mine.private) == "number" and mine.private > 0,
       mine and describe(mine))
-    local by_name = proc.find { name = "KUU" }
+    local by_name = proc.find { name = fs.stem(exe):upper() }
     local found = false
     for _, p in ipairs(by_name) do if p.pid == me then found = true end end
     check("find by name ignores case and the extension", found, tostring(#by_name))

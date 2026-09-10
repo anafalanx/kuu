@@ -1,4 +1,6 @@
 -- Each seed runs in supervised children: a crash or hang fails the gate.
+-- Native command-line quoting plus duration/date/path/CSV/INI/JSON/registry
+-- parsers: registry fuzzing only checks key existence, never writes values.
 -- Reproduce with make fuzz FUZZ=<cases> FUZZ_SEED=<seed>.
 global none
 global <const> require, tonumber, tostring, assert, math, ipairs, io, os
