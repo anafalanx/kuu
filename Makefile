@@ -50,7 +50,7 @@ HOST_FLAGS := -std=c23 -O2 -Wall -Wextra -Wpedantic -Wformat=2 -Wundef -Werror \
 # wmain entry, libgcc and winpthread static, unused sections dropped, symbols
 # stripped.  The C runtime stays the system's ucrtbase.dll; bcrypt is Windows'.
 LINK_FLAGS := -municode -static -static-libgcc -Wl,--gc-sections -s
-LINK_LIBS  := -lbcrypt -lwinhttp -liphlpapi -lws2_32
+LINK_LIBS  := -lbcrypt -lwinhttp -liphlpapi -lws2_32 -ladvapi32
 
 # Test fixtures: small C programs the suite drives as children.
 FIXTURE_SRC := test/fixtures
@@ -68,7 +68,7 @@ ANALYZE_O := $(patsubst $(HOST_SRC)/%.c,$(BUILD)/analyze/%.o,$(HOST_C))
 # The payload: kuu's own Lua and the manual, turned into C by tools/embed.c
 # (compiled here, run by make; kuu is never used to build kuu).
 EMBED      := $(BUILD)/embed.exe
-PAYLOAD_IN := $(wildcard lua/*.lua) $(wildcard lua/cmd/*.lua) $(wildcard lua/fs/*.lua) $(wildcard lua/sync/*.lua) $(wildcard lua/net/*.lua) $(wildcard docs/*.md)
+PAYLOAD_IN := $(wildcard lua/*.lua) $(wildcard lua/cmd/*.lua) $(wildcard lua/fs/*.lua) $(wildcard lua/sync/*.lua) $(wildcard lua/net/*.lua) $(wildcard lua/svc/*.lua) $(wildcard docs/*.md)
 PAYLOAD_C  := $(BUILD)/gen/payload.c
 PAYLOAD_O  := $(BUILD)/obj/gen/payload.o
 
@@ -120,7 +120,7 @@ $(EMBED): tools/embed.c | $(BUILD)
 	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -o $@ $<
 
 $(PAYLOAD_C): $(EMBED) $(PAYLOAD_IN) | $(BUILD)/gen
-	$(subst /,\,$(EMBED)) $@ lua lua/cmd lua/fs lua/sync lua/net docs
+	$(subst /,\,$(EMBED)) $@ lua lua/cmd lua/fs lua/sync lua/net lua/svc docs
 
 $(PAYLOAD_O): $(PAYLOAD_C) $(HOST_SRC)/payload.h | $(BUILD)/obj/gen
 	$(CC) -std=c23 -O1 -I$(HOST_SRC) -c $< -o $@
