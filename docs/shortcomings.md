@@ -245,7 +245,8 @@ on the owner's other machine with the 0.6 build at commit 9abab18.
   from the cache (0 downloads, 181 s), and the complete `test` task (69 s,
   every check as above) all passed from the moved path.
 - **CI.** The checkpoint push's GitHub run succeeded in 7 min 34 s on
-  windows-latest with published 0.5.
+  windows-latest with published 0.5; the run for the commit that pins 0.6
+  succeeded in 7 min 36 s.
 
 Observations, none of them a kuu defect:
 
