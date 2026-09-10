@@ -65,6 +65,98 @@ return function(T)
     and #report.warnings == 1 and report.warnings[1].line == 3, tostring(report.warnings[1] and report.warnings[1].message))
   report = checker.file(project .. "/missing.lua", project)
   check("check.file on a missing file is one error", #report.errors == 1 and contains(report.errors[1].message, "FS notfound"))
+  -- Palette names are checked through lexical bindings, never through text
+  -- in strings/comments or by executing the project being inspected.
+  local names_dir = fs.absolute(T.work .. "/check-names")
+  fs.mkdir(names_dir .. "/lib")
+  fs.write(names_dir .. "/lib/private.lua", "error('the checker executed a project module')\n")
+  local function inspect(source)
+    local path = names_dir .. "/names.lua"
+    fs.write(path, source)
+    return checker.file(path, names_dir)
+  end
+  report = inspect('global none\nglobal <const> require\nlocal files = require "fs"\nfiles.exist("x")\n')
+  check("a misspelt export on a local alias is a name error with its source line and suggestion",
+    #report.errors == 1 and report.errors[1].kind == "name" and report.errors[1].line == 4
+    and report.errors[1].module == "fs" and report.errors[1].name == "exist" and report.errors[1].suggestion == "exists"
+    and contains(report.errors[1].message, "files.exist is not a name in fs; did you mean files.exists?"),
+    report.errors[1] and report.errors[1].message)
+  r = T.kuu { "check", "--json", names_dir .. "/names.lua" }
+  local named = json.decode(r.out)
+  check("check --json carries the name error and exits 1", r.code == 1 and named and not named.ok
+    and named.result.files[1].errors[1].kind == "name" and named.result.files[1].errors[1].suggestion == "exists", T.describe(r))
+  report = inspect([=[
+global none
+global <const> require
+local files <const>, json = require("f\x73"), require [==[json]==]
+files.exists("x")
+json.encode({})
+local rt, task = require "rt", require "task"
+local optional = rt.program
+task.relay = nil
+local method = "exist"
+files[method]("x")
+local private = require "lib.private"
+private.anything()
+local command = require "cmd.run"
+command.anything()
+]=])
+  check("known exports, literal escapes, multiple bindings, optional fields and dynamic/project access are accepted",
+    #report.errors == 0 and #report.warnings == 0 and #report.requires == 6,
+    report.errors[1] and report.errors[1].message)
+  report = inspect([==[
+global none
+global <const> require
+local fs = require "fs"
+-- fs.exist(); require "commented"
+--[=[ fs.exist(); require "long-comment" ]=]
+local short = "fs.exist(); require \"quoted\""
+local long = [=[fs.exist(); require "long-string"]=]
+fs.exists("x")
+]==])
+  check("strings and both comment forms contribute no accesses or requires",
+    #report.errors == 0 and #report.warnings == 0 and #report.requires == 1 and report.requires[1] == "fs")
+  report = inspect([=[
+global none
+global <const> require, pairs
+local fs = require "fs"
+do local fs = {}; fs.exist() end
+local function parameter(fs) fs.exist() end
+local function outer()
+  local fs = {}
+  fs.exist()
+end
+for fs in pairs({}) do fs.exist() end
+for fs = 1, 2 do local x = fs.whatever end
+if true then local fs = {} fs.exist() else local fs = {} fs.exist() end
+repeat local fs = {} fs.exist() until fs.done
+fs.exist("x")
+]=])
+  check("block, function-parameter and loop shadows do not hide a later real error",
+    #report.errors == 1 and report.errors[1].line == 14 and report.errors[1].name == "exist",
+    report.errors[1] and report.errors[1].message)
+  report = inspect([=[
+global none
+global <const> require
+local fs = require "fs"
+local function captured() fs.custom() end
+if true then fs = {} end
+fs.custom()
+local require = function() return {} end
+local other = require "not-a-module"
+other.custom()
+]=])
+  check("reassignment including captured bindings and a shadowed require is conservatively skipped",
+    #report.errors == 0 and #report.warnings == 0 and #report.requires == 1 and report.requires[1] == "fs")
+  report = inspect('local global = require "fs"\nglobal.exists(".")\n')
+  check("the contextual word global can still be a local alias without declaring globals",
+    #report.errors == 0 and #report.warnings == 1 and report.warnings[1].kind == "globals")
+  report = inspect('--[=[global none]=]\nlocal text = "global none"\n')
+  check("a global declaration inside a comment or string does not suppress its warning",
+    #report.errors == 0 and #report.warnings == 1 and report.warnings[1].kind == "globals")
+  report = inspect('global none\nglobal <const> require\nlocal fs = require "fs"\nfs.zzzzzzzz()\n')
+  check("unrelated export names do not get a misleading suggestion",
+    #report.errors == 1 and report.errors[1].suggestion == nil)
   do
     local manual = fs.read(T.root .. "/docs/adopting.md")
     local example = manual:match("```lua\r?\n(.-)\r?\n```")
