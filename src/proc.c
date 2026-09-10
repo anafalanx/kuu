@@ -101,6 +101,7 @@ struct ku_child {
     ku_timer deadline;
     ku_waiter *waiters;    /* parked wait() callers */
     ku_result *result;
+    int run_ref; /* proc.run retains its hidden child until the job finishes */
 };
 
 /* ---- results ------------------------------------------------------------------- */
@@ -621,6 +622,10 @@ static void child_check_done(ku_child *c)
         w->data = result_ref(r);
         ku_wake(w);
     }
+    if (c->run_ref != LUA_NOREF) {
+        luaL_unref(ku_loop_state(c->loop), LUA_REGISTRYINDEX, c->run_ref);
+        c->run_ref = LUA_NOREF;
+    }
 }
 
 static void child_deadline(ku_timer *timer)
@@ -969,6 +974,7 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
     }
     ku_loop *lp = ku_loop_of(L);
     c->loop = lp;
+    c->run_ref = LUA_NOREF;
     c->job_src.kind = KU_SRC_JOB;
     c->job_src.owner = c;
     c->job_src.on_job = child_on_job;
@@ -1196,7 +1202,9 @@ static int l_proc_run(lua_State *L)
     if (child_launch(L, &spec, &c, &fail) != 0) {
         return ku_err_fail(L, fail.domain, fail.code, "%s", fail.message);
     }
-    push_child_box(L, c); /* anchored while we wait; released when collected */
+    push_child_box(L, c);
+    lua_pushvalue(L, -1);
+    c->run_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     return child_wait(L, c, -1);
 }
 

@@ -409,8 +409,20 @@ static void http_on_posted(ku_source *src, void *value, DWORD bytes)
         w->data = q;
         ku_wake(w);
     } else {
+        if (q->temp_path != NULL) {
+            DeleteFileW(q->temp_path);
+        }
         request_free(q); /* nobody is waiting any more */
     }
+}
+
+static void http_abandon(ku_waiter *w)
+{
+    http_request *q = (http_request *)w->owner;
+    q->waiter = NULL;
+    ku_timer_cancel(q->loop, &q->deadline);
+    http_deadline(&q->deadline);
+    /* The worker owns q until its completion arrives. */
 }
 
 /* Cooked headers: lowercase names, repeats joined with ", " as RFC 9110
@@ -861,6 +873,7 @@ static int build_request(lua_State *L, int idx)
         return ku_err_raise(L, "HTTP", "oserror", "cannot start the request thread");
     }
     ku_timer_arm(q->loop, &q->deadline, q->timeout_ms);
+    w->on_abandon = http_abandon;
     return ku_wait(L, w, -1);
 }
 

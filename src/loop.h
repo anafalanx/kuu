@@ -144,6 +144,8 @@ struct ku_waiter {
     int ref;
     ku_driver *driver;
     ku_timer timer;
+    int deadline_ref; /* token for the enclosing scope, or LUA_NOREF */
+    int deadline_hit;
 };
 
 ku_waiter *ku_waiter_new(ku_loop *loop, void *owner, ku_push_fn push);

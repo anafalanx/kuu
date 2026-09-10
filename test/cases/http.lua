@@ -101,6 +101,35 @@ return function(T)
   r = http.get(base .. "/files/missing.bin", { to = target })
   check("a 404 download still writes what the server sent", r and r.status == 404 and fs.read(target) == "no such file")
 
+  -- A scope deadline can arrive before the worker publishes its WinHTTP
+  -- handle, or during the request. Neither path may replace the old file or
+  -- leave its sibling temporary file behind after completion is delivered.
+  local deadline_targets = {}
+  for i, budget in ipairs({ 0, "10ms", "20ms" }) do
+    local deadline_target = files .. "/deadline-kept-" .. i .. ".txt"
+    deadline_targets[i] = deadline_target
+    fs.write(deadline_target, "previous contents")
+    local began = sched.clock()
+    local value, problem = sched.deadline(budget, function()
+      return http.get(base .. "/slow?ms=250", { to = deadline_target, timeout = "2s" })
+    end)
+    check("a scope deadline cancels an in-flight download", value == nil and err.is(problem, "SCHED", "deadline")
+      and sched.clock() - began < 1, tostring(problem))
+  end
+  local cleanup_until, partials = sched.clock() + 2, 0
+  repeat
+    sched.sleep("10ms")
+    partials = 0
+    for _, entry in ipairs(fs.list(files).entries) do
+      if entry.name:find("deadline-kept-", 1, true) and entry.name:find(".kuu-", 1, true) then partials = partials + 1 end
+    end
+  until partials == 0 or sched.clock() >= cleanup_until
+  local preserved = true
+  for _, path in ipairs(deadline_targets) do preserved = preserved and fs.read(path) == "previous contents" end
+  check("deadline cancellation preserves the destinations and removes temporary files", preserved and partials == 0, tostring(partials))
+  r, e = http.get(base .. "/hello")
+  check("a request after cancelled downloads still succeeds", r ~= nil and r.body == "hello", tostring(e))
+
   -- verification -----------------------------------------------------------------------------
   local hello_sha = require("hash").sum("sha256", "hello")
   r, e = http.get(base .. "/hello", { to = files .. "/verified.txt", sha256 = hello_sha:upper() })

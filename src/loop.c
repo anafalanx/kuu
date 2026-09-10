@@ -1,6 +1,7 @@
 /* loop.c -- the event loop and coroutine scheduler; see loop.h. */
 #include "loop.h"
 #include "err.h"
+#include "deadline.h"
 
 #include "lauxlib.h"
 
@@ -253,7 +254,12 @@ static void waiter_timer_fire(ku_timer *timer)
 {
     ku_waiter *w = (ku_waiter *)timer->owner;
     w->timed_out = 1;
-    if (w->on_timeout != NULL) {
+    if (w->deadline_ref != LUA_NOREF) {
+        w->deadline_hit = 1;
+    }
+    if (w->deadline_hit && w->on_abandon != NULL) {
+        w->on_abandon(w);
+    } else if (w->on_timeout != NULL) {
         w->on_timeout(w);
     }
     ku_wake(w);
@@ -270,6 +276,7 @@ ku_waiter *ku_waiter_new(ku_loop *lp, void *owner, ku_push_fn push)
     w->push = push;
     w->ref = LUA_NOREF;
     w->data_ref = LUA_NOREF;
+    w->deadline_ref = LUA_NOREF;
     ku_timer_init(&w->timer, waiter_timer_fire, w);
     return w;
 }
@@ -312,14 +319,25 @@ static int wait_finish(lua_State *L, int status, lua_KContext ctx)
         if (w->data_ref != LUA_NOREF) {
             luaL_unref(L, LUA_REGISTRYINDEX, w->data_ref);
         }
+        luaL_unref(L, LUA_REGISTRYINDEX, w->deadline_ref);
         free(w);
         return ku_err_raise(L, "SCHED", "deadlock", "nothing can wake this wait");
     }
-    int n = w->push(L, w);
+    int n;
+    if (w->deadline_hit) {
+        ku_err_push(L, "SCHED", "deadline", "the enclosing deadline expired while waiting");
+        lua_rawgeti(L, LUA_REGISTRYINDEX, w->deadline_ref);
+        lua_setfield(L, -2, "_token");
+        w->raise = 1;
+        n = 1;
+    } else {
+        n = w->push(L, w);
+    }
     int raise = w->raise;
     if (w->data_ref != LUA_NOREF) {
         luaL_unref(L, LUA_REGISTRYINDEX, w->data_ref);
     }
+    luaL_unref(L, LUA_REGISTRYINDEX, w->deadline_ref);
     free(w);
     if (raise) {
         return lua_error(L);
@@ -330,7 +348,27 @@ static int wait_finish(lua_State *L, int status, lua_KContext ctx)
 int ku_wait(lua_State *L, ku_waiter *w, int64_t timeout_ms)
 {
     ku_loop *lp = w->loop;
-    if (timeout_ms >= 0 && ku_timer_arm(lp, &w->timer, timeout_ms) != 0) {
+    int64_t due_ms;
+    if (!w->done && ku_deadline_current(L, &due_ms)) {
+        int64_t remaining = due_ms - ku_now_ms();
+        if (remaining < 0) {
+            remaining = 0;
+        }
+        if (timeout_ms < 0 || remaining <= timeout_ms) {
+            timeout_ms = remaining;
+            w->deadline_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        } else {
+            lua_pop(L, 1);
+        }
+    }
+    if (!w->done && timeout_ms >= 0 && ku_timer_arm(lp, &w->timer, timeout_ms) != 0) {
+        if (w->on_abandon != NULL) {
+            w->on_abandon(w);
+        } else if (w->on_timeout != NULL) {
+            w->on_timeout(w);
+        }
+        luaL_unref(L, LUA_REGISTRYINDEX, w->data_ref);
+        luaL_unref(L, LUA_REGISTRYINDEX, w->deadline_ref);
         free(w);
         return ku_err_raise(L, "SCHED", "oserror", "out of memory arming a timer");
     }

@@ -14,6 +14,7 @@
  * still run.
  */
 #include "err.h"
+#include "deadline.h"
 #include "loop.h"
 #include "values.h"
 
@@ -266,5 +267,6 @@ int ku_open_sched(lua_State *L)
         {NULL, NULL},
     };
     luaL_newlib(L, functions);
+    ku_deadline_open(L);
     return 1;
 }

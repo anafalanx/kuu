@@ -279,6 +279,11 @@ static int open_svc_full(lua_State *L)
     return open_hybrid(L, ku_open_svc, "lua/svc/wait.lua");
 }
 
+static int open_sched_full(lua_State *L)
+{
+    return open_hybrid(L, ku_open_sched, "lua/sched/deadline.lua");
+}
+
 /* CLI durations have the same public numeric unit as time, proc, sched,
  * sync, and net: seconds. The Lua chunk receives this parser as `...`. */
 static int cli_duration(lua_State *L)
@@ -378,7 +383,7 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "rt");
     lua_pushcfunction(L, ku_open_err);
     lua_setfield(L, -2, "err");
-    lua_pushcfunction(L, ku_open_sched);
+    lua_pushcfunction(L, open_sched_full);
     lua_setfield(L, -2, "sched");
     lua_pushcfunction(L, ku_open_proc);
     lua_setfield(L, -2, "proc");

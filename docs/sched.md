@@ -35,10 +35,37 @@ running; join what you spawn.
 sched.sleep("250ms")   -- park this task; other tasks run
 sched.sleep(0)         -- give other tasks a turn
 sched.clock()          -- monotonic seconds, for measuring
+sched.now()            -- wall-clock Unix seconds; time.now() uses the same Windows clock
 ```
 
 Durations everywhere in kuu are a number of seconds or a string with a unit:
 `"250ms"`, `"30s"`, `"1.5m"`, `"2h"`. A string without a unit is refused.
+
+## Deadlines
+
+```lua
+local value, e = sched.deadline("30s", function(a)
+  sched.sleep("10ms")
+  return a
+end, 42)
+```
+
+`deadline(duration, fn, ...)` returns the function's results unchanged. If
+the deadline expires while that coroutine waits on the loop, it unwinds
+the function and returns `nil, SCHED deadline`. Other errors pass through.
+Nested scopes use the earliest deadline; an outer deadline crosses inner
+scopes until it reaches the scope that owns it. A call's shorter timeout
+still produces that call's normal timeout result.
+
+This is a bound on waits, not a CPU interrupt. A function that computes
+without waiting cannot be interrupted; a completed operation returns at
+once. Spawned tasks have their own coroutine and do not inherit the scope.
+Children are not killed by a deadline: keep a `proc.start` handle in a
+`<close>` variable when the child's lifetime should end with the scope.
+`proc.run` retains its internal handle until the child finishes even if
+the wait is interrupted; give it its own `timeout` when it needs a firm
+wall-clock lifetime. Program exit still closes every supervised job.
+HTTP and network operations cancel their outstanding work when abandoned.
 
 ## Where waiting is not possible
 
@@ -53,6 +80,13 @@ other tasks still make progress meanwhile.
 | SCHED code | when |
 |---|---|
 | `timeout` | `join` with a duration outlasted the task |
-| `badvalue` | raised: a duration that is not one |
+| `deadline` | an enclosing deadline expired while its function waited |
+| `badvalue` | raised: an invalid duration, or a non-function deadline callback |
 | `yield` | a coroutine yielded to kuu with nothing to wait for; the task (or the program) fails |
-| `deadlock` | every task is parked and nothing can wake any of them; the program exits 1 |
+| `deadlock` | a wait has no possible wakeup; raised by an in-place wait, or terminates a deadlocked program with exit 1 |
+| `oserror` | a scheduler allocation or timer could not be created |
+
+These are the complete SCHED codes. `join` and `deadline` also propagate
+errors raised by the function they run or observe, preserving the original
+error object. Ordinary Lua argument-type errors remain Lua errors; see
+[err](err.md).
