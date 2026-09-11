@@ -22,7 +22,7 @@
 -- these.
 global none
 global <const> require, ipairs, pairs, tostring, tonumber, type, table, load,
-               package, pcall, math, error
+               package, pcall, math, error, string
 
 local fs = require "fs"
 local rt = require "rt"
@@ -45,44 +45,63 @@ end
 
 -- One lexer serves require discovery and name checking. Strings and comments
 -- cannot turn into executable names, and each token retains its source line.
+-- Bytes rather than patterns, throughout. The obvious spelling of this loop
+-- asks `text:sub(pos, pos)` for a one-character string and then matches
+-- patterns against it, which allocates a string and runs the pattern engine
+-- for every byte of every file; it also tried the long-bracket pattern at
+-- every position rather than only where a bracket is, and counted line
+-- breaks with a substring and two gsubs per token. Comparing byte values
+-- does the same work about one and a half times faster, and the suite
+-- checks the token streams are identical.
+local NAME_START, DIGIT, SPACE = {}, {}, {}
+for b = 65, 90 do NAME_START[b] = true end
+for b = 97, 122 do NAME_START[b] = true end
+NAME_START[95] = true
+for b = 48, 57 do DIGIT[b] = true end
+for _, b in ipairs { 32, 9, 10, 11, 12, 13 } do SPACE[b] = true end
+
 local function tokens_of(text)
-  local tokens, pos, line = {}, 1, 1
+  local tokens, pos, line, n = {}, 1, 1, #text
+  local byte = string.byte
   local doubles = { ["=="] = true, ["~="] = true, ["<="] = true, [">="] = true,
     ["<<"] = true, [">>"] = true, ["//"] = true, [".."] = true, ["::"] = true }
-  while pos <= #text do
+  while pos <= n do
     local start, at_line = pos, line
-    local c = text:sub(pos, pos)
-    local comment = text:sub(pos, pos + 1) == "--"
+    local b = byte(text, pos)
+    local comment = b == 45 and byte(text, pos + 1) == 45
     local at = comment and pos + 2 or pos
-    local equals = text:match("^%[(=*)%[", at)
-    local kind, value, after
+    local kind, value, after, equals
+    -- The long-bracket pattern is tried only where a bracket actually is.
+    if byte(text, at) == 91 then equals = text:match("^%[(=*)%[", at) end
     if equals ~= nil then
       local closing = "]" .. equals .. "]"
       local stop = text:find(closing, at + #equals + 2, true)
-      after = stop and stop + #closing or #text + 1
+      after = stop and stop + #closing or n + 1
       kind = comment and "comment" or "string"
     elseif comment then
-      after, kind = text:find("[\r\n]", pos + 2) or #text + 1, "comment"
-    elseif c:match("%s") then
+      after, kind = text:find("[\r\n]", pos + 2) or n + 1, "comment"
+    elseif SPACE[b] then
       after, kind = pos + 1, "space"
-    elseif c == '"' or c == "'" then
+    elseif b == 34 or b == 39 then
       after = pos + 1
-      while after <= #text do
-        local ch = text:sub(after, after)
-        if ch == "\\" then after = after + 2
-        elseif ch == c then after = after + 1 break
+      while after <= n do
+        local ch = byte(text, after)
+        if ch == 92 then after = after + 2
+        elseif ch == b then after = after + 1 break
         else after = after + 1 end
       end
       kind = "string"
-    elseif c:match("[%a_]") then
+    elseif NAME_START[b] then
       local _, stop = text:find("^[%a_][%w_]*", pos)
       after, kind = stop + 1, "name"
-    elseif c:match("%d") or (c == "." and text:sub(pos + 1, pos + 1):match("%d")) then
+    elseif DIGIT[b] or (b == 46 and DIGIT[byte(text, pos + 1) or 0]) then
       after, kind = pos + 1, "number"
-      while after <= #text do
-        local ch, previous = text:sub(after, after), text:sub(after - 1, after - 1)
-        if ch:match("[%w%.]") or (ch:match("[+-]") and previous:match("[eEpP]")) then after = after + 1
-        else break end
+      while after <= n do
+        local ch, previous = byte(text, after), byte(text, after - 1)
+        local body = DIGIT[ch] or NAME_START[ch] or ch == 46
+        local exponent = (ch == 43 or ch == 45)
+          and (previous == 101 or previous == 69 or previous == 112 or previous == 80)
+        if body or exponent then after = after + 1 else break end
       end
     else
       local two, three = text:sub(pos, pos + 1), text:sub(pos, pos + 2)
@@ -98,7 +117,13 @@ local function tokens_of(text)
       end
       tokens[#tokens + 1] = { text = spelling, kind = kind, value = value, line = at_line }
     end
-    local _, breaks = text:sub(pos, after - 1):gsub("\r\n", "\n"):gsub("[\r\n]", "")
+    -- CRLF counts once, and so does a lone CR.
+    local breaks = 0
+    for i = pos, after - 1 do
+      local ch = byte(text, i)
+      if ch == 10 then breaks = breaks + 1
+      elseif ch == 13 and byte(text, i + 1) ~= 10 then breaks = breaks + 1 end
+    end
     line, pos = line + breaks, after
   end
   tokens[#tokens + 1] = { text = "<eof>", kind = "eof", line = line }
