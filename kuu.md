@@ -4573,7 +4573,7 @@ workaround belongs to the consuming build recipe and is now documented.
 Cold setup testing also found and fixed `hash.file`'s long-path boundary.
 The complete suite now passes 838 checks plus native analysis. Time Actual's
 new recovery fixture passes 17 checks on 0.5 and 0.6; full cold toolchain and
-relocation validation is paused. The [2026-09-10 handoff](../notes/handoff-2026-09-10_193511.md) recorded
+relocation validation is paused. The [2026-09-10 handoff](notes/handoff-2026-09-10_193511.md) recorded
 that pause; the remaining work was completed the same day on the second
 machine, recorded in the observations log, and 0.6 was released.
 
@@ -4805,13 +4805,13 @@ release or signing was performed.
   paused and remain incomplete. Tcl/Tk's compiled tree still rebuilds in
   place after invalidating its completion record.
 
-See [the dated handoff](../notes/handoff-2026-09-10_193511.md) for the exact paused
+See [the dated handoff](notes/handoff-2026-09-10_193511.md) for the exact paused
 state, local evidence and remaining work. Earlier full application results
 above do not establish completion of the new recovery recipe's validation.
 
 ### Cold setup and recovery on a second machine — 2026-09-10
 
-Step 2 of the [dated handoff](../notes/handoff-2026-09-10_193511.md), run
+Step 2 of the [dated handoff](notes/handoff-2026-09-10_193511.md), run
 on the owner's other machine with the 0.6 build at commit 9abab18.
 
 - **Main checkout, empty `.tools`.** `prereqs --all` fetched all 27 pinned
@@ -4907,7 +4907,7 @@ Observations, none of them a kuu defect:
 - **Control:** the isolated process suite passed all 82 checks; the final
   complete production suite then passed all 1,044 checks. No change to
   process-tree enumeration was made.
-- **Evidence:** [dated validation record](../notes/validation-23h2-2026-09-11_094612.md).
+- **Evidence:** [dated validation record](notes/validation-23h2-2026-09-11_094612.md).
 
 ### Orphaned I/O completion during console shutdown — 2026-09-11
 
@@ -4933,7 +4933,7 @@ The isolated memory case then passes all 19 checks; the underlying finding
 remains open. Time Actual's task/recovery tests, all 2,191 engine checks,
 application build and isolated self-test pass with the promoted release.
 
-See the [dated adoption record](../notes/validation-0.8-23h2-2026-09-11_104022.md).
+See the [dated adoption record](notes/validation-0.8-23h2-2026-09-11_104022.md).
 
 ### The replacement failure isolated and closed — 2026-09-11
 

@@ -39,9 +39,10 @@ local function anchor(name)
   return (name:lower():gsub("%.", ""))
 end
 
--- Demote every heading one level so the pages nest under Part IV, and rewrite
--- cross-page links to anchors inside this document.  Headings inside fenced
--- code blocks are left alone.
+-- Demote every heading one level so the pages nest under Part IV, rewrite
+-- cross-page links to anchors inside this document, and lift relative links
+-- by the one directory level the page itself moves up.  Headings inside
+-- fenced code blocks are left alone.
 local function transform(text)
   local out, fenced = {}, false
   for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
@@ -55,6 +56,12 @@ local function transform(text)
       line = line:gsub("%]%((%w[%w%-%.]-)%.md%)", function(page)
         return "](#" .. anchor(page) .. ")"
       end)
+
+      -- A page moves up one level when it is inlined: from docs/ into kuu.md
+      -- at the root.  A link that reaches outside docs/ loses that level with
+      -- it, or it would point above the repository.  The rewrites above never
+      -- see these, because their targets do not begin with a word character.
+      line = line:gsub("%]%(%.%./", "](")
     end
     out[#out + 1] = line
   end
