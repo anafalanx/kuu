@@ -10,6 +10,10 @@
 
 #define KU_LOOP_KEY "kuu.loop"
 
+/* An orphaned request can outlive its source. Keep the OS dispatch key
+ * alive independently; the request carries the nullable callback owner. */
+static const ku_source io_completion_source = { .kind = KU_SRC_IO };
+
 typedef struct ready_entry {
     ku_driver *driver;
     int nargs;
@@ -449,7 +453,8 @@ lua_State *ku_loop_state(ku_loop *lp)
 
 int ku_loop_attach(ku_loop *lp, HANDLE handle, ku_source *src)
 {
-    return CreateIoCompletionPort(handle, lp->port, (ULONG_PTR)src, 0) == lp->port ? 0 : -1;
+    (void)src; /* callback ownership is recorded separately by ku_io_new */
+    return CreateIoCompletionPort(handle, lp->port, (ULONG_PTR)&io_completion_source, 0) == lp->port ? 0 : -1;
 }
 
 int ku_loop_attach_job(ku_loop *lp, HANDLE job, ku_source *src)

@@ -11,8 +11,9 @@
  * Invariants:
  *   - No other thread touches the Lua state.  A future foreign thread may only
  *     PostQueuedCompletionStatus to the port.
- *   - The completion key of every packet is a `ku_source *`, so the loop knows
- *     what kind of packet it holds before it touches anything else.
+ *   - The completion key of every packet is a `ku_source *`. Overlapped I/O
+ *     uses a static key; its nullable owner lives in the request. Job and
+ *     posted sources stay alive until their last packet is dispatched.
  *   - An outstanding overlapped request (`ku_io`) is owned by the loop until
  *     its packet arrives.  An owner that goes away orphans its requests
  *     (`src = NULL`); the loop frees them on arrival.  Nothing is freed while

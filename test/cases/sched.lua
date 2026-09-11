@@ -8,6 +8,14 @@ return function(T)
   local sched = require "sched"
   local err = require "err"
 
+  local orphan_fixture = require("env").get("KUU_TEST_ASAN") == "1"
+    and "loop_orphan_asan.exe" or "loop_orphan_fixture.exe"
+  local orphaned = require("proc").run {
+    T.root .. "/build/test/" .. orphan_fixture, timeout = "10s"
+  }
+  check("orphaned I/O dispatch never reads its released source",
+    orphaned.status == "exit" and orphaned.code == 0, describe(orphaned))
+
   -- sleep ----------------------------------------------------------------------
   local t0 = sched.clock()
   sched.sleep("100ms")

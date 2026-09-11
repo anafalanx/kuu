@@ -17,7 +17,7 @@ The same promise covers running a file, stdin, or an inline program; the
 `docs`, `run`, `list`, and `check` verbs; their documented options and exit
 codes; and their documented JSON reports. It includes the supported Windows
 baseline and the documented Lua language version. The freeze is a promise
-for 1.x, not a claim that the 0.7 interface can no longer improve.
+for 1.x, not a claim that the 0.8 interface can no longer improve.
 
 `pty` is provisional. Its API and its interpretation of terminal output may
 change before or after 1.0, with an upgrading note. It is outside the freeze

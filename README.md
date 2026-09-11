@@ -25,9 +25,9 @@ A repository declares its tasks once in `tasks.lua` and runs them with
 `archive`. The manual rides inside the executable: `kuu docs`. kuu runs on
 Windows 11 23H2 and later, and Windows Server 2025 and later, only.
 
-23H2 support currently requires a build from this development tree. The
-published signed 0.7 executable predates the compatibility fix; see the
-[0.7 compatibility note](docs/upgrading-0.7.md#windows-11-23h2-compatibility-in-the-development-tree).
+Version 0.8 brings Windows 11 23H2 support and fixes the JSON duplicate-key
+diagnostic. The Lua API is unchanged from 0.7; see
+[upgrading to 0.8](docs/upgrading-0.8.md).
 
 ```text
 kuu FILE [arg ...]        run a Lua program file
@@ -59,8 +59,8 @@ to the kuu call that replaces it. [docs/roadmap.md](docs/roadmap.md) records the
 [docs/shortcomings.md](docs/shortcomings.md) tracks problems observed during
 real repository adoption, with evidence and workarounds.
 
-Version 0.7 completes the capabilities before the planned 1.0 freeze. See
-[upgrading to 0.7](docs/upgrading-0.7.md) for changes since 0.6, the
+Version 0.7 introduced the capabilities before the planned 1.0 freeze. See
+[upgrading to 0.7](docs/upgrading-0.7.md) for those changes since 0.6, the
 [cookbook](docs/cookbook.md) for ten complete programs, and the
 [stability statement](docs/stability.md) for the future compatibility promise.
 

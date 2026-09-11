@@ -56,7 +56,7 @@ LINK_LIBS  := -lbcrypt -lwinhttp -liphlpapi -lws2_32 -ladvapi32 -lwintrust -lcry
 
 # Test fixtures: small C programs the suite drives as children.
 FIXTURE_SRC := test/fixtures
-FIXTURES    := $(BUILD)/test/http_fixture.exe $(BUILD)/test/reg_fixture.exe $(BUILD)/test/http_error_fixture.exe $(BUILD)/test/limits_fixture.exe $(BUILD)/test/pty_fixture.exe
+FIXTURES    := $(BUILD)/test/http_fixture.exe $(BUILD)/test/reg_fixture.exe $(BUILD)/test/http_error_fixture.exe $(BUILD)/test/limits_fixture.exe $(BUILD)/test/pty_fixture.exe $(BUILD)/test/loop_orphan_fixture.exe
 
 LUA_C    := $(filter-out $(LUA_SRC)/lua.c $(LUA_SRC)/luac.c,$(wildcard $(LUA_SRC)/*.c))
 LUA_O    := $(patsubst $(LUA_SRC)/%.c,$(BUILD)/obj/lua/%.o,$(LUA_C))
@@ -134,6 +134,11 @@ $(BUILD)/test/http_error_fixture.exe: $(FIXTURE_SRC)/http_error_fixture.c $(HOST
 
 $(BUILD)/test/parser_fuzz.exe: $(FIXTURE_SRC)/parser_fuzz.c $(HOST_SRC)/cmdline.c $(HOST_SRC)/cmdline.h $(HOST_SRC)/wintext.c $(HOST_SRC)/wintext.h | $(BUILD)/test
 	$(CC) $(HOST_FLAGS) -static -o $@ $(FIXTURE_SRC)/parser_fuzz.c $(HOST_SRC)/cmdline.c $(HOST_SRC)/wintext.c -lshell32
+
+LOOP_FIXTURE_SUPPORT := err deadline values program wintext
+LOOP_FIXTURE_O := $(addprefix $(BUILD)/obj/host/,$(addsuffix .o,$(LOOP_FIXTURE_SUPPORT))) $(LUA_O)
+$(BUILD)/test/loop_orphan_fixture.exe: $(FIXTURE_SRC)/loop_orphan_fixture.c $(HOST_SRC)/loop.c $(HOST_SRC)/loop.h $(LOOP_FIXTURE_O) | $(BUILD)/test
+	$(CC) $(HOST_FLAGS) -static -Wl,--gc-sections -o $@ $< $(LOOP_FIXTURE_O)
 
 $(BUILD)/test/%.exe: $(FIXTURE_SRC)/%.c | $(BUILD)/test
 	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 -o $@ $< -lws2_32
@@ -231,7 +236,11 @@ $(ASAN_OUT): $(ASAN_HOST_O) $(ASAN_LUA_O) $(ASAN_YYJSON_O) $(ASAN_PCRE2_O) $(ASA
 	$(CLANG) $(ASAN_FLAGS) -municode -o $@ $^ $(LINK_LIBS)
 
 .PHONY: asan
-asan: $(ASAN_OUT) $(FIXTURES)
+ASAN_LOOP_FIXTURE_O := $(addprefix $(ASAN_DIR)/obj/host/,$(addsuffix .o,$(LOOP_FIXTURE_SUPPORT))) $(ASAN_LUA_O)
+$(BUILD)/test/loop_orphan_asan.exe: $(FIXTURE_SRC)/loop_orphan_fixture.c $(HOST_SRC)/loop.c $(HOST_SRC)/loop.h $(ASAN_LOOP_FIXTURE_O) | $(BUILD)/test
+	$(CLANG) $(ASAN_HOST_FLAGS) -o $@ $< $(ASAN_LOOP_FIXTURE_O)
+
+asan: $(ASAN_OUT) $(FIXTURES) $(BUILD)/test/loop_orphan_asan.exe
 	set "PATH=$(CLANG_WIN)\bin;$(PATH)" && set "KUU_TEST_ASAN=1" && $(subst /,\,$(ASAN_OUT)) test\run.lua
 
 -include $(ASAN_HOST_O:.o=.d) $(ASAN_LUA_O:.o=.d) $(ASAN_PCRE2_O:.o=.d)

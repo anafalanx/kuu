@@ -110,6 +110,20 @@ end
   T.check('shutdown completes canceled console I/O while Lua finalizers run other children',
     finalized.status == 'exit' and finalized.code == 0, T.describe(finalized))
 
+  finalized = T.kuu({ '-e', [[global none
+global <const> require, assert, setmetatable
+local pty, proc = require 'pty', require 'proc'
+local finalizer = setmetatable({}, {__gc=function()
+  assert(proc.run { 'cmd.exe', '/d', '/c', 'exit', '0' }.code == 0)
+end})
+local console = assert(pty.spawn { 'cmd.exe', '/d', '/c', 'echo', 'final output' })
+assert(console:wait('3s').code == 0)
+-- Leave the exited console open: its final read can still be pending when
+-- its own finalizer runs, before the earlier finalizer pumps the loop.
+]] }, {timeout='5s'})
+  T.check('an exited console can finalize before another finalizer pumps the loop',
+    finalized.status == 'exit' and finalized.code == 0, T.describe(finalized))
+
   local baseline = conhosts()
   do
     local descendant <close> = assert(pty.spawn { fixture, 'descendant', timeout = '5s' })

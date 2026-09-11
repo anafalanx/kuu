@@ -66,6 +66,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `pty` over ConPTY with `expect`, a plain-text view, and supervised child lifetime; provisional, outside the future freeze | 0.7 |
 | ten executable cookbook programs; public stability statement and minimum-version guards; complete module map and JSON schemas | 0.7 |
 | `make gate`: suite, analysis, expanded parser fuzzing, soak; separate pinned Clang AddressSanitizer build required for release | 0.7 |
+| Windows 11 23H2 support with safe console shutdown; JSON duplicate-key diagnostic lifetime fix; unchanged Lua API | 0.8 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
 
@@ -188,11 +189,18 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      and registry key text. `make asan` builds a separate test executable
      with pinned MSYS2 CLANG64 packages and runs the suite under
      AddressSanitizer; it is a required separate release check.
-8. **1.0.** Criteria for the owner to set. Proposed: three projects driven
+8. **0.8, Windows 11 23H2 compatibility.** Resolve the newer console release
+   API only when present; on 23H2, independent close/drain workers preserve
+   final output and finish canceled I/O safely. The Lua API is unchanged,
+   and `pty` remains provisional. The JSON duplicate-key diagnostic also
+   keeps its parser-owned key alive while formatting the error. See
+   [upgrading to 0.8](upgrading-0.8.md) and the validation evidence in
+   [observed shortcomings](shortcomings.md).
+9. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
-   verdict. Between 0.7 and 1.0: the freeze, the month of use, and 0.8 with
-   only what that month finds.
+   verdict. Between 0.8 and 1.0: the freeze, the month of use, and corrections
+   driven by what that use finds.
 
 ## The 0.5 review: fixes implemented
 

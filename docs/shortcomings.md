@@ -305,10 +305,10 @@ Observations, none of them a kuu defect:
   Windows 11 Enterprise 23H2 build 22631.7517; no newer Windows host was
   available for a fresh run. See the file-access finding above for the
   pre-existing soak failure.
-- **Release status:** this is a local compatibility build from the 0.7
-  development tree. The published signed 0.7 asset and its digest are
-  unchanged and still cannot start on 23H2. A newly signed release remains
-  necessary for distribution through the release channel.
+- **Release status:** the compatibility fix is included in
+  [0.8](upgrading-0.8.md). The published signed 0.7 asset and its digest are
+  unchanged and still cannot start on 23H2. The validation evidence above
+  records the earlier development build; its remaining findings stay open.
 
 ## JSON duplicate-key error lifetime — 2026-09-11
 
@@ -317,7 +317,7 @@ Observations, none of them a kuu defect:
   key points into the yyjson document, which was freed before formatting it.
 - **Fix:** build the error while the document still owns the key, then free
   the document. The existing duplicate-key regression now checks the key in
-  the message as well as the error code.
+  the message as well as the error code. Included in 0.8.
 
 ## Process-tree chain check during 23H2 validation — 2026-09-11
 
@@ -327,3 +327,16 @@ Observations, none of them a kuu defect:
   complete production suite then passed all 1,044 checks. No change to
   process-tree enumeration was made.
 - **Evidence:** [dated validation record](../notes/validation-23h2-2026-09-11_094612.md).
+
+## Orphaned I/O completion during console shutdown — 2026-09-11
+
+- **Observed:** the 0.8 release review found that a canceled console read
+  could outlive its child state during Lua shutdown. A later finalizer
+  running another process could dispatch that queued completion and read
+  its freed source before noticing that the request was orphaned.
+- **Fix:** overlapped I/O uses a stable completion key; dispatch consults
+  the request's source only after checking whether it is orphaned.
+- **Regression:** a native fixture cancels real pipe I/O, releases the
+  source's memory before dequeue, and dispatches the orphaned completion.
+  The console suite also leaves an exited console open through shutdown
+  while another Lua finalizer runs a process. Included in 0.8.
