@@ -180,8 +180,8 @@ the suite is green at **1062 ok, 0 failed**.
 | `fs.dirs` prune | pruned directories leave `paths` for a new `skipped` | done |
 | ordered JSON | `json.object { {k, v}, ... }`, a marker beside `json.array` | done |
 | `sched.clock` | performance counter; 1 ms to about 500 ns | done |
-| numeric handoff audit | — | open |
-| worker-pool design check | — | open |
+| numeric handoff audit | no boundary found where agreement was only conventional | done |
+| worker-pool design check | a pool on the 0.9.0 surface reached 2.74x; not a freeze blocker | done |
 
 ### The blocker, closed
 
