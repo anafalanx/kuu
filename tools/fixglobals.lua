@@ -25,6 +25,7 @@ global <const> require, ipairs, pairs, load, tostring, table, io, os, string,
                _G
 
 local fs = require "fs"
+local trim = require("text").trim
 
 local WIDTH = 79
 
@@ -63,7 +64,7 @@ local function declaration(lines)
     local starts = line:match("^global%s") or line == "global"
     -- A declaration wraps when its line ends in a comma, and this tool wraps
     -- long ones itself, so it has to read back what it writes.
-    local continues = i > first and lines[i - 1]:match(",%s*$") ~= nil
+    local continues = i > first and trim(lines[i - 1], "right"):byte(-1) == 0x2C
     if not (starts or continues) then break end
     last = i
 
@@ -107,13 +108,13 @@ local function render(order, const, none)
       for i, name in ipairs(names) do
         local piece = name .. (i < #names and "," or "")
         if #line + #piece + 1 > WIDTH and line ~= head then
-          out[#out + 1] = line:gsub("%s+$", "")
+          out[#out + 1] = trim(line, "right")
           line = string.rep(" ", #head) .. piece .. " "
         else
           line = line .. piece .. " "
         end
       end
-      out[#out + 1] = line:gsub("%s+$", "")
+      out[#out + 1] = trim(line, "right")
     end
   end
   return out
@@ -238,7 +239,7 @@ local function gather(paths)
       local walk = fs.dirs(p, { prune = { ".git", ".tools", "build", "node_modules" } })
       for _, dir in ipairs(walk.paths) do
         for _, entry in ipairs(fs.list(dir).entries) do
-          if entry.kind == "file" and entry.name:match("%.lua$") then
+          if entry.kind == "file" and entry.name:sub(-4) == ".lua" then
             files[#files + 1] = dir .. "/" .. entry.name
           end
         end

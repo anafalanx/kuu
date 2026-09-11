@@ -45,7 +45,8 @@ local function parse_size(text)
   end
   local number, unit = tostring(text):match("^(%d+%.?%d*)(%a*)$")
   if number == nil then return nil end
-  unit = unit:upper():gsub("B$", "")
+  unit = unit:upper()
+  if unit:byte(-1) == 0x42 then unit = unit:sub(1, -2) end   -- a trailing "B"
   local scale = ({ [""] = 1, K = 1024, M = 1024 * 1024, G = 1024 * 1024 * 1024 })[unit]
   if scale == nil then return nil end
   return math.floor(tonumber(number) * scale + 0.5)

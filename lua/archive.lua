@@ -16,6 +16,7 @@ local fs = require "fs"
 local proc = require "proc"
 local err = require "err"
 local rt, json = require "rt", require "json"
+local trim = require("text").trim
 
 -- Read Unicode names in a supervised copy of this same executable. Windows
 -- tar's text listing has already replaced names outside its ANSI code page.
@@ -57,7 +58,7 @@ local function run_tar(args, timeout)
   if not r then return nil, e2 end
   if r.status ~= "exit" then return nil, err.new("ARCHIVE", r.status, "tar did not finish: " .. r.status) end
   if r.code ~= 0 then
-    local said = r.err:gsub("%s+$", ""):gsub("^tar%.exe: ", ""):gsub("\r?\ntar%.exe: ", "; ")
+    local said = trim(r.err, "right"):gsub("^tar%.exe: ", ""):gsub("\r?\ntar%.exe: ", "; ")
     return nil, err.new("ARCHIVE", "failed", said ~= "" and said or ("tar exited " .. r.code))
   end
   return r
@@ -119,7 +120,7 @@ function archive.pack(file, dir, entries, options)
   fs.remove(file)
   -- "--" keeps an entry named like an option, "--help" say, an entry
   local args = { "-a", "-cf", windows_path(file), "-C", windows_path(dir) }
-  if file:lower():match("%.zip$") then
+  if file:sub(-4):lower() == ".zip" then
     -- Windows tar defaults ZIP headers to ANSI and silently loses names.
     args[#args + 1] = "--options"
     args[#args + 1] = "zip:hdrcharset=UTF-8"

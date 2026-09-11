@@ -127,8 +127,15 @@ refuses to hide. Read it once.
   result differed and 38 ms when they were all the same, so the interning was
   43% of it; the same loop producing 44-byte results showed no difference at
   all, because a string past the implementation's short limit is allocated
-  rather than hashed. Build with a table and one `table.concat`, never with
-  `..` in a loop, which is quadratic.
+  rather than hashed.
+- **`..` in a loop is quadratic, but the constant is small, so measure before
+  converting one.** Each step copies the whole string so far. Against a table
+  and one `table.concat`, the crossover on short pieces was about ten: at two
+  pieces `..` was twice as fast, at five 1.3 times, at ten they tied, and past
+  that the table pulled away -- 1.4x at twenty, 2x at forty, 4.8x at eighty.
+  A log line with a handful of fields is better off with `..`; a document is
+  not. What is never in doubt is the large case: accumulating 200,000 pieces
+  with `..` does not finish in reasonable time.
 
 ## Errors kuu itself prints
 

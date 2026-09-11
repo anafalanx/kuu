@@ -13,18 +13,8 @@ global <const> require, ipairs, error, os, io, table, tostring, assert
 local fs = require "fs"
 local rt = require "rt"
 
--- Trailing blanks, walked off the end rather than matched. `%s+$` is not
--- anchored -- only `^` anchors a Lua pattern -- so gsub retries it at every
--- position, which on a document rather than a line is the difference between
--- 14 ms and 0.2 ms. See docs/pitfalls.md.
-local BLANK = { [32] = true, [9] = true, [10] = true, [11] = true, [12] = true, [13] = true }
-
-local function rtrim(text)
-  local to = #text
-  while to > 0 and BLANK[text:byte(to)] do to = to - 1 end
-  if to == #text then return text end
-  return text:sub(1, to)
-end
+local rtrim_both = require("text").trim
+local function rtrim(s) return rtrim_both(s, "right") end
 
 -- The marker after which kuu.md is generated.  Everything above it is written
 -- by hand; everything from it down is this file's output.

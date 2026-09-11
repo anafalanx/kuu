@@ -261,5 +261,19 @@ modules = {
     is  = { result = "boolean", domain_arg = 2, code_arg = 3 },
   },
 
+  text = {
+    trim       = { result = "string" },
+    upper      = { result = "string" },
+    lower      = { result = "string" },
+    valid      = { result = "boolean" },
+    decode     = { result = "string" },
+    encode     = { result = "string" },
+    tobase64   = { options_at = 2, options = { url = "boolean?" }, result = "string" },
+    frombase64 = { result = "string" },
+    tohex      = { result = "string" },
+    fromhex    = { result = "string" },
+    encodings  = { result = "table" },
+  },
+
 },
 }

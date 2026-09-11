@@ -58,4 +58,19 @@ return function(T)
   check("Lua's own upper is ASCII only, which is why these exist", ("é"):upper() == "é")
   none, e = text.upper("\255")
   check("invalid UTF-8 is TEXT invalid", none == nil and err.is(e, "TEXT", "invalid"), tostring(e))
+
+  -- trim: the six bytes %s matches, from either end or both
+  check("trim takes both ends by default", text.trim("  hi  ") == "hi")
+  check("trim left and right take one", text.trim("  hi  ", "left") == "hi  "
+    and text.trim("  hi  ", "right") == "  hi"
+    and text.trim("  hi  ", "both") == "hi")
+  check("every byte %s matches is trimmed", text.trim("\t\r\n\v\f x \t\r\n\v\f") == "x")
+  check("an all-blank string trims to empty", text.trim("  \t\n ") == "" and text.trim("") == "")
+  check("a string needing no trim comes back as itself", text.trim("hi") == "hi")
+  -- It trims bytes, not characters: U+00A0 is a space in Unicode and not one
+  -- of the six, so `%s` keeps it and so does this.
+  check("a non-%s Unicode space is kept", text.trim(" \194\160 ") == "\194\160")
+  local ok, raised = pcall(text.trim, "x", "middle")
+  check("an unknown end raises TEXT badvalue",
+    not ok and err.is(raised, "TEXT", "badvalue"), tostring(raised))
 end

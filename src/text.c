@@ -308,6 +308,56 @@ static int l_text_valid(lua_State *L)
     return 1;
 }
 
+/* text.trim(s [, where]) -> text.  `where` is "both" (the default), "left" or
+ * "right".  The bytes removed are the six Lua's %s matches: space, tab,
+ * newline, vertical tab, form feed, carriage return -- so this trims exactly
+ * what `%s` would, and nothing that is only whitespace in Unicode.
+ *
+ * It is here rather than left to a pattern because the pattern is a trap:
+ * `%s+$` is not anchored, only `^` anchors a Lua pattern, so Lua retries the
+ * match at every position and asking whether the last byte is blank costs a
+ * scan of the whole string.  Every hand-rolled trim in the projects driving
+ * kuu had that shape.  A string needing no trim is returned as itself rather
+ * than copied. */
+static int is_blank(unsigned char c)
+{
+    return c == 0x20 || c == 0x09 || c == 0x0A || c == 0x0B || c == 0x0C || c == 0x0D;
+}
+
+static int l_text_trim(lua_State *L)
+{
+    size_t length = 0;
+    const char *bytes = luaL_checklstring(L, 1, &length);
+    const char *where = luaL_optstring(L, 2, "both");
+    int left, right;
+
+    if (strcmp(where, "both") == 0) {
+        left = right = 1;
+    } else if (strcmp(where, "left") == 0) {
+        left = 1;
+        right = 0;
+    } else if (strcmp(where, "right") == 0) {
+        left = 0;
+        right = 1;
+    } else {
+        return ku_err_raise(L, "TEXT", "badvalue", "trim wants \"both\", \"left\" or \"right\", not \"%s\"", where);
+    }
+
+    size_t from = 0, to = length;
+    if (left) {
+        while (from < to && is_blank((unsigned char)bytes[from])) from++;
+    }
+    if (right) {
+        while (to > from && is_blank((unsigned char)bytes[to - 1])) to--;
+    }
+    if (from == 0 && to == length) {
+        lua_settop(L, 1);
+        return 1;
+    }
+    lua_pushlstring(L, bytes + from, to - from);
+    return 1;
+}
+
 /* ---- base64 and hex ------------------------------------------------------------------ */
 
 static const char B64_STANDARD[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -541,6 +591,7 @@ int ku_open_text(lua_State *L)
         {"fromhex", l_text_fromhex},
         {"upper", l_text_upper},
         {"lower", l_text_lower},
+        {"trim", l_text_trim},
         {NULL, NULL},
     };
     luaL_newlib(L, functions);

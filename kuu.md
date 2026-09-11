@@ -886,8 +886,15 @@ refuses to hide. Read it once.
   result differed and 38 ms when they were all the same, so the interning was
   43% of it; the same loop producing 44-byte results showed no difference at
   all, because a string past the implementation's short limit is allocated
-  rather than hashed. Build with a table and one `table.concat`, never with
-  `..` in a loop, which is quadratic.
+  rather than hashed.
+- **`..` in a loop is quadratic, but the constant is small, so measure before
+  converting one.** Each step copies the whole string so far. Against a table
+  and one `table.concat`, the crossover on short pieces was about ten: at two
+  pieces `..` was twice as fast, at five 1.3 times, at ten they tied, and past
+  that the table pulled away -- 1.4x at twenty, 2x at forty, 4.8x at eighty.
+  A log line with a handful of fields is better off with `..`; a document is
+  not. What is never in doubt is the large case: accumulating 200,000 pieces
+  with `..` does not finish in reasonable time.
 
 ### Errors kuu itself prints
 
@@ -2559,7 +2566,25 @@ text.fromhex(s)                   -- bytes, or nil, err TEXT invalid; either cas
 
 text.upper(s), text.lower(s)      -- Unicode case mapping by Windows' invariant rules, the ones file names fold by;
                                   -- Lua's own string.upper knows ASCII only; nil, err TEXT invalid for bad UTF-8
+
+text.trim(s)                      -- without leading or trailing blanks
+text.trim(s, "left")              -- or "right", or "both", the default
 ```
+
+`trim` removes the six bytes Lua's `%s` matches -- space, tab, newline,
+vertical tab, form feed, carriage return -- from one end or both. It trims
+bytes, not characters: a Unicode space that is not one of those six is kept,
+as `%s` would keep it. A string needing no trimming is returned as itself
+rather than copied, and `where` other than `"both"`, `"left"` or `"right"`
+raises `TEXT badvalue`.
+
+It is here because writing it as a pattern is a trap. `s:gsub("%s+$", "")`
+looks like it inspects the end of the string and does not: only `^` anchors a
+Lua pattern, so Lua retries the match at every position and the cost grows
+with the whole string rather than with the blanks. Trimming a 15-byte line
+300,000 times measured 300 ms by that pattern, 13 ms through `trim`; on a
+278 KB document the pattern took 3.2 seconds against 26 ms. See
+[Pitfalls](#pitfalls).
 
 Encodings: `utf-8`, `utf-16le`, `utf-16be`, `latin1`, `ansi` (the system code
 page), `oem` (the console code page), and `cpNNN` for any Windows code page

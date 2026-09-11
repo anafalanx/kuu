@@ -17,7 +17,25 @@ text.fromhex(s)                   -- bytes, or nil, err TEXT invalid; either cas
 
 text.upper(s), text.lower(s)      -- Unicode case mapping by Windows' invariant rules, the ones file names fold by;
                                   -- Lua's own string.upper knows ASCII only; nil, err TEXT invalid for bad UTF-8
+
+text.trim(s)                      -- without leading or trailing blanks
+text.trim(s, "left")              -- or "right", or "both", the default
 ```
+
+`trim` removes the six bytes Lua's `%s` matches -- space, tab, newline,
+vertical tab, form feed, carriage return -- from one end or both. It trims
+bytes, not characters: a Unicode space that is not one of those six is kept,
+as `%s` would keep it. A string needing no trimming is returned as itself
+rather than copied, and `where` other than `"both"`, `"left"` or `"right"`
+raises `TEXT badvalue`.
+
+It is here because writing it as a pattern is a trap. `s:gsub("%s+$", "")`
+looks like it inspects the end of the string and does not: only `^` anchors a
+Lua pattern, so Lua retries the match at every position and the cost grows
+with the whole string rather than with the blanks. Trimming a 15-byte line
+300,000 times measured 300 ms by that pattern, 13 ms through `trim`; on a
+278 KB document the pattern took 3.2 seconds against 26 ms. See
+[Pitfalls](#pitfalls).
 
 Encodings: `utf-8`, `utf-16le`, `utf-16be`, `latin1`, `ansi` (the system code
 page), `oem` (the console code page), and `cpNNN` for any Windows code page
