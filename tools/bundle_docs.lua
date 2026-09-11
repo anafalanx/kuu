@@ -13,6 +13,19 @@ global <const> require, ipairs, error, os, io, table, tostring, assert
 local fs = require "fs"
 local rt = require "rt"
 
+-- Trailing blanks, walked off the end rather than matched. `%s+$` is not
+-- anchored -- only `^` anchors a Lua pattern -- so gsub retries it at every
+-- position, which on a document rather than a line is the difference between
+-- 14 ms and 0.2 ms. See docs/pitfalls.md.
+local BLANK = { [32] = true, [9] = true, [10] = true, [11] = true, [12] = true, [13] = true }
+
+local function rtrim(text)
+  local to = #text
+  while to > 0 and BLANK[text:byte(to)] do to = to - 1 end
+  if to == #text then return text end
+  return text:sub(1, to)
+end
+
 -- The marker after which kuu.md is generated.  Everything above it is written
 -- by hand; everything from it down is this file's output.
 local MARKER = "# Part III — the complete manual"
@@ -87,7 +100,7 @@ local function build(docs)
       if not text then error("no such page: " .. path) end
       parts[#parts + 1] = "---"
       parts[#parts + 1] = ""
-      parts[#parts + 1] = transform(text):gsub("%s+$", "")
+      parts[#parts + 1] = rtrim(transform(text))
       parts[#parts + 1] = ""
     end
   end
@@ -114,8 +127,8 @@ if rt.args[1] == "--write" then
   local path = here .. "/kuu.md"
   local current = fs.read(path)
   if not current then error("no kuu.md at " .. path) end
-  local head = current:match("^(.-)\n" .. MARKER) or current:gsub("%s+$", "")
-  assert(fs.write(path, head:gsub("%s+$", "") .. "\n\n" .. bundle .. "\n"))
+  local head = current:match("^(.-)\n" .. MARKER) or rtrim(current)
+  assert(fs.write(path, rtrim(head) .. "\n\n" .. bundle .. "\n"))
   io.write("kuu.md: Part III regenerated from ", tostring(#ORDER), " pages\n")
 else
   io.write(bundle, "\n")

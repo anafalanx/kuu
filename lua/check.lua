@@ -510,10 +510,14 @@ function check.tree(dir, root)
   -- own files are skipped here, the root's never
   local walk = fs.dirs(dir, { prune = check.PRUNE })
   for _, sub in ipairs(walk.paths) do
-    local listing = (sub == dir or not skip[(sub:match("([^/]+)$") or ""):lower()]) and fs.list(sub) or nil
+    -- `^.*/(.*)$` rather than `([^/]+)$`: only `^` anchors a Lua pattern, so
+    -- the second is retried at every position while the first is tried once
+    -- and lets the greedy `.*` fall back to the last separator. See pitfalls.
+    local base = sub:match("^.*/(.*)$") or sub
+    local listing = (sub == dir or not skip[base:lower()]) and fs.list(sub) or nil
     if listing then
       for _, entry in ipairs(listing.entries) do
-        if entry.kind == "file" and entry.name:match("%.lua$") then
+        if entry.kind == "file" and entry.name:sub(-4) == ".lua" then
           reports[#reports + 1] = check.file(sub .. "/" .. entry.name, root)
         end
       end
