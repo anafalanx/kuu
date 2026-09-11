@@ -1,6 +1,6 @@
 -- env.lua -- the live environment and the persisted one, under a variable of our own.
 global none
-global <const> require, tostring, type, string, pcall, os, select, pairs, next, ipairs
+global <const> require, tostring, type, pcall, os, select, pairs, next, ipairs
 
 return function(T)
   local check = T.check

@@ -1,7 +1,7 @@
 -- re.lua -- regular expressions on PCRE2: find, match, gmatch, gsub, split,
 -- exec, compile, escape; flags; Unicode; empty matches; the refusals.
 global none
-global <const> require, ipairs, tostring, type, string, table, pcall, select
+global <const> require, tostring, string, table, pcall, select
 
 return function(T)
   local check, contains = T.check, T.contains

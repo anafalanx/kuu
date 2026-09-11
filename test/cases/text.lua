@@ -1,6 +1,6 @@
 -- text.lua -- strict conversions between UTF-8 and Windows encodings.
 global none
-global <const> require, tostring, pcall, string, type
+global <const> require, tostring, pcall, type
 
 return function(T)
   local check = T.check

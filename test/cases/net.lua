@@ -1,7 +1,7 @@
 -- net.lua -- the network from here: resolve, probe, listeners, addresses,
 -- against the loopback fixture and well-known unroutable addresses.
 global none
-global <const> require, ipairs, tostring, type, string, math, pcall, tonumber
+global <const> require, ipairs, tostring, type, math, pcall, tonumber
 
 return function(T)
   local check, describe = T.check, T.describe

@@ -1,7 +1,7 @@
 -- time.lua -- instants, zones, ISO 8601: now, iso, parse, parts, make,
 -- format, zone, duration, human, and the refusals.
 global none
-global <const> require, tostring, type, string, math, os, pcall, ipairs
+global <const> require, tostring, type, math, os, pcall, ipairs
 
 return function(T)
   local check, contains = T.check, T.contains

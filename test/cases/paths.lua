@@ -1,7 +1,7 @@
 -- paths.lua -- the string half of fs: join, dirname, basename, ext, stem,
 -- relative, and glob; then temporary names and free space.
 global none
-global <const> require, ipairs, tostring, type, string, table, pcall
+global <const> require, ipairs, tostring, table, pcall
 
 return function(T)
   local check, contains = T.check, T.contains

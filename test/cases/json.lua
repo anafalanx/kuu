@@ -1,6 +1,7 @@
 -- json.lua -- the mapping, strictness, round trips, and the JSONTestSuite corpus.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, io, pcall, table, math, next, print
+global <const> require, ipairs, tostring, type, string, pcall, table, math,
+               next, print
 
 return function(T)
   local check, contains = T.check, T.contains

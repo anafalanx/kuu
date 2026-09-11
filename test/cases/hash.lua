@@ -1,6 +1,6 @@
 -- hash.lua -- digests against published vectors, files, HMAC, random bytes.
 global none
-global <const> require, ipairs, tostring, type, string, pcall, table
+global <const> require, tostring, string, pcall, table
 
 return function(T)
   local check, contains = T.check, T.contains

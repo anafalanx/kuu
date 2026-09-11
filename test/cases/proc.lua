@@ -1,7 +1,7 @@
 -- proc.lua -- children: run, start, wait, kill, close, detach, stdin, output
 -- bounds, environment, working directory, quoting, and the no-orphans law.
 global none
-global <const> require, ipairs, tostring, tonumber, type, string, io, pcall, table, error
+global <const> require, ipairs, tostring, tonumber, type, string, pcall, table
 
 return function(T)
   local check, kuu, describe, contains, starts = T.check, T.kuu, T.describe, T.contains, T.starts

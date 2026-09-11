@@ -1,6 +1,6 @@
 -- check.lua -- `kuu check [--json] [PATH ...]`: parse, global declarations, requires.
 global none
-global <const> require, ipairs, tostring, string, io, os, table
+global <const> require, ipairs, tostring, string, io, os
 
 local rt = require "rt"
 local cli = require "cli"

@@ -2,7 +2,7 @@
 -- hostile fixtures built first: junctions inside, outside, looped, dangling;
 -- hidden and read-only entries; a path beyond 260 characters; Unicode names.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, table, pcall, math, select, io
+global <const> require, ipairs, tostring, type, string, table, pcall, io
 
 return function(T)
   local check, contains, starts = T.check, T.contains, T.starts

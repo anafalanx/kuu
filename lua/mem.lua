@@ -19,7 +19,7 @@
 -- the other's keys.  The whole file may not exceed 1 MiB: this is a
 -- notebook, never a database.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, table, error, pcall, assert
+global <const> require, pairs, tostring, type, string, table, error, pcall
 
 local fs = require "fs"
 local json = require "json"

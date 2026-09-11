@@ -20,7 +20,8 @@
 -- with the generated usage text.  A wrong spec raises CLI badvalue at once,
 -- so a broken declaration cannot lie dormant until an option is used.
 global none
-global <const> require, ipairs, pairs, tostring, tonumber, type, string, table, math, error, select
+global <const> require, ipairs, pairs, tostring, tonumber, type, string,
+               table, math, error
 
 local err = require "err"
 

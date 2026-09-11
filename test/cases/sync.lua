@@ -1,7 +1,8 @@
 -- sync.lua -- one at a time across processes: try, lock with a timeout,
 -- release, the <close> idiom, a holder in another process, abandonment.
 global none
-global <const> require, tostring, type, string, assert, pcall, collectgarbage, select
+global <const> require, tostring, string, assert, pcall, collectgarbage,
+               select
 
 return function(T)
   local check, contains = T.check, T.contains

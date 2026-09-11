@@ -1,6 +1,6 @@
 -- cli.lua -- argument parsing from a declared spec.
 global none
-global <const> require, ipairs, tostring, type, string, pcall, table, math
+global <const> require, tostring, pcall, table, math
 
 return function(T)
   local check, contains, starts = T.check, T.contains, T.starts

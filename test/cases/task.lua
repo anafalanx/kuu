@@ -1,7 +1,7 @@
 -- task.lua -- tasks.lua discovery, `kuu run` and `kuu list`: dependency order,
 -- arguments, exit codes, the JSON envelopes, and a project-local require.
 global none
-global <const> require, ipairs, tostring, tonumber, type, string, table, pcall, select
+global <const> require, ipairs, tostring, type, pcall, select
 
 return function(T)
   local check, contains, starts = T.check, T.contains, T.starts

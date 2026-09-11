@@ -1,6 +1,6 @@
 -- csv.lua -- RFC 4180 decoding and encoding, the Windows variants, records.
 global none
-global <const> require, ipairs, tostring, type, string, pcall, table
+global <const> require, tostring, pcall
 
 return function(T)
   local check = T.check

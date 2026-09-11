@@ -10,7 +10,7 @@
 -- .tar.xz, .tar.zst, .tar.bz2.  Windows' bsdtar refuses entries that would
 -- climb out of the target directory.  Nothing else is assumed on the machine.
 global none
-global <const> require, ipairs, tostring, type, string, table, math, os, error
+global <const> require, ipairs, tostring, type, math, os, error
 
 local fs = require "fs"
 local proc = require "proc"

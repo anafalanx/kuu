@@ -1,6 +1,6 @@
 -- ini.lua -- Windows INI: decode, encode, and edits that leave the rest alone.
 global none
-global <const> require, tostring, type, string, pcall, table
+global <const> require, tostring, pcall, table
 
 return function(T)
   local check = T.check

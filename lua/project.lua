@@ -6,7 +6,7 @@
 --   project.enter(root)                  -- chdir there and point `require` at it
 --   project.load_tasks(root)             -- run tasks.lua, which fills the task registry
 global none
-global <const> require, tostring, type, pcall, load
+global <const> require, tostring, pcall, load
 
 local fs = require "fs"
 local err = require "err"

@@ -1,7 +1,7 @@
 -- mem.lua -- the notebook across runs: round-trips, defaults, keys, another
 -- process writing the same file, the size limit, damage, and the default place.
 global none
-global <const> require, ipairs, tostring, type, string, table, pcall
+global <const> require, tostring, string, table, pcall
 
 return function(T)
   local check, contains = T.check, T.contains

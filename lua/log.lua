@@ -17,7 +17,8 @@
 -- resolved at write time.  Everything is validated before any of it is
 -- applied, so a bad option leaves the previous configuration intact.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, table, io, os, pcall, math, error, select
+global <const> require, ipairs, pairs, tostring, type, string, table, io, os,
+               pcall, math, error
 
 local err = require "err"
 local sched = require "sched"

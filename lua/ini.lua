@@ -17,7 +17,7 @@
 -- the Windows profile functions do.  Inline comments are not a thing:
 -- Windows keeps everything after = including a ; and so does this.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, table, error
+global <const> require, ipairs, pairs, tostring, type, table, error
 
 local err = require "err"
 

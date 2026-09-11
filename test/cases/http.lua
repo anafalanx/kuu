@@ -2,7 +2,7 @@
 -- headers, bodies, redirects and the zero-request canary, timeouts, limits,
 -- streaming to a file, and concurrency on the loop.
 global none
-global <const> require, ipairs, tostring, tonumber, type, string, pcall, table, select
+global <const> require, ipairs, tostring, tonumber, string, pcall, select
 
 return function(T)
   local check, contains, starts = T.check, T.contains, T.starts

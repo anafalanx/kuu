@@ -1,6 +1,6 @@
 -- log.lua -- the logger: format, levels, sinks, never raising.
 global none
-global <const> require, ipairs, tostring, type, string, pcall, error, select
+global <const> require, tostring, type, pcall, error, select
 
 return function(T)
   local check, contains, starts = T.check, T.contains, T.starts

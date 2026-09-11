@@ -3,7 +3,7 @@
 -- Nothing here touches the disk except glob and relative, which list and
 -- resolve.  Separators in are either kind; separators out are "/".
 global none
-global <const> require, ipairs, tostring, type, string, table, error, select
+global <const> require, ipairs, tostring, type, table, error, select
 
 return function(fs)
   local err = require "err"

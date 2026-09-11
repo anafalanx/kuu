@@ -13,7 +13,7 @@
 -- fields may hold separators, quotes (doubled), and line ends.  Blank lines
 -- are skipped.  A quote where none may be is CSV parse with the line.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, table, math, error
+global <const> require, ipairs, tostring, type, table, error
 
 local err = require "err"
 

@@ -1,6 +1,7 @@
 -- run.lua -- `kuu run [--json] [TASK [arg ...]]`: a task from the nearest tasks.lua.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, table, io, os, select, rawset, _G
+global <const> require, ipairs, pairs, tostring, type, string, table, io, os,
+               rawset, _G
 
 local rt = require "rt"
 local project = require "project"

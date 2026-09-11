@@ -2,7 +2,7 @@
 -- try(name), sleeping on the loop so other tasks keep running.  Installed
 -- into the sync table when the module opens.
 global none
-global <const> require, tostring, type, math, error
+global <const> require, tostring, math, error
 
 return function(sync)
   local sched = require "sched"

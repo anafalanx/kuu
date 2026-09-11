@@ -1,7 +1,7 @@
 -- sched.lua -- tasks, sleep, join, timeouts, the non-yieldable fallback,
 -- stray yields, and deadlock detection.
 global none
-global <const> require, ipairs, tostring, string, pcall, coroutine, select, table, error
+global <const> require, tostring, pcall, coroutine, table, error
 
 return function(T)
   local check, kuu, describe, contains = T.check, T.kuu, T.describe, T.contains

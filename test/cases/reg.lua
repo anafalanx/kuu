@@ -1,6 +1,7 @@
 -- reg.lua -- the registry, typed, under a key of our own in HKCU.
 global none
-global <const> require, ipairs, tostring, tonumber, type, string, pcall, math, select, table, pairs
+global <const> require, ipairs, tostring, tonumber, type, string, pcall,
+               select, table, pairs
 
 return function(T)
   local check = T.check

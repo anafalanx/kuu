@@ -1,7 +1,7 @@
 -- archive.lua -- pack, list, and unpack through Windows' tar.exe: zip and the
 -- tar family, strip, replacement, and the refusals.
 global none
-global <const> require, ipairs, tostring, type, string, table, pcall
+global <const> require, ipairs, tostring, string, table, pcall
 
 return function(T)
   local check, contains = T.check, T.contains

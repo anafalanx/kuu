@@ -17,7 +17,8 @@
 -- usage mistake, 1 for any other failure, 0 when every task returned.  The
 -- registry is the module itself, so tasks.lua and the runner share it.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, table, error, setmetatable, pcall, select
+global <const> require, ipairs, pairs, tostring, type, error, setmetatable,
+               pcall
 
 local err = require "err"
 local proc = require "proc"

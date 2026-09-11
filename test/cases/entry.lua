@@ -1,7 +1,7 @@
 -- entry.lua -- routes, arguments, decoding, the removed hazards, require,
 -- error reporting, and exit codes, by running kuu as a child.
 global none
-global <const> require, ipairs, tostring, string, io, pcall
+global <const> require, ipairs, string, io
 
 return function(T)
   local check, kuu, describe = T.check, T.kuu, T.describe
