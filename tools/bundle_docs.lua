@@ -1,4 +1,4 @@
--- Assemble Part IV of kuu.md: every page of the manual, in a deliberate
+-- Assemble Part III of kuu.md: every page of the manual, in a deliberate
 -- reading order, inlined so an agent can read everything up front.
 --
 -- The bundle is generated rather than hand-maintained, because forty pages
@@ -6,7 +6,7 @@
 -- read.  test/cases/bundle.lua regenerates it and fails when kuu.md is stale.
 --
 --   kuu tools/bundle_docs.lua            print the bundle
---   kuu tools/bundle_docs.lua --write    rewrite kuu.md's Part IV in place
+--   kuu tools/bundle_docs.lua --write    rewrite kuu.md's Part III in place
 global none
 global <const> require, ipairs, error, os, io, table, tostring, assert
 
@@ -15,7 +15,7 @@ local rt = require "rt"
 
 -- The marker after which kuu.md is generated.  Everything above it is written
 -- by hand; everything from it down is this file's output.
-local MARKER = "# Part IV — the complete manual"
+local MARKER = "# Part III — the complete manual"
 
 -- A deliberate order: the map, the one page to read first, then getting a
 -- project going, the palette, the recipes, and finally the record.
@@ -39,7 +39,7 @@ local function anchor(name)
   return (name:lower():gsub("%.", ""))
 end
 
--- Demote every heading one level so the pages nest under Part IV, rewrite
+-- Demote every heading one level so the pages nest under Part III, rewrite
 -- cross-page links to anchors inside this document, and lift relative links
 -- by the one directory level the page itself moves up.  Headings inside
 -- fenced code blocks are left alone.
@@ -116,7 +116,7 @@ if rt.args[1] == "--write" then
   if not current then error("no kuu.md at " .. path) end
   local head = current:match("^(.-)\n" .. MARKER) or current:gsub("%s+$", "")
   assert(fs.write(path, head:gsub("%s+$", "") .. "\n\n" .. bundle .. "\n"))
-  io.write("kuu.md: Part IV regenerated from ", tostring(#ORDER), " pages\n")
+  io.write("kuu.md: Part III regenerated from ", tostring(#ORDER), " pages\n")
 else
   io.write(bundle, "\n")
 end

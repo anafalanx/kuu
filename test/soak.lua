@@ -6,7 +6,7 @@
 -- in thirteen seconds; this proves that nothing leaks or slows over minutes.
 -- Exit 1 when any operation fails or when handles or memory keep growing.
 global none
-global <const> require, ipairs, io, os, tostring, tonumber, string, math, table, select
+global <const> require, ipairs, io, os, tostring, tonumber, string, select
 
 local rt = require "rt"
 local proc = require "proc"

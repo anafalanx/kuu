@@ -401,3 +401,34 @@ consecutive runs, native static analysis passes over every authored host file,
 and parser fuzzing passes 10,000 cases per family on both fixed seeds. Every
 component of `make gate` therefore passes on this host, which is the first
 host on which that has been true.
+
+## `_ENV` reaches every capability without declaring one — 2026-09-11
+
+- **Kind:** a gap in a documented affordance. Not a sandbox escape: kuu has
+  no sandbox, and the operator ran the file.
+- **Observed:** `_ENV` is an upvalue rather than a global, so it is in scope
+  always and needs no declaration. Under `global none` with nothing declared,
+  `_ENV.load("return 2 + 3")()` compiles and runs code, and
+  `_ENV.require("proc")` reaches the whole palette.
+- **Impact:** [`check`](#check) says its require listing "is how an agent sees
+  what else a file asks for before running it", and for such a file it does
+  not. The file below draws `"requires":[]`, `"errors":0`, `"warnings":0`,
+  `"ok":true` from `kuu check --json`, and then starts a child:
+
+  ```lua
+  global none
+  -- This file declares nothing and requires nothing, by inspection.
+  local m = _ENV.require("proc")
+  local r = m.run { "cmd.exe", "/c", "echo reached" }
+  _ENV.print((r.out:gsub("%s+$", "")))
+  ```
+
+  The same reasoning limits the capability gate itself: `require` gates a
+  program's capabilities only for a program that does not reach around it.
+- **Workaround:** treat a `_ENV` reference as disqualifying when reading a
+  file's requires as evidence of what it does. A file that carries no `global`
+  declaration at all is already reported by `check` as a warning.
+- **Status:** observed and reproduced, no fix attempted. Reporting a `_ENV`
+  reference from `check` is the small answer and is not implemented. Recorded so
+  that the require listing is not read as a complete account of what a file
+  can reach.

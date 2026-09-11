@@ -1,4 +1,4 @@
--- bundle.lua -- kuu.md carries the whole manual as Part IV, generated from
+-- bundle.lua -- kuu.md carries the whole manual as Part III, generated from
 -- docs/.  A copy of forty pages drifts from its originals, and the copy is the
 -- one people read, so the suite regenerates it and compares.
 global none
@@ -24,13 +24,13 @@ return function(T)
   if r and r.code == 0 then
     local fresh = r.out:gsub("\r\n", "\n"):gsub("%s+$", "")
     local current = (fs.read(document) or ""):gsub("\r\n", "\n")
-    local marker = "# Part IV — the complete manual"
+    local marker = "# Part III — the complete manual"
     local at = current:find(marker, 1, true)
 
-    check("kuu.md contains Part IV", at ~= nil)
+    check("kuu.md contains Part III", at ~= nil)
     if at then
       local present = current:sub(at):gsub("%s+$", "")
-      check("kuu.md's Part IV matches docs/ -- run tools/bundle_docs.lua --write",
+      check("kuu.md's Part III matches docs/ -- run tools/bundle_docs.lua --write",
         present == fresh,
         string.format("committed %d bytes, generated %d bytes", #present, #fresh))
     end

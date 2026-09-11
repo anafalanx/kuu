@@ -1,6 +1,6 @@
 -- lib.lua -- the small test kit: checks, running kuu itself, files.
 global none
-global <const> require, ipairs, tostring, type, string, io, error, assert
+global <const> require, ipairs, tostring, string, io, error, assert
 
 local rt = require "rt"
 local proc = require "proc"

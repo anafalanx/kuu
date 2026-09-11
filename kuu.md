@@ -1,24 +1,20 @@
 # kuu
 
 This document is the single place where kuu is explained: what the runtime is
-today at 0.9.0, what was learned building it and its two predecessors, and the
-direction it is taking. It exists because that understanding was scattered
-across three repositories, a roadmap, an inheritance register, a shortcomings
-log and a decision record, and none of those answer the question *why is it
-like this* in one reading.
+today at 0.9.0 and what was learned building it and its two predecessors. It
+exists because that understanding was scattered across three repositories, a
+roadmap, an inheritance register, a shortcomings log and a decision record,
+and none of those answer the question *why is it like this* in one reading.
 
-A note on names, used consistently from here on:
-
-- **kuu**, lower case, is the runtime: the executable, its palette, its verbs.
-- **Kuu**, capitalised, is the language the runtime will come to accept
-  alongside Lua. Kuu does not exist yet. Part III describes what it is meant to
-  be and why.
+kuu is a runtime for Lua 5.5, and only that. It does not define a language,
+and it will not: what it grows are capabilities in the palette, and options on
+the calls that are already there.
 
 Nothing here is a promise about compatibility. The compatibility posture is
 still being designed and is deliberately left open; where 0.9.0 changed
 something, the change is described, not ratified.
 
-This file carries the complete manual as **Part IV**, so everything kuu knows
+This file carries the complete manual as **Part III**, so everything kuu knows
 about itself can be read in one sitting without querying the executable.
 
 ---
@@ -37,33 +33,27 @@ later release, because that pattern does not match three components. Migrating
 to `rt.version_at_least` is the fix, and it is the one thing an existing
 project must do.
 
-**Kuu, the language, does not exist yet.** Part III describes what it is meant
-to be. No compiler has been written, and nothing in the repository implements
-it. Do not go looking for it.
-
 **What is open** is design, not work in progress. The 1.0 criteria remain the
-owner's to set, and the shape of Kuu is deliberately still being thought about
-rather than built. There is no half-finished work to pick up, and the intent is
-to take the time to get the design right and correct course where needed.
+owner's to set. There is no half-finished work to pick up, and the intent is to
+take the time to get the design right and correct course where needed.
 
 ---
 
 ## Start here
 
-Parts I to III explain *why*. **Part IV is the complete manual**, every page
+Parts I and II explain *why*. **Part III is the complete manual**, every page
 inlined, so this one file answers both kinds of question and nothing needs to
 be fetched before reading. Coming to kuu cold, read in this order:
 
-1. **Pitfalls** — Part IV's first module page, and the one an agent's existing
+1. **Pitfalls** — Part III's first module page, and the one an agent's existing
    Lua knowledge most needs. It is the delta between the Lua you know and this
    runtime, plus the Windows facts kuu refuses to hide. Read it once, before
    writing anything.
-2. **Parts I to III**, for why the runtime is shaped as it is and where it is
-   going.
-3. **The rest of Part IV**, as reference, when you need a signature.
+2. **Parts I and II**, for why the runtime is shaped as it is.
+3. **The rest of Part III**, as reference, when you need a signature.
 
 If you would rather read everything in one pass than navigate, that is what
-this file is for: Part IV is the whole manual in a deliberate order, beginning
+this file is for: Part III is the whole manual in a deliberate order, beginning
 with the map and Pitfalls and ending with the record of decisions.
 
 The same manual also lives inside the executable, where it always matches the
@@ -585,262 +575,7 @@ fix was obvious and bounded.
 
 ---
 
-# Part III — the direction
-
-kuu today is good at what it does and is limited in ways that are now well
-understood. The direction is not to replace it but to grow a language on top of
-it, and to keep the runtime it already has.
-
-## Kuu: Lua semantics, stricter surface
-
-**Kuu** is a language with Lua's semantics and a stricter surface, compiled to
-Lua by a compiler written in Lua, and run by kuu.
-
-*Lua semantics* is the load-bearing half. Kuu does not define a value model, a
-scoping rule, metatables, coroutines or a garbage collector — it inherits all
-of them, unchanged, from the Lua the runtime already embeds. That inheritance
-is the reason this is tractable at all: the expensive part of designing a
-language is specifying and implementing its semantics, and Kuu does neither.
-
-*Stricter surface* is the half that earns its keep. Kuu is deliberately **not**
-a strict superset. A strict superset may only add, never fix, which would mean
-inheriting every Lua wart permanently. Kuu may tighten anything that does not
-break the one-to-one mapping back to Lua.
-
-The two conditions that keep the mapping honest:
-
-- **Emitted Lua preserves line correspondence**, so tracebacks from the runtime
-  point at the right line of Kuu source. Cheap to design in, miserable to
-  retrofit.
-- **Emitted Lua is readable and runs on unmodified kuu.** If the compiler is
-  ever abandoned, the generated code still works. That is an exit that a forked
-  virtual machine does not offer.
-
-## Why a language, and why not one of the alternatives
-
-The alternatives were considered seriously and are recorded here so the
-question does not have to be reopened from scratch.
-
-*Fork Lua.* This buys the runtime-level fixes — string interning, table
-performance, a different concurrency model — and costs the property that makes
-Lua worth having: that somebody else maintains the language, its performance
-and its security. Rejected.
-
-*Write a new language with its own runtime.* This is what drang is, and it
-works. It also means owning a lexer, a parser, a virtual machine, an oracle to
-check it against, a formatter, lint and migration rules in perpetuity. For a
-runtime whose purpose is to build *other* things, that is a second product.
-Rejected on cost, not on merit.
-
-*Compile an existing language to Lua.* Explored concretely: most of drang maps
-to Lua — sigils, interpolation, pipelines, first-class builtins and modules are
-syntax; errors as values map to multiple returns with a sentinel. Two things do
-not. Zero-based arrays against Lua's one-based indexing is a permanent seam in
-every emitted index, slice and length. And parallelism — `pmap`, `spawn`,
-channels with blocking cross-strand send and receive — has no target in a
-single-state runtime at all. The exercise removes precisely the feature the
-language exists for, and arrives at "a nicer surface over Lua semantics" by a
-much longer road. Which is the case for building that directly.
-
-*Add a second embedded language to the runtime.* Already tried, already
-removed by subtraction, with a standing decision against it. See Part II.
-
-## What Kuu is likely to add
-
-These are candidates rather than commitments, listed roughly in order of value
-against cost. Each addresses something recorded in Part II as actually felt.
-
-**Declarations inferred rather than typed.** `global none` and its list of
-standard names is the most-felt papercut in the language, and a compiler can
-simply write it. An undeclared name becomes a compile error with no ceremony.
-
-**Gradual static types, with record fields.** The largest long-term win, and
-the one thing neither predecessor could offer: catching a misspelled *field*,
-which Lua structurally cannot. This is `kuu check` grown up rather than a
-separate tool.
-
-**Ordered table literals**, emitting an ordered constructor — closing the
-key-order gap properly rather than per-project.
-
-**Errors as values with propagation syntax**, over the existing `err` shape.
-drang demonstrated this model is right; the emitted Lua is multiple returns and
-an early return, which is verbose to read and correct to run.
-
-**Pipelines.** Cheap sugar, and the affordance that a more command-shaped
-future would want.
-
-## What Kuu will not attempt
-
-Stated up front, because scope discipline is the whole risk in a project like
-this:
-
-- **No faked runtime semantics.** Not nil-versus-absent, not `#` on sparse
-  tables, not parallelism. Faked semantics leak exactly where debugging is
-  hardest. If a thing cannot be expressed by a source transformation, it
-  belongs in the palette or nowhere.
-- **No language features that cannot be mapped one-to-one.** Line
-  correspondence and readable output are worth more than any individual
-  convenience.
-- **Nothing that requires forking Lua.**
-
-And a related observation: several things that *look* like language gaps are
-better closed as organs in the palette than as syntax. An ordered map and a
-string builder as native types sidestep table key order and string interning
-respectively, without the compiler needing to know anything about them.
-
-## Compiling to a subset of Lua
-
-The compiler should emit not arbitrary Lua but a defined subset of it. The
-precedent is asm.js — a strict subset of JavaScript that remained valid
-JavaScript, was mechanically verifiable, and was predictably fast. The same
-three benefits apply here.
-
-**Static checking becomes sound.** Lua's undecidability comes from a short
-list: `load`, `_ENV` manipulation, `rawget`/`rawset`, arbitrary
-`setmetatable`, unconstrained dynamic indexing. Those are features the emitter
-can decline to produce. This is exactly the property Tcl can never have — the
-difference being that Lua's hazard is an optional feature rather than the
-evaluation model itself.
-
-**Performance becomes structural.** In Lua a global read is a hash lookup on
-`_ENV` and a local is a register. A compiler can guarantee that every access is
-a local or an upvalue, always, so the fast form cannot be missed by
-inattention.
-
-**The capability gate becomes an invariant.** `require` is the gate, but `load`
-allows code to be constructed at runtime. A subset without it means compiled
-code is provably confined to what it declared.
-
-**And the subset is an exit.** A small, specified emission target is in effect
-an intermediate representation that happens to have Lua syntax. Retargeting it
-later is a new backend rather than a rewrite. That is a rare thing to get for
-almost nothing, and it cannot be retrofitted once idiomatic Lua is being
-emitted everywhere.
-
-The honest tension: a restricted subset can produce less readable output, which
-fights the line-correspondence goal above. Where those conflict the choice
-should be made per construct and written down, not resolved by habit. And the
-subset constrains only compiled code — inline `-e` scripts, `tasks.lua` and the
-compiler's own bootstrap are hand-written Lua, outside it, unless the verifier
-is also run over them as a lint.
-
-## The compiler
-
-Written in Lua, and eventually in Kuu.
-
-Writing it in Lua means **no new host code at all**: no C, no fourth vendored
-library, no change to the build, and the whole palette available to it — `fs`
-to read sources, `json` to emit findings in the shape `kuu check --json`
-already uses, `re` for lexing, `task` to wire it in. This is the cheapest
-possible way to own a language front end.
-
-The bootstrap is the standard ladder: write it in plain Lua; once it works,
-rewrite it in Kuu and compile it with the plain-Lua version; check in the
-generated result so a cold clone never needs a pre-existing compiler.
-
-Self-hosting is not vanity here — it is the best available test. **If Kuu
-cannot express its own compiler comfortably, it is not a good language**, and
-that becomes apparent in month two rather than year four.
-
-Two things must be designed in from the beginning rather than added:
-line-preserving emission, and diagnostics with real positions. The static gate
-*is* the product; a compiler with vague errors has failed at the thing it was
-built for.
-
-## How Kuu is delivered
-
-This describes the **intended** distribution, not the current one. A release
-today is `kuu.exe` and its SHA-256 sidecar; `kuuc.lua` does not exist, and this
-shape arrives with Kuu rather than before it.
-
-**One executable, one Lua program, and this document, shipped as one zip.**
-
-```text
-kuu.zip
-  kuu.exe     the runtime
-  kuuc.lua    the Kuu compiler          (arrives with Kuu)
-  kuu.md      this file, complete with the manual
-```
-
-The compiler is a **Lua program, not a second binary**. It is written in Lua,
-and kuu already runs Lua, so a `kuuc.exe` would be a 1.5 MB executable almost
-all of whose bytes are a duplicate of `kuu.exe` wrapped around a text file.
-`kuu kuuc.lua app.kuu` needs no such thing.
-
-What that avoids is worth listing, because each item is a recurring cost rather
-than a one-off:
-
-- **No second binary to build**, and no second host to keep in step with the
-  first when the palette moves.
-- **No second signature.** One Authenticode-signed executable, and the compiler
-  covered by the zip's checksum like the manual is.
-- **No rebuild to ship a compiler fix.** The compiler is source; correcting it
-  does not touch the runtime or its release.
-- **It is readable.** A compiler you can open and audit is worth more than one
-  you cannot, particularly the one deciding what your programs mean.
-- **It proves the claim.** If the compiler needs no native code, it should not
-  arrive as native code.
-
-Version skew is the one thing this needs to handle, and kuu already grew the
-mechanism for it in 0.9.0: `kuuc.lua` opens with a
-`rt.version_at_least(...)` guard, so a compiler newer than the runtime running
-it says so plainly instead of failing somewhere strange.
-
-A project copies in what it needs — `kuu.exe` alone if it writes Lua, plus
-`kuuc.lua` if it writes Kuu. A project that never adopts Kuu never carries the
-compiler, and a legacy project is unaffected forever.
-
-Keeping the compiler out of `kuu.exe` also preserves the property that the
-runtime is small: 1.48 MB, of which only 632 K is kuu's own code. A compiler is
-a build-time tool and a runtime is a run-time one; there is no reason every
-project that runs Lua should carry a Kuu front end it never invokes.
-
-`kuuc.lua` compiles Kuu to Lua. The emitted Lua runs on `kuu.exe` with the
-compiler absent, which is the exit described above: if Kuu is ever abandoned,
-the generated code still works.
-
-Output should be cached and keyed by the hash of the source **and the
-compiler's own version** — omitting the latter is the classic bug in this
-design, where a compiler upgrade silently reuses stale output.
-
-Lua does not go away, and the boundary between the two should be a rule rather
-than a judgement call repeated for years:
-
-- `kuu -e '…'` is Lua, always. Inline scripts never involve a compiler.
-- `tasks.lua` is Lua. It runs before anything could be compiled.
-- Project sources are Kuu.
-- Emitted output is Lua, and is never hand-edited.
-- A project that never adopts Kuu is unaffected, forever.
-
-Shipping this document *in* the zip is deliberate. The manual has always
-travelled inside `kuu.exe` and still does; carrying it as readable text beside
-the binaries means an agent can read everything up front, before running
-anything, and without knowing which query to make.
-
-## Open questions
-
-Recorded rather than resolved.
-
-- How much of the type system is worth having. Gradual typing has a wide range
-  between "record fields are checked" and "everything is annotated", and the
-  cost is not linear.
-- Whether the emission subset is specified before the emitter is written. It
-  should be, on the evidence that a subset discovered by its emitter acquires
-  escape hatches that void its guarantees.
-- Whether any of kuu's existing contracts can be expressed as compile-time
-  checks. If several can, the compiler becomes the enforcement mechanism and
-  earns its place beyond sugar. If none can, it is ergonomics — valuable, but a
-  smaller claim.
-- What happens to `pty`, which is provisional in kuu, contracted in machteld,
-  and absent from drang. It is the hardest thing any of the three attempted.
-- Whether an ordered map and a string builder belong in the palette as native
-  types, which would close two recorded gaps without involving the language at
-  all.
-- Whether a second implementation of the palette should be kept alive in some
-  form. The evidence that one implementation cannot check itself is strong, and
-  the two that exist are no longer being continued.
-
-# Part IV — the complete manual
+# Part III — the complete manual
 
 Every page of the manual, inlined. This is the same text `kuu docs`
 serves from inside the executable, assembled here so that everything kuu
@@ -1606,15 +1341,34 @@ that binding's scope, including captured uses in functions. This avoids
 claiming to know a value that control flow may replace. Aliases passed
 through another variable, function arguments, or a function result are not
 inferred. Shadowing or reassigning `require` likewise stops treating it as
-kuu's loader in that scope. No call is type-checked: argument counts,
-option tables, and types still belong to runtime validation.
+kuu's loader in that scope.
+
+Four things are checked against kuu's own interface, and all four are
+mistakes that run without complaint today. A code its domain does not have,
+so `err.is` answers false for every error and the handler it guards is dead:
+`err.is(e, "PROC", "notfund")`. An option a call does not take:
+`proc.run { cwdd = "x" }`, which the runtime raises on, but only if the line
+is reached. A closed set compared with a literal outside it, such as
+`rt.route == "flie"`, which likewise never matches. And `rt.version` compared
+by text, which no project should do since the version grew a third component;
+use `rt.version_at_least`.
+
+Error *domains* are not checked, only the codes within a domain kuu owns.
+`err.new` is public and a project names its own domains, so an unfamiliar one
+says nothing about correctness.
+
+Beyond these, no call is type-checked: argument counts, option values, and
+types still belong to runtime validation.
 
 ```text
 bad.lua:1: unexpected symbol near '='
 strict.lua:2: variable 'print' is not declared
+app.lua:12: "notfund" is not a code in PROC, so this never matches; did you mean "notfound"?
+app.lua:19: cwdd is not an option of proc.run; did you mean cwd?
+app.lua:24: rt.version is Major.Minor.Patch and is never compared by text; use rt.version_at_least(...)
 lib/helper.lua: warning: no global declaration: an undeclared global is not an error here; start with `global none`
 ghost.lua:3: warning: require "nothere" names no kuu module and no file under C:/work/app
-kuu: 6 files, 2 errors, 2 warnings
+kuu: 6 files, 5 errors, 2 warnings
 ```
 
 Findings go to standard output, one per line, relative to the root; the
@@ -1642,7 +1396,7 @@ type CheckReport = {
 };
 type CheckError =
   | { kind: "read" | "syntax"; line: number; message: string }
-  | { kind: "name"; line: number; message: string;
+  | { kind: "name" | "code" | "option" | "value"; line: number; message: string;
       module: string; name: string; suggestion?: string };
 type CheckWarning = {
   kind: "globals" | "require"; line: number; message: string;
@@ -1651,10 +1405,13 @@ type CheckWarning = {
 
 Each error and warning carries `line` (0 when it is about the whole file) and
 `message`. The closed set of error kinds is `read` (cannot read the file),
-`syntax` (Lua compilation, including undeclared globals), and `name`
-(an unknown palette export). Warning kinds are `globals` (no declaration)
-and `require` (unresolved module). A name error's `suggestion` is an export
-name without the alias prefix and is omitted when no close name exists.
+`syntax` (Lua compilation, including undeclared globals), `name` (an unknown
+palette export), `code` (an error code its domain does not have), `option`
+(an option a call does not take), and `value` (a closed set compared with a
+literal outside it, `rt.version` compared by text included). Warning kinds
+are `globals` (no declaration) and `require` (unresolved module). For `name`,
+`code`, `option` and `value`, `module` and `name` identify what was written
+and `suggestion` is the nearest real spelling, omitted when none is close.
 
 Exit 0 or 1 produces this envelope, with no summary on stderr. Invalid
 command arguments or an explicitly named path that does not exist exit 2
@@ -3034,6 +2791,10 @@ log.configure { json = true }                -- one JSON object per line: ts, le
 log.configure { sink = function(line) end }  -- your own destination; false removes it
 log.configure()                              -- { level, file, json, sink, dropped }
 ```
+
+Levels are `debug`, `info`, `warn`, `error`, and `off`, and the default is
+`info`. A record below the configured level is filtered, and its call returns
+false rather than raising.
 
 Every option is validated before any is applied, so a bad call leaves the
 previous configuration intact; a file that cannot be opened raises
@@ -4982,6 +4743,37 @@ consecutive runs, native static analysis passes over every authored host file,
 and parser fuzzing passes 10,000 cases per family on both fixed seeds. Every
 component of `make gate` therefore passes on this host, which is the first
 host on which that has been true.
+
+### `_ENV` reaches every capability without declaring one — 2026-09-11
+
+- **Kind:** a gap in a documented affordance. Not a sandbox escape: kuu has
+  no sandbox, and the operator ran the file.
+- **Observed:** `_ENV` is an upvalue rather than a global, so it is in scope
+  always and needs no declaration. Under `global none` with nothing declared,
+  `_ENV.load("return 2 + 3")()` compiles and runs code, and
+  `_ENV.require("proc")` reaches the whole palette.
+- **Impact:** [`check`](#check) says its require listing "is how an agent sees
+  what else a file asks for before running it", and for such a file it does
+  not. The file below draws `"requires":[]`, `"errors":0`, `"warnings":0`,
+  `"ok":true` from `kuu check --json`, and then starts a child:
+
+  ```lua
+  global none
+  -- This file declares nothing and requires nothing, by inspection.
+  local m = _ENV.require("proc")
+  local r = m.run { "cmd.exe", "/c", "echo reached" }
+  _ENV.print((r.out:gsub("%s+$", "")))
+  ```
+
+  The same reasoning limits the capability gate itself: `require` gates a
+  program's capabilities only for a program that does not reach around it.
+- **Workaround:** treat a `_ENV` reference as disqualifying when reading a
+  file's requires as evidence of what it does. A file that carries no `global`
+  declaration at all is already reported by `check` as a warning.
+- **Status:** observed and reproduced, no fix attempted. Reporting a `_ENV`
+  reference from `check` is the small answer and is not implemented. Recorded so
+  that the require listing is not read as a complete account of what a file
+  can reach.
 
 ---
 
