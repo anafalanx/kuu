@@ -749,12 +749,16 @@ built for.
 
 ## How Kuu is delivered
 
+This describes the **intended** distribution, not the current one. A release
+today is `kuu.exe` and its SHA-256 sidecar; `kuuc.lua` does not exist, and this
+shape arrives with Kuu rather than before it.
+
 **One executable, one Lua program, and this document, shipped as one zip.**
 
 ```text
 kuu.zip
   kuu.exe     the runtime
-  kuuc.lua    the Kuu compiler
+  kuuc.lua    the Kuu compiler          (arrives with Kuu)
   kuu.md      this file, complete with the manual
 ```
 
