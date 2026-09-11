@@ -46,15 +46,34 @@ that binding's scope, including captured uses in functions. This avoids
 claiming to know a value that control flow may replace. Aliases passed
 through another variable, function arguments, or a function result are not
 inferred. Shadowing or reassigning `require` likewise stops treating it as
-kuu's loader in that scope. No call is type-checked: argument counts,
-option tables, and types still belong to runtime validation.
+kuu's loader in that scope.
+
+Four things are checked against kuu's own interface, and all four are
+mistakes that run without complaint today. A code its domain does not have,
+so `err.is` answers false for every error and the handler it guards is dead:
+`err.is(e, "PROC", "notfund")`. An option a call does not take:
+`proc.run { cwdd = "x" }`, which the runtime raises on, but only if the line
+is reached. A closed set compared with a literal outside it, such as
+`rt.route == "flie"`, which likewise never matches. And `rt.version` compared
+by text, which no project should do since the version grew a third component;
+use `rt.version_at_least`.
+
+Error *domains* are not checked, only the codes within a domain kuu owns.
+`err.new` is public and a project names its own domains, so an unfamiliar one
+says nothing about correctness.
+
+Beyond these, no call is type-checked: argument counts, option values, and
+types still belong to runtime validation.
 
 ```text
 bad.lua:1: unexpected symbol near '='
 strict.lua:2: variable 'print' is not declared
+app.lua:12: "notfund" is not a code in PROC, so this never matches; did you mean "notfound"?
+app.lua:19: cwdd is not an option of proc.run; did you mean cwd?
+app.lua:24: rt.version is Major.Minor.Patch and is never compared by text; use rt.version_at_least(...)
 lib/helper.lua: warning: no global declaration: an undeclared global is not an error here; start with `global none`
 ghost.lua:3: warning: require "nothere" names no kuu module and no file under C:/work/app
-kuu: 6 files, 2 errors, 2 warnings
+kuu: 6 files, 5 errors, 2 warnings
 ```
 
 Findings go to standard output, one per line, relative to the root; the
@@ -82,7 +101,7 @@ type CheckReport = {
 };
 type CheckError =
   | { kind: "read" | "syntax"; line: number; message: string }
-  | { kind: "name"; line: number; message: string;
+  | { kind: "name" | "code" | "option" | "value"; line: number; message: string;
       module: string; name: string; suggestion?: string };
 type CheckWarning = {
   kind: "globals" | "require"; line: number; message: string;
@@ -91,10 +110,13 @@ type CheckWarning = {
 
 Each error and warning carries `line` (0 when it is about the whole file) and
 `message`. The closed set of error kinds is `read` (cannot read the file),
-`syntax` (Lua compilation, including undeclared globals), and `name`
-(an unknown palette export). Warning kinds are `globals` (no declaration)
-and `require` (unresolved module). A name error's `suggestion` is an export
-name without the alias prefix and is omitted when no close name exists.
+`syntax` (Lua compilation, including undeclared globals), `name` (an unknown
+palette export), `code` (an error code its domain does not have), `option`
+(an option a call does not take), and `value` (a closed set compared with a
+literal outside it, `rt.version` compared by text included). Warning kinds
+are `globals` (no declaration) and `require` (unresolved module). For `name`,
+`code`, `option` and `value`, `module` and `name` identify what was written
+and `suggestion` is the nearest real spelling, omitted when none is close.
 
 Exit 0 or 1 produces this envelope, with no summary on stderr. Invalid
 command arguments or an explicitly named path that does not exist exit 2

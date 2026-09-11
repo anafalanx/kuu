@@ -31,6 +31,10 @@ log.configure { sink = function(line) end }  -- your own destination; false remo
 log.configure()                              -- { level, file, json, sink, dropped }
 ```
 
+Levels are `debug`, `info`, `warn`, `error`, and `off`, and the default is
+`info`. A record below the configured level is filtered, and its call returns
+false rather than raising.
+
 Every option is validated before any is applied, so a bad call leaves the
 previous configuration intact; a file that cannot be opened raises
 `LOG oserror` at configure time rather than being discovered by silently

@@ -11,12 +11,26 @@
 -- listed and resolved against kuu's modules and the root, so a name that
 -- resolves to nothing is a warning before any run gets there. The
 -- palette's exported names are checked for direct local require bindings.
--- Project code is never executed, and no call is type-checked.
+--
+-- It also reads _palette, an authored description of the palette's
+-- interface, and checks three things against it that are silent today: a
+-- code its domain does not have, so `err.is` never matches and the branch it
+-- guards never runs; an option name a call does not take; and a closed set
+-- compared with a literal outside it, `rt.version` included. Error domains
+-- themselves are open, because `err.new` is public and projects define their
+-- own. Project code is never executed, and no call is type-checked beyond
+-- these.
 global none
-global <const> require, ipairs, pairs, tostring, tonumber, type, string, table, load, package, select, pcall, math, error
+global <const> require, ipairs, pairs, tostring, tonumber, type, table, load,
+               package, pcall, math, error
 
 local fs = require "fs"
 local rt = require "rt"
+
+-- Absent only if the payload were built without it; the checks below then
+-- simply do not run, rather than the checker failing to load.
+local ok_palette, palette = pcall(require, "_palette")
+if not ok_palette or type(palette) ~= "table" then palette = nil end
 
 local check = {}
 
@@ -108,20 +122,109 @@ end
 local function nearest(name, exports)
   local best, distance
   for candidate in pairs(exports) do
-    local previous = {}
+    local before, previous = nil, {}
     for j = 0, #candidate do previous[j] = j end
     for i = 1, #name do
       local current = { [0] = i }
       for j = 1, #candidate do
-        current[j] = math.min(current[j - 1] + 1, previous[j] + 1,
+        local d = math.min(current[j - 1] + 1, previous[j] + 1,
           previous[j - 1] + (name:sub(i, i) == candidate:sub(j, j) and 0 or 1))
+        -- Two letters the wrong way round is one mistake, not two. It is the
+        -- commonest typo there is, and counting it as two put "file" out of
+        -- reach of "flie" and "notfound" out of reach of "notfuond".
+        if before and i > 1 and j > 1
+          and name:sub(i, i) == candidate:sub(j - 1, j - 1)
+          and name:sub(i - 1, i - 1) == candidate:sub(j, j) then
+          d = math.min(d, before[j - 2] + 1)
+        end
+        current[j] = d
       end
-      previous = current
+      before, previous = previous, current
     end
     local d = previous[#candidate]
     if distance == nil or d < distance or (d == distance and candidate < best) then best, distance = candidate, d end
   end
   if distance ~= nil and distance <= math.max(1, math.min(3, #name // 3)) then return best end
+end
+
+local function set_of(list)
+  local set = {}
+  for _, one in ipairs(list) do set[one] = true end
+  return set
+end
+
+-- What the description buys. Each of these is a mistake the runtime does not
+-- refuse and cannot: the call is well formed and the program runs, but the
+-- branch it guards can never be taken, or the option it names is not the one
+-- that was meant.
+local function contract_findings(contracts, report)
+  for _, entry in ipairs(contracts) do
+    local b = entry.binding
+    local module = palette.modules[entry.module]
+    local spec = module and module[entry.member]
+
+    if b and not b.changed then
+      -- err.is(e, DOMAIN, code). A code the domain does not have makes
+      -- the call answer false for every error forever, so the handler is
+      -- dead code and nothing at run time ever says so.
+      if entry.kind == "call" and entry.module == "err" and entry.member == "is" then
+        local domain = entry.args[2] and entry.args[2].literal
+        local code = entry.args[3] and entry.args[3].literal
+        -- Only the codes within a domain kuu owns are closed. The set of
+        -- domains is not: `err.new` is public and projects define their own
+        -- -- PROJECT, SMOKE, PREREQS, TEST in the corpus at hand -- so an
+        -- unfamiliar domain is a program's own and says nothing. Guessing
+        -- otherwise is not merely imprecise: TEST is one edit from kuu's
+        -- TEXT, so a suggestion would have been confidently wrong.
+        if type(domain) == "string" then
+          local codes = palette.errors[domain]
+          if codes and type(code) == "string" and not set_of(codes)[code] then
+            local suggestion = nearest(code, set_of(codes))
+            local message = "\"" .. code .. "\" is not a code in " .. domain .. ", so this never matches"
+            if suggestion then message = message .. "; did you mean \"" .. suggestion .. "\"?" end
+            report.errors[#report.errors + 1] = { kind = "code", line = entry.line,
+              message = message, module = domain, name = code, suggestion = suggestion }
+          end
+        end
+
+      -- An option name the call does not take. The runtime raises on this,
+      -- but only if the line is reached; here it is found without running.
+      elseif entry.kind == "call" and spec and spec.options_at and spec.options then
+        local given = entry.args[spec.options_at]
+        if given and given.keys then
+          for _, key in ipairs(given.keys) do
+            if spec.options[key.name] == nil then
+              local suggestion = nearest(key.name, spec.options)
+              local message = key.name .. " is not an option of " .. entry.alias .. "." .. entry.member
+              if suggestion then message = message .. "; did you mean " .. suggestion .. "?" end
+              report.errors[#report.errors + 1] = { kind = "option", line = key.line,
+                message = message, module = entry.module, name = key.name, suggestion = suggestion }
+            end
+          end
+        end
+
+      -- A closed set compared with a literal outside it, and the version,
+      -- which is never compared by text at all.
+      elseif entry.kind == "compare" and spec and spec.field then
+        if spec.field == "Version" then
+          report.errors[#report.errors + 1] = { kind = "value", line = entry.line,
+            message = entry.alias .. "." .. entry.member .. " is Major.Minor.Patch and is never compared by text; use "
+              .. entry.alias .. ".version_at_least(...)",
+            module = entry.module, name = entry.literal }
+        else
+          local values = palette.enums[spec.field]
+          if values and not set_of(values)[entry.literal] then
+            local suggestion = nearest(entry.literal, set_of(values))
+            local message = "\"" .. tostring(entry.literal) .. "\" is not one of " .. entry.alias .. "."
+              .. entry.member .. "'s values, so this never matches"
+            if suggestion then message = message .. "; did you mean \"" .. suggestion .. "\"?" end
+            report.errors[#report.errors + 1] = { kind = "value", line = entry.line,
+              message = message, module = entry.module, name = entry.literal, suggestion = suggestion }
+          end
+        end
+      end
+    end
+  end
 end
 
 -- Follow expression/block structure to distinguish bindings, not to infer
@@ -130,7 +233,7 @@ end
 local function inspect(tokens, report, root)
   local pos, declares = 1, false
   local native_require = { native = true }
-  local scopes, calls, accesses = { { require = native_require } }, {}, {}
+  local scopes, calls, accesses, contracts = { { require = native_require } }, {}, {}, {}
   local expression, block, function_body
   local function token() return tokens[pos] end
   local function is(s) return token().text == s end
@@ -164,6 +267,14 @@ local function inspect(tokens, report, root)
     local name = take()
     if base.binding then
       accesses[#accesses + 1] = { binding = base.binding, alias = base.name, name = name.text, line = name.line }
+      -- Carry which module member this is, so that a call on it can be
+      -- checked against the description, and so that comparing it with a
+      -- literal can be. The binding travels too, because a reassigned one is
+      -- uncertain and its findings are dropped at the end like the others.
+      if base.binding.call then
+        return { binding = base.binding, module = base.binding.call.name,
+                 member = name.text, alias = base.name, line = name.line }
+      end
     end
     return {}
   end
@@ -183,12 +294,21 @@ local function inspect(tokens, report, root)
       expect(")")
     elseif t.text == "function" then function_body(false)
     elseif t.text == "{" then
+      -- The named keys are kept so that a constructor passed as a call's
+      -- option table can be checked against the names that call takes. A
+      -- computed key says nothing and is parsed past.
+      local keys = {}
       while not is("}") do
         if consume("[") then expression(0) expect("]") expect("=") expression(0)
-        elseif token().kind == "name" and tokens[pos + 1].text == "=" then take() take() expression(0)
+        elseif token().kind == "name" and tokens[pos + 1].text == "=" then
+          local key = take()
+          take()
+          expression(0)
+          keys[#keys + 1] = { name = key.text, line = key.line }
         else expression(0) end
         if not consume(",") and not consume(";") then break end
       end
+      result.keys = keys
       expect("}")
     elseif t.kind == "string" then result.literal = t.value
     elseif t.kind == "name" then result = { name = t.text, binding = lookup(t.text) }
@@ -204,6 +324,10 @@ local function inspect(tokens, report, root)
           local call = { name = args[1].literal, line = t.line }
           calls[#calls + 1] = call
           result.call = call
+        elseif original.module then
+          contracts[#contracts + 1] = { kind = "call", binding = original.binding,
+            module = original.module, member = original.member,
+            alias = original.alias, line = original.line, args = args }
         end
       else break end
     end
@@ -221,7 +345,18 @@ local function inspect(tokens, report, root)
       local priority = priorities[op]
       if priority == nil or priority <= minimum then break end
       take()
-      expression((op == "^" or op == "..") and priority - 1 or priority)
+      local right = expression((op == "^" or op == "..") and priority - 1 or priority)
+      -- A closed set compared with a literal outside it never matches, and
+      -- nothing says so at run time: the branch is simply dead.
+      if op == "==" or op == "~=" then
+        local member, value = result, right
+        if member.module == nil then member, value = right, result end
+        if member.module and value.literal ~= nil then
+          contracts[#contracts + 1] = { kind = "compare", binding = member.binding,
+            module = member.module, member = member.member, alias = member.alias,
+            line = member.line, literal = value.literal }
+        end
+      end
       result = {}
     end
     return result
@@ -330,6 +465,7 @@ local function inspect(tokens, report, root)
         end
       end
     end
+    if palette then contract_findings(contracts, report) end
   end
   return declares
 end

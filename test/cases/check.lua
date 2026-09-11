@@ -1,7 +1,7 @@
 -- check.lua -- `kuu check`: syntax errors with lines, undeclared globals under a
 -- declaration, the warning without one, require resolution, pruning, JSON.
 global none
-global <const> require, ipairs, tostring, type, string, table
+global <const> require, ipairs, tostring
 
 return function(T)
   local check, contains = T.check, T.contains
@@ -168,6 +168,54 @@ other.custom()
       check("the adopting example passes kuu check without running setup",
         r.code == 0 and contains(r.err, "0 errors, 0 warnings"), T.describe(r))
     end
+  end
+
+
+  -- The palette description. Each of these runs without complaint today: the
+  -- call is well formed, and the branch it guards is simply never taken.
+  do
+    local head = 'global none\nglobal <const> require, print\n'
+      .. 'local err = require "err"\nlocal proc = require "proc"\nlocal rt = require "rt"\n'
+    local function first(r) return r.errors[1] and r.errors[1].message end
+
+    report = inspect(head .. 'if err.is(nil, "PROC", "notfund") then print(1) end\n')
+    check("a code its domain does not have is an error, with the nearest real one",
+      #report.errors == 1 and report.errors[1].kind == "code"
+        and report.errors[1].suggestion == "notfound", first(report))
+
+    report = inspect(head .. 'if err.is(nil, "PROC", "notfound") then print(1) end\n')
+    check("a code its domain does have is not", #report.errors == 0, first(report))
+
+    -- err.new is public, so a project names its own domains and an unfamiliar
+    -- one says nothing. TEST is one edit from kuu's TEXT, so a suggestion
+    -- here would have been confidently wrong.
+    report = inspect(head .. 'if err.is(nil, "TEST", "boom") then print(1) end\n')
+    check("a domain kuu does not own is left alone", #report.errors == 0, first(report))
+
+    report = inspect(head .. 'local r = proc.run { "git", cwdd = "x" }\nprint(r)\n')
+    check("an option the call does not take is an error",
+      #report.errors == 1 and report.errors[1].kind == "option"
+        and report.errors[1].suggestion == "cwd", first(report))
+
+    report = inspect(head .. 'local r = proc.run { "git", cwd = "x", timeout = "30s" }\nprint(r)\n')
+    check("the options it does take are not", #report.errors == 0, first(report))
+
+    report = inspect(head .. 'if rt.version == "0.9" then print(1) end\n')
+    check("the version compared by text is an error",
+      #report.errors == 1 and report.errors[1].kind == "value", first(report))
+
+    report = inspect(head .. 'if rt.route == "flie" then print(1) end\n')
+    check("a closed set compared with a literal outside it is an error",
+      #report.errors == 1 and report.errors[1].kind == "value"
+        and report.errors[1].suggestion == "file", first(report))
+
+    report = inspect(head .. 'if rt.route == "file" then print(1) end\n')
+    check("a literal inside it is not", #report.errors == 0, first(report))
+
+    -- A reassigned binding is uncertain, and its findings are dropped like
+    -- every other finding on one.
+    report = inspect(head .. 'proc = nil\nlocal r = proc.run { cwdd = "x" }\nprint(r)\n')
+    check("a reassigned module binding reports nothing", #report.errors == 0, first(report))
   end
 
 end
