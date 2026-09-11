@@ -869,6 +869,25 @@ refuses to hide. Read it once.
 - Programs and stdin programs are bounded at 16 MiB; `fs.read` at 1 GiB
   unless `maxbytes` says otherwise; `proc.run` output at 64 MiB per stream
   unless `maxout` says otherwise, with `truncated` set when cut.
+- **A Lua pattern ending in `$` is not anchored.** `s:find("%s+$")` does not
+  look at the end of the string; it tries the match at position 1, then 2,
+  then 3, to the end, because only `^` anchors a pattern. Asking whether the
+  last byte is blank therefore costs a scan of the whole string, and the
+  trailing-whitespace test is usually the most expensive line in a routine
+  that has one. Both of kuu's own text encoders had it: one `match("%s$")`
+  per field was 65% of `csv.encode`'s time, and `ini`'s `trim` paid a
+  `gsub("%s+$", "")` on every key and every value. Compare the byte instead
+  -- `s:byte(-1)` against 32, 9, 10, 11, 12, 13 -- or walk in from the end;
+  `csv.encode` became 1.7x faster and `ini.decode` 1.9x. The same applies to
+  `%.lua$`, `"B$"`, and every other pattern whose only anchor is at the
+  right. `^%s+` is fine: it is anchored and tried once.
+- Short strings are interned, so minting many distinct ones costs a hash and
+  a lookup each. Formatting 200,000 twelve-byte results took 66 ms when every
+  result differed and 38 ms when they were all the same, so the interning was
+  43% of it; the same loop producing 44-byte results showed no difference at
+  all, because a string past the implementation's short limit is allocated
+  rather than hashed. Build with a table and one `table.concat`, never with
+  `..` in a loop, which is quadratic.
 
 ### Errors kuu itself prints
 

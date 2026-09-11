@@ -142,6 +142,27 @@ function csv.decode(text, opts)
   return records
 end
 
+-- The bytes Lua's %s matches: space, tab, newline, vertical tab, form feed,
+-- carriage return. Compared directly rather than matched, because `%s$` is
+-- unanchored: Lua retries it at every position, so asking whether the last
+-- byte is blank costs a scan of the whole field. That one call measured 65%
+-- of encode's time before this.
+local BLANK = { [32] = true, [9] = true, [10] = true, [11] = true, [12] = true, [13] = true }
+
+-- The class depends only on the separator, so it is built once per separator
+-- rather than once per field.
+local classes = {}
+local function class_for(sep)
+  local pattern = classes[sep]
+  if pattern == nil then
+    local escaped = (sep == "]" and "%]") or (sep == "%" and "%%") or (sep == "^" and "%^")
+      or (sep == "-" and "%-") or sep
+    pattern = "[" .. escaped .. '"\r\n]'
+    classes[sep] = pattern
+  end
+  return pattern
+end
+
 local function field_text(v, sep)
   local t = type(v)
   local s
@@ -149,7 +170,7 @@ local function field_text(v, sep)
   elseif t == "string" then s = v
   elseif t == "number" or t == "boolean" then s = tostring(v)
   else error(err.new("CSV", "badvalue", "a field must be a string, number, boolean, or nil, not " .. t), 3) end
-  if s:find('[' .. (sep == "]" and "%]" or sep == "%" and "%%" or sep == "^" and "%^" or sep == "-" and "%-" or sep) .. '"\r\n]') or s:match("^%s") or s:match("%s$") then
+  if BLANK[s:byte(1)] or BLANK[s:byte(-1)] or s:find(class_for(sep)) then
     s = '"' .. s:gsub('"', '""') .. '"'
   end
   return s

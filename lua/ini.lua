@@ -23,7 +23,20 @@ local err = require "err"
 
 local ini = {}
 
-local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
+-- The bytes Lua's %s matches. Trimming by pattern costs more than it looks:
+-- `%s+$` is unanchored, so Lua retries it at every position and a trailing
+-- blank is found by scanning the whole string. Walking in from both ends is
+-- proportional to the blanks actually there, and an untrimmed string is
+-- returned as itself rather than minted again.
+local BLANK = { [32] = true, [9] = true, [10] = true, [11] = true, [12] = true, [13] = true }
+
+local function trim(s)
+  local from, to = 1, #s
+  while from <= to and BLANK[s:byte(from)] do from = from + 1 end
+  while to >= from and BLANK[s:byte(to)] do to = to - 1 end
+  if from == 1 and to == #s then return s end
+  return s:sub(from, to)
+end
 
 local function unquote(v)
   if #v >= 2 and v:sub(1, 1) == '"' and v:sub(-1) == '"' then return v:sub(2, -2) end
