@@ -33,8 +33,21 @@ under the hosting kuu process, and exits when the console session ends.
 It is a console host, not an extra application launched by the script.
 Use `<close>` to terminate the child tree and release the console on all
 paths. `p:close()` is idempotent. The host's pipe ends use overlapped I/O;
-read, expect, and process waits keep the event loop running. On kuu's
-minimum supported Windows release, closing the console is asynchronous.
+read, expect, and process waits keep the event loop running. On Windows 11
+23H2, each console reserves two isolated native workers before launch: one
+closes the console and the other drains abandoned output. The OS close call
+can block while writing its final frame. Natural exit starts closing only
+after the whole supervised job exits and retains output for the Lua reader
+until EOF. Explicit close cancels pending I/O, waits for completion before
+transferring the output pipe, and lets the native drainer discard its tail.
+Runtime cancellation completes through the event loop; final shutdown uses
+separate completion events without running Lua callbacks. Kuu joins both
+workers before exiting. Neither worker accesses Lua or the event loop. On
+24H2 and later, Kuu uses the OS's release and asynchronous-close APIs directly.
+
+The console lifetime follows its supervised job on 23H2. A client that
+deliberately escapes that job must also detach from the console if it needs
+to outlive the session.
 
 `p:write(bytes)` queues UTF-8 console input and returns `true` or `nil, err`.
 Use `"\r"` for Enter. Input includes control sequences when the console

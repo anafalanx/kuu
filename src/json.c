@@ -238,11 +238,12 @@ static int l_json_decode(lua_State *L)
     int top = lua_gettop(L);
     if (push_value(&s, yyjson_doc_get_root(doc), 1) != 0) {
         lua_settop(L, top);
+        /* The duplicate key points into doc: format the error before freeing it. */
+        int results = s.too_deep
+            ? ku_err_fail(L, "JSON", "depth", "the document nests deeper than %d", KU_JSON_MAX_DEPTH)
+            : ku_err_fail(L, "JSON", "duplicate", "object key '%s' appears twice", s.duplicate);
         yyjson_doc_free(doc);
-        if (s.too_deep) {
-            return ku_err_fail(L, "JSON", "depth", "the document nests deeper than %d", KU_JSON_MAX_DEPTH);
-        }
-        return ku_err_fail(L, "JSON", "duplicate", "object key '%s' appears twice", s.duplicate);
+        return results;
     }
     yyjson_doc_free(doc);
     return 1;

@@ -52,7 +52,7 @@ return function(T)
 
   -- strictness -----------------------------------------------------------------------
   local none, e2 = json.decode('{"a": 1, "a": 2}')
-  check("duplicate keys are refused", none == nil and err.is(e2, "JSON", "duplicate"), tostring(e2))
+  check("duplicate keys are refused", none == nil and err.is(e2, "JSON", "duplicate") and contains(tostring(e2), "object key 'a' appears twice"), tostring(e2))
   none, e2 = json.decode("[1, 2,")
   check("a parse error names the byte", none == nil and err.is(e2, "JSON", "parse") and contains(tostring(e2), "byte"), tostring(e2))
   none, e2 = json.decode(string.rep("[", 600) .. string.rep("]", 600))

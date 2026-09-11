@@ -18,6 +18,7 @@
 #include "payload.h"
 #include "program.h"
 #include "state.h"
+#include "pseudoconsole.h"
 #include "wintext.h"
 
 #include "lauxlib.h"
@@ -228,7 +229,9 @@ static int run_program(const ku_launch *launch, const ku_program *program,
                 message != NULL ? message : "(error object is not a string)");
         exit_code = KUU_EXIT_PROGRAM;
     }
+    ku_proc_prepare_shutdown(); /* finish cancellations after the loop stops */
     lua_close(L); /* collects every child handle: their jobs close, their trees die */
+    ku_console_shutdown(); /* 23H2 workers drain abandoned output and finish closing */
     ku_loop_free(loop);
     return exit_code;
 }

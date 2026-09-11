@@ -32,6 +32,7 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail);
 /* The palette modules, registered in package.preload by ku_state_new. */
 int ku_open_sched(lua_State *L);
 int ku_open_proc(lua_State *L);
+void ku_proc_prepare_shutdown(void);
 int ku_open_hash(lua_State *L);
 int ku_open_text(lua_State *L);
 int ku_open_json(lua_State *L);

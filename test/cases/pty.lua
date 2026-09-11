@@ -50,6 +50,8 @@ return function(T)
   T.check('pty supports ReadConsoleW, Unicode and resize', console:text():find('received:caf\195\169', 1, true) ~= nil and console:text():find('size:80,24', 1, true) ~= nil, console:text())
   T.check('pty exposes raw VT bytes', all:find('\27', 1, true) ~= nil)
   T.check('pty console fixture exits without lingering conhost', console:wait('3s').code == 0)
+  value, e = console:resize(80, 24)
+  T.check('a console whose job has exited refuses resize', value == nil and err.is(e, 'PTY', 'closed'), tostring(e))
 
   local volume <close> = assert(pty.spawn { fixture, 'volume', maxout = '2M', timeout = '10s' })
   text = volume:expect({ 'VOLUME%-DONE' }, '8s')
@@ -82,7 +84,67 @@ return function(T)
     for host in pairs(conhosts()) do if not baseline[host] then found[#found + 1] = host end end
     return found
   end
+  local shutdown_source = [[global none
+global <const> require, assert
+local pty, rt, sched = require 'pty', require 'rt', require 'sched'
+local p = assert(pty.spawn { rt.args[1], rt.args[2], maxout = 8 })
+sched.sleep('100ms')
+]]
+  for _, mode in ipairs { 'input', 'volume' } do
+    local finished = T.kuu({ '-e', shutdown_source, fixture, mode }, {timeout='5s'})
+    T.check('program shutdown joins console cleanup with pending ' .. mode,
+      finished.status == 'exit' and finished.code == 0, T.describe(finished))
+  end
+
+  local finalized = T.kuu({ '-e', [[global none
+global <const> require, assert, setmetatable
+local pty, proc = require 'pty', require 'proc'
+local finalizer = setmetatable({}, {__gc=function()
+  assert(proc.run { 'cmd.exe', '/d', '/c', 'exit', '0' }.code == 0)
+end})
+for _ = 1, 8 do
+  local p = assert(pty.spawn { 'cmd.exe', '/d', '/q' })
+  p:close()
+end
+]] }, {timeout='5s'})
+  T.check('shutdown completes canceled console I/O while Lua finalizers run other children',
+    finalized.status == 'exit' and finalized.code == 0, T.describe(finalized))
+
   local baseline = conhosts()
+  do
+    local descendant <close> = assert(pty.spawn { fixture, 'descendant', timeout = '5s' })
+    assert(descendant:expect({ 'PARENT%-DONE' }, '3s'))
+    value, e = descendant:wait('10ms')
+    T.check('console completion waits for a descendant after the first process exits',
+      value == nil and err.is(e, 'PTY', 'timeout'), tostring(e))
+    assert(descendant:expect({ 'DESCENDANT%-DONE' }, '3s'))
+    local tail, failure = descendant:read('3s')
+    while tail do tail, failure = descendant:read('3s') end
+    T.check('last console descendant produces final output and EOF without explicit close',
+      failure == nil and descendant:wait('3s').code == 0, tostring(failure))
+  end
+  do
+    -- Stop consuming well below the producer's output volume. close must
+    -- remain bounded even on the OS with synchronous console teardown.
+    local unread = assert(pty.spawn { fixture, 'volume', maxout = 8, timeout = '5s' })
+    sched.sleep('100ms')
+    local started = sched.clock()
+    unread:close()
+    T.check('closing a console with unread blocked output does not block the loop',
+      sched.clock() - started < 0.5)
+  end
+  do
+    local fs = require 'fs'
+    local invalid = T.work .. '/invalid-console-program.exe'
+    assert(fs.write(invalid, 'not an executable'))
+    value, e = pty.spawn { invalid }
+    T.check('a failed native console launch returns its launch error',
+      value == nil and err.is(e, 'PTY', 'launch'), tostring(e))
+  end
+  due = sched.clock() + 3
+  while #fresh_hosts(baseline) > 0 and sched.clock() < due do sched.sleep('10ms') end
+  T.check('natural exit, blocked output and failed launch leave no console host', #fresh_hosts(baseline) == 0)
+
   local tree_pid, descendant_pid, host_pids
   do
     local child_source = [[global none

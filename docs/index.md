@@ -7,9 +7,10 @@ and exact: this is how kuu behaves, not how Lua works. Lua 5.5 itself is
 assumed; the one page you need about the language here is
 [Pitfalls](pitfalls.md).
 
-kuu runs on Windows 11 version 25H2 and later, and on the equivalent Windows
-Server releases. Nothing else, on purpose: the process, console, and file
-system features it builds on are used without fallbacks.
+kuu runs on Windows 11 version 23H2 and later, and Windows Server 2025 and
+later. The runtime uses native Windows process, console and filesystem APIs.
+Console shutdown adapts to the older 23H2 lifetime contract; the Lua API is
+the same on every supported version.
 
 This is version 0.7: the runner, the scheduler with scoped deadlines,
 processes with resource limits (its own children and the others on the machine), files, JSON, CSV, INI, HTTP, archives,

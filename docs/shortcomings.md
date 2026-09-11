@@ -147,6 +147,12 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
 - **Status:** observed, not reproduced deterministically. Do not attribute it
   to a Kuu locking defect, antivirus, or the filesystem sandbox without more
   evidence. No permission bypass or unconditional retry was added.
+- **23H2 follow-up, 2026-09-11:** the compatibility gate completed 38 soak
+  rounds in 61 seconds with stable handles, but 21 state writes failed. A
+  separate 1,000-write comparison reproduced `FS access`, Windows error 5,
+  in both the original 0.6 executable (4 failures) and the compatibility
+  build (3 failures). This predates the OS-floor change; its cause remains
+  unisolated. The soak gate is not clean on this host.
 
 ### Entry routes leave startup allocations to process teardown
 
@@ -267,3 +273,57 @@ Observations, none of them a kuu defect:
   files are read once by the on-access scanner. Hosting, not kuu.
 - **`env` printed a stray `1`** after the Python and Tcl versions, `gsub`'s
   count reaching `print`. Fixed in the recipe.
+
+## Promoting 0.7 on Windows 11 23H2 — 2026-09-11
+
+- **Kind:** a newly supported OS exposed a static-import and console-lifetime
+  incompatibility. The owner lowered the Windows 11 floor from 25H2 to 23H2.
+- **Observed:** the signed 0.7 release, verified against its sidecar, GitHub
+  asset digest and Time Actual's CI pin, exits before `--version` with
+  `0xC0000139` (entry point not found) on Windows 11 Enterprise 23H2,
+  build 22631.7517. Its Authenticode signature and expected signer match.
+- **Cause:** the release statically imports `ReleasePseudoConsole` from
+  `kernel32.dll`; a direct export lookup confirms that this host lacks it.
+  The other three ConPTY entry points are present. The loader rejects the
+  executable before Kuu can report its OS requirement, even for commands
+  that do not use `pty`.
+- **Local recovery:** restored the original root Kuu 0.6 executable by its
+  saved hash. The synced Time Actual source accepts it: eight Lua files
+  check without warnings/errors, task declarations load, and the complete
+  test plan validates. The verified 0.7 download remains in that project's
+  `.tools/downloads/kuu/0.7/` for later promotion.
+- **Fix:** resolve `ReleasePseudoConsole` only when exported. On 23H2,
+  reserve close/drain workers before creating a console; wait for the whole
+  supervised job on natural exit, and transfer abandoned output only after
+  canceled I/O completes. Dedicated completion events let final shutdown
+  finish without depending on stopped IOCP dispatch. The 24H2+ OS path is
+  retained, as is the public Lua API.
+- **Regression coverage:** descendant lifetime and final output, blocked
+  unread output, native launch failure, console-host cleanup, pending input
+  and output at process exit, and canceled I/O while Lua finalizers run other
+  children. The complete suite now contains 1,044 checks. Validation runs on
+  Windows 11 Enterprise 23H2 build 22631.7517; no newer Windows host was
+  available for a fresh run. See the file-access finding above for the
+  pre-existing soak failure.
+- **Release status:** this is a local compatibility build from the 0.7
+  development tree. The published signed 0.7 asset and its digest are
+  unchanged and still cannot start on 23H2. A newly signed release remains
+  necessary for distribution through the release channel.
+
+## JSON duplicate-key error lifetime — 2026-09-11
+
+- **Observed:** the full AddressSanitizer suite on 23H2 found a heap use after
+  free in the existing `json.decode` duplicate-key diagnostic. The offending
+  key points into the yyjson document, which was freed before formatting it.
+- **Fix:** build the error while the document still owns the key, then free
+  the document. The existing duplicate-key regression now checks the key in
+  the message as well as the error code.
+
+## Process-tree chain check during 23H2 validation — 2026-09-11
+
+- **Observed:** one complete run failed the existing 31-process-chain
+  assertion that each node has at most one child. The cause is unisolated.
+- **Control:** the isolated process suite passed all 82 checks; the final
+  complete production suite then passed all 1,044 checks. No change to
+  process-tree enumeration was made.
+- **Evidence:** [dated validation record](../notes/validation-23h2-2026-09-11_094612.md).

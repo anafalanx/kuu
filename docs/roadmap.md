@@ -10,7 +10,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 
 | decision | choice | why |
 |---|---|---|
-| platform | Windows 11 25H2 and later, and the equivalent Windows Server releases; nothing else | the strength comes from using the modern process, console, and file APIs without fallbacks |
+| platform | Windows 11 23H2 and later; Windows Server 2025 and later | native Windows APIs; 23H2 console teardown uses isolated close/drain workers and completion-aware pipe ownership |
 | language for programs | Lua 5.5.1, vendored, compiled as C | agents write it correctly from a hundred-page manual; coroutines make waiting read as straight-line code; `global none` turns the classic typo into a compile error; errors are `longjmp`, so C, never C++ |
 | host language | C, the els method's subset | the host lives on two C boundaries, Win32 and the Lua API, and machteld's process-lifetime and text-boundary code transfers verbatim |
 | compiler | gcc 16.1 from MSYS2 UCRT64, copied into `.tools` | the estate's proven recipe; gcc and GNU make are the chosen production build, with Clang only for sanitizer tests |

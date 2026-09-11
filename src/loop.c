@@ -243,6 +243,7 @@ void ku_io_orphan(ku_io *io)
 void ku_io_free(ku_io *io)
 {
     if (io != NULL) {
+        if (io->ov.hEvent != NULL) CloseHandle(io->ov.hEvent);
         free(io->buf);
         free(io);
     }

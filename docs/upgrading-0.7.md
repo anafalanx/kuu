@@ -10,6 +10,16 @@ run `kuu check`, and run the project's tasks. Numeric durations remain
 seconds, as in 0.6. A project still on 0.5 also needs the
 [0.6 duration migration](upgrading-0.6.md).
 
+## Windows 11 23H2 compatibility in the development tree
+
+The source now supports Windows 11 23H2. `ReleasePseudoConsole` is resolved
+only when the host exports it; 23H2 uses isolated close/drain workers,
+preserves final output after the entire supervised job exits, and waits for
+canceled I/O before transferring pipe ownership. The Lua API is unchanged.
+The published, signed 0.7 asset predates this change and still cannot start
+on 23H2. Use a build containing the compatibility change; the existing
+release asset and its checksum have not been replaced.
+
 ## Existing programs and reports
 
 | 0.6 form or behavior | 0.7 form or behavior |

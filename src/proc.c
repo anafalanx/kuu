@@ -20,13 +20,15 @@
  * complete when its whole job is empty and its pipes have reached EOF; a
  * grandchild that outlives the child keeps the result open, as it should.
  * In stream mode the program reads the pipes itself, with backpressure, and
- * completion means the tree is gone.  No thread is created per child.
+ * completion means the tree is gone. Ordinary children need no thread;
+ * a 23H2 pseudoconsole reserves isolated workers for blocking OS teardown.
  */
 #include "err.h"
 #include "launch.h"
 #include "loop.h"
 #include "procinfo.h"
 #include "pty.h"
+#include "pseudoconsole.h"
 #include "values.h"
 #include "wintext.h"
 
@@ -83,7 +85,9 @@ struct ku_child {
     ku_source job_src, io_src;
     ku_loop *loop;
     HANDLE job, process;
-    HPCON console;
+    ku_console *console;
+    int legacy_console, close_queued;
+    ku_child *close_next;
     DWORD pid;
     int stream, inherit;
     ku_stream out, err;
@@ -105,6 +109,59 @@ struct ku_child {
     ku_result *result;
     int run_ref; /* proc.run retains its hidden child until the job finishes */
 };
+
+/* Closed 23H2 consoles retain their pipes until canceled I/O completes.
+ * Runtime completions reap this list; shutdown reaps cancellations directly
+ * before destroying Lua, when the loop will no longer dispatch packets. */
+static ku_child *closing_consoles;
+static int shutting_down;
+
+static void console_finish_close(ku_child *c)
+{
+    if (c->close_queued) {
+        ku_child **link = &closing_consoles;
+        while (*link != c) link = &(*link)->close_next;
+        *link = c->close_next;
+        c->close_queued = 0;
+    }
+    HANDLE output = c->out.handle;
+    c->out.handle = NULL;
+    if (c->err.handle != NULL) { CloseHandle(c->err.handle); c->err.handle = NULL; }
+    if (c->in_handle != NULL) { CloseHandle(c->in_handle); c->in_handle = NULL; }
+    c->in_done = 1;
+    if (c->console != NULL) {
+        ku_console *console = c->console;
+        c->console = NULL;
+        ku_console_abandon(console, output);
+    } else if (output != NULL) {
+        CloseHandle(output);
+    }
+}
+
+static void console_reap_cancel(ku_child *c)
+{
+    /* Only at process shutdown, after cancellation. The I/O allocations
+     * remain alive through kernel completion; no Lua callbacks run here. */
+    ku_io *pending[] = {c->out.io, c->err.io, c->in_io};
+    for (size_t i = 0; i < sizeof pending / sizeof *pending; i++) {
+        if (pending[i] != NULL) {
+            /* IOCP may defer the status block until dequeue. Its separate
+             * event proves kernel completion without running Lua callbacks. */
+            WaitForSingleObject(pending[i]->ov.hEvent, INFINITE);
+            /* A Lua finalizer may pump the loop again. Its queued packet
+             * must only free the I/O, never query a transferred pipe or c. */
+            ku_io_orphan(pending[i]);
+        }
+    }
+    c->out.io = c->err.io = c->in_io = NULL;
+    console_finish_close(c);
+}
+
+void ku_proc_prepare_shutdown(void)
+{
+    shutting_down = 1;
+    while (closing_consoles != NULL) console_reap_cancel(closing_consoles);
+}
 
 /* ---- results ------------------------------------------------------------------- */
 
@@ -300,13 +357,27 @@ static void stream_notify(ku_child *c, ku_stream *s)
     }
 }
 
+static ku_io *child_io_new(ku_child *c, HANDLE handle, DWORD cap)
+{
+    ku_io *io = ku_io_new(c->loop, &c->io_src, handle, cap);
+    if (io != NULL && c->legacy_console) {
+        /* Keep normal IOCP notification, plus a shutdown completion witness. */
+        io->ov.hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+        if (io->ov.hEvent == NULL) {
+            ku_io_free(io);
+            return NULL;
+        }
+    }
+    return io;
+}
+
 static int stream_post_read(ku_child *c, ku_stream *s)
 {
     if (c->stream && stream_available(s) >= s->limit) {
         s->paused = 1; /* backpressure: the child blocks until the program reads */
         return 0;
     }
-    ku_io *io = ku_io_new(c->loop, &c->io_src, s->handle, KU_READ_CHUNK);
+    ku_io *io = child_io_new(c, s->handle, KU_READ_CHUNK);
     if (io == NULL) {
         stream_finish(s, ERROR_NOT_ENOUGH_MEMORY);
         return -1;
@@ -351,7 +422,7 @@ static void stdin_post(ku_child *c)
         }
         return;
     }
-    ku_io *io = ku_io_new(c->loop, &c->io_src, c->in_handle, 0);
+    ku_io *io = child_io_new(c, c->in_handle, 0);
     if (io == NULL) {
         stdin_finish(c, ERROR_NOT_ENOUGH_MEMORY);
         return;
@@ -484,6 +555,12 @@ static void child_on_job(ku_source *src, DWORD message, DWORD pid)
             } else if (c->in_handle != NULL) {
                 stdin_finish(c, 0);
             }
+            if (c->console != NULL && c->legacy_console && !c->closed) {
+                /* On 23H2 the HPCON itself pins conhost. Once the WHOLE job
+                 * exits, close off-loop while the reader drains final output.
+                 * Explicit close instead finishes canceled I/O first. */
+                ku_console_end(c->console);
+            }
             child_check_done(c);
             child_maybe_free(c);
         }
@@ -502,7 +579,7 @@ static void child_free(ku_child *c)
     }
     result_unref(c->result);
     if (c->console != NULL) {
-        ClosePseudoConsole(c->console);
+        ku_console_close(c->console);
     }
     free(c->out.data);
     free(c->err.data);
@@ -529,6 +606,10 @@ static void child_free(ku_child *c)
  * outstanding I/O, no woken reader, and the job has reported. */
 static void child_maybe_free(ku_child *c)
 {
+    if (c->closed && c->legacy_console && c->out.io == NULL && c->err.io == NULL && c->in_io == NULL) {
+        console_finish_close(c);
+        child_check_done(c);
+    }
     if (c->closed && c->done && c->out.io == NULL && c->err.io == NULL && c->in_io == NULL && c->woken == 0) {
         child_free(c);
     }
@@ -666,9 +747,8 @@ static void child_release(ku_child *c)
     if (!c->done) {
         child_kill(c);
     }
-    if (c->console != NULL) {
-        /* Windows 11 24H2+ closes asynchronously. Kuu requires 25H2+. */
-        ClosePseudoConsole(c->console);
+    if (c->console != NULL && !c->legacy_console) {
+        ku_console_close(c->console); /* asynchronous OS close on 24H2+ */
         c->console = NULL;
     }
     if (c->out.io != NULL) {
@@ -679,6 +759,15 @@ static void child_release(ku_child *c)
     }
     if (c->in_io != NULL) {
         CancelIoEx(c->in_handle, &c->in_io->ov);
+    }
+    if (c->legacy_console) {
+        if (shutting_down) {
+            console_reap_cancel(c);
+        } else if (c->out.io != NULL || c->err.io != NULL || c->in_io != NULL) {
+            c->close_next = closing_consoles;
+            closing_consoles = c;
+            c->close_queued = 1;
+        }
     }
     child_maybe_free(c);
 }
@@ -1036,11 +1125,10 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
             goto fail;
         }
         c->err.eof = 1;
-        HRESULT hr = CreatePseudoConsole(spec->dimensions, their_in, their_out, 0, &c->console);
-        if (FAILED(hr)) {
-            ku_fail_set(fail, "PTY", "oserror", "cannot create the pseudoconsole (HRESULT 0x%08lx)", (unsigned long)hr);
+        if (ku_console_open(spec->dimensions, their_in, their_out, &c->console, fail) != 0) {
             goto fail;
         }
+        c->legacy_console = ku_console_legacy(c->console);
         if (ku_loop_attach(lp, c->out.handle, &c->io_src) != 0 ||
             ku_loop_attach(lp, c->in_handle, &c->io_src) != 0) {
             ku_fail_set(fail, "PTY", "oserror", "cannot attach console pipes to the loop");
@@ -1100,7 +1188,7 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
     ku_stdio io = {their_in, their_out, their_err};
     c->start_ms = ku_now_ms();
     int launched = spec->console
-        ? ku_launch_console(exe, spec->argc, spec->argv, spec->cwd, c->job, c->console, env, &c->pid, &c->process, fail)
+        ? ku_launch_console(exe, spec->argc, spec->argv, spec->cwd, c->job, ku_console_handle(c->console), env, &c->pid, &c->process, fail)
         : ku_launch(exe, spec->argc, spec->argv, spec->cwd, c->job, &io, env, &c->pid, &c->process, fail);
     if (launched != 0) {
         goto fail;
@@ -1108,9 +1196,9 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
     /* From here the child exists: the job is live and will report. */
     ku_loop_expect(lp);
     if (c->console != NULL) {
-        /* Let conhost exit once its last client leaves; keep HPCON for resize
-         * and final ClosePseudoConsole. This API is part of our minimum OS. */
-        ReleasePseudoConsole(c->console);
+        /* New Windows can relinquish the keep-alive reference immediately;
+         * 23H2 starts its closer when the supervised job becomes empty. */
+        ku_console_release(c->console);
     }
     if (!c->inherit) {
         CloseHandle(their_in == nul ? nul : their_in);
@@ -1137,9 +1225,6 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
     return 0;
 
 fail:
-    if (c->console != NULL) {
-        ClosePseudoConsole(c->console);
-    }
     if (their_in != NULL && their_in != nul && !c->inherit) {
         CloseHandle(their_in);
     }
@@ -1164,6 +1249,7 @@ fail:
     if (c->job != NULL) {
         CloseHandle(c->job); /* no process ever joined it: no message will come */
     }
+    if (c->console != NULL) ku_console_close(c->console);
     free(c->in_data);
     free(c);
     free(exe);
@@ -1300,7 +1386,9 @@ int ku_proc_pty_spawn(lua_State *L)
 int ku_proc_pty_resize(lua_State *L)
 {
     ku_child *c = check_child(L, 1);
-    if (c->console == NULL || c->done) {
+    if (c->console == NULL || c->done || (c->legacy_console && c->job_zero)) {
+        /* The legacy closer may already own the HPCON while stdin's canceled
+         * write still keeps done false. Never resize a closing console. */
         return ku_err_fail(L, "PTY", "closed", "the pseudoconsole is closed");
     }
     if (!lua_isinteger(L, 2) || !lua_isinteger(L, 3) ||
@@ -1309,7 +1397,7 @@ int ku_proc_pty_resize(lua_State *L)
         return ku_err_raise(L, "PTY", "badvalue", "cols and rows must be integers from 1 to 32767");
     }
     COORD dimensions = {(SHORT)lua_tointeger(L, 2), (SHORT)lua_tointeger(L, 3)};
-    HRESULT hr = ResizePseudoConsole(c->console, dimensions);
+    HRESULT hr = ResizePseudoConsole(ku_console_handle(c->console), dimensions);
     if (FAILED(hr)) {
         return ku_err_fail(L, "PTY", "oserror", "cannot resize the pseudoconsole (HRESULT 0x%08lx)", (unsigned long)hr);
     }

@@ -23,7 +23,11 @@ bounds a sequence of waits, and `check` catches misspelled palette exports.
 A repository declares its tasks once in `tasks.lua` and runs them with
 `kuu run`, and fetches its own prerequisites by url and hash with `http` and
 `archive`. The manual rides inside the executable: `kuu docs`. kuu runs on
-Windows 11 25H2 and later, and the equivalent Windows Server releases, only.
+Windows 11 23H2 and later, and Windows Server 2025 and later, only.
+
+23H2 support currently requires a build from this development tree. The
+published signed 0.7 executable predates the compatibility fix; see the
+[0.7 compatibility note](docs/upgrading-0.7.md#windows-11-23h2-compatibility-in-the-development-tree).
 
 ```text
 kuu FILE [arg ...]        run a Lua program file
