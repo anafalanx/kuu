@@ -2,7 +2,7 @@
 -- hostile fixtures built first: junctions inside, outside, looped, dangling;
 -- hidden and read-only entries; a path beyond 260 characters; Unicode names.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, table, pcall, math, select
+global <const> require, ipairs, pairs, tostring, type, string, table, pcall, math, select, io
 
 return function(T)
   local check, contains, starts = T.check, T.contains, T.starts
@@ -25,6 +25,27 @@ return function(T)
   check("append adds to the end", fs.write(root .. "/a.bin", "+tail", { append = true }) and fs.read(root .. "/a.bin") == "short+tail")
   check("no temporary file is left beside an atomic write", #fs.list(root).entries == 1, table.concat((function()
     local names = {} for _, e in ipairs(fs.list(root).entries) do names[#names + 1] = e.name end return names end)(), ","))
+
+  -- The replace is retried, because a scanner opening a freshly closed
+  -- temporary makes it fail transiently: 15 of 2000 writes on the owner's host
+  -- before the retry, none of 4000 after.  A reader held open for the whole
+  -- attempt stands in for that holder deterministically: the write must still
+  -- fail, so no permission is bypassed, and it must have spent the retry
+  -- window rather than giving up on the first rename.
+  do
+    local held = root .. "/held.bin"
+    check("a file to hold is written", fs.write(held, "before", { atomic = false }) == true)
+    local handle = io.open(held, "rb")
+    local began = sched.clock()
+    local wrote, why = fs.write(held, "after")
+    local elapsed = (sched.clock() - began) * 1000
+    handle:close()
+    check("a target held open still fails, with no permission bypassed",
+      wrote == nil and err.is(why, "FS", "access"), tostring(why))
+    check("the replace was retried rather than abandoned at once",
+      elapsed >= 10, string.format("%.0f ms", elapsed))
+    check("the held target kept its old bytes", fs.read(held) == "before")
+  end
   fs.write(root .. "/text.txt", "\239\187\191caf\195\169\r\nx")
   check("read with encoding utf-8 drops the BOM and validates", fs.read(root .. "/text.txt", { encoding = "utf-8" }) == "café\r\nx")
   fs.write(root .. "/cp.txt", "caf\233")
@@ -132,8 +153,27 @@ return function(T)
     local depth0 = fs.dirs(root, { depth = 0 })
     check("depth 0 lists the root alone", depth0.dirs == 1 and depth0.depthlimited == 1)
     local pruned = fs.dirs(root, { prune = { "ORDER", "hid*" } })
-    check("prune matches base names case-insensitively", pruned.pruned == 2 and (function()
-      for _, p in ipairs(pruned.paths) do if p:lower():match("/order$") then return true end end return false end)(), tostring(pruned.pruned))
+    local function names_one(list, suffix)
+      for _, p in ipairs(list) do if p:lower():match(suffix) then return true end end
+      return false
+    end
+    check("prune matches base names case-insensitively", pruned.pruned == 2, tostring(pruned.pruned))
+    -- A pruned directory is excluded by name, so it is reported in skipped and
+    -- never in paths: listing it there made the obvious walk read exactly the
+    -- content the prune excluded.  Changed in 0.9.0.
+    check("a pruned directory is not in paths", not names_one(pruned.paths, "/order$"),
+      table.concat(pruned.paths, ","))
+    check("a pruned directory is reported in skipped",
+      #pruned.skipped == 2 and names_one(pruned.skipped, "/order$"),
+      table.concat(pruned.skipped, ","))
+    check("dirs still counts exactly the paths", pruned.dirs == #pruned.paths,
+      tostring(pruned.dirs) .. " vs " .. tostring(#pruned.paths))
+    check("a walk with nothing pruned has an empty skipped",
+      #fs.dirs(root).skipped == 0)
+    -- The depth cap is a frontier the caller asked to stop at, not a name it
+    -- excluded, so those directories stay in paths.
+    check("a depth-limited directory stays in paths",
+      depth0.dirs == 1 and #depth0.paths == 1 and #depth0.skipped == 0)
     ok, e2 = pcall(fs.dirs, root, { depth = -1 })
     check("a negative depth is refused", not ok and err.is(e2, "FS", "badvalue"), tostring(e2))
     none, e = fs.dirs(root .. "/a.bin")

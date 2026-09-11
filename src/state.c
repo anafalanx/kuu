@@ -93,6 +93,44 @@ static int l_rt_root(lua_State *L)
     return 1;
 }
 
+/* rt.version_at_least(major [, minor [, patch]]) -> is this runtime that version or
+ * newer?
+ *
+ * A project used to guard its minimum with a pattern over rt.version, which
+ * broke the moment the version grew a third component: "^(%d+)%.(%d+)$" does
+ * not match "0.9.0", so every guard written that way refused the runtime it
+ * was meant to accept.  Comparing here means a project never parses a version
+ * string again, and the next component costs nobody anything. */
+static int l_rt_version_at_least(lua_State *L)
+{
+    lua_Integer want[3] = {0, 0, 0};
+    for (int i = 0; i < 3; i++) {
+        if (i > 0 && lua_isnoneornil(L, i + 1)) {
+            continue;
+        }
+        if (!lua_isinteger(L, i + 1)) {
+            return ku_err_raise(L, "RT", "badvalue",
+                                "a version component must be an integer");
+        }
+        want[i] = lua_tointeger(L, i + 1);
+        if (want[i] < 0) {
+            return ku_err_raise(L, "RT", "badvalue",
+                                "a version component must not be negative");
+        }
+    }
+    unsigned have[3] = {0, 0, 0};
+    sscanf(KUU_VERSION, "%u.%u.%u", &have[0], &have[1], &have[2]);
+    int atleast = 1;
+    for (int i = 0; i < 3; i++) {
+        if ((lua_Integer)have[i] != want[i]) {
+            atleast = (lua_Integer)have[i] > want[i];
+            break;
+        }
+    }
+    lua_pushboolean(L, atleast);
+    return 1;
+}
+
 /* rt.source(name) -> the text of one of kuu's own Lua modules, or nil.  The
  * toolchain keys its stamps on the hydrating code itself, per the lesson that
  * a stamp must cover every input. */
@@ -235,6 +273,8 @@ static void push_rt_table(lua_State *L, const ku_launch *launch)
     lua_setfield(L, -2, "root");
     lua_pushcfunction(L, l_rt_source);
     lua_setfield(L, -2, "source");
+    lua_pushcfunction(L, l_rt_version_at_least);
+    lua_setfield(L, -2, "version_at_least");
 }
 
 /* A module that is C for what touches Windows and Lua for the rest: the C

@@ -226,10 +226,23 @@ static int l_sched_sleep(lua_State *L)
     return ku_wait(L, w, ms);
 }
 
-/* sched.clock() -> monotonic seconds, for measuring; not wall time */
+/* sched.clock() -> monotonic seconds, for measuring; not wall time.
+ *
+ * The performance counter rather than the loop's millisecond tick: that tick
+ * resolves to exactly 1 ms, so nothing under roughly fifty could be measured
+ * honestly, and measuring is this call's whole purpose.  The frequency is
+ * fixed at boot, so it is read once; kuu runs one thread, so a static needs no
+ * guard.  The epoch stays arbitrary and only differences mean anything, which
+ * is what monotonic already promised. */
 static int l_sched_clock(lua_State *L)
 {
-    lua_pushnumber(L, (lua_Number)ku_now_ms() / 1000.0);
+    static LARGE_INTEGER frequency;
+    if (frequency.QuadPart == 0) {
+        QueryPerformanceFrequency(&frequency);
+    }
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    lua_pushnumber(L, (lua_Number)now.QuadPart / (lua_Number)frequency.QuadPart);
     return 1;
 }
 

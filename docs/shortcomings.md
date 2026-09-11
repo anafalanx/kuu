@@ -340,3 +340,64 @@ Observations, none of them a kuu defect:
   source's memory before dequeue, and dispatches the orphaned completion.
   The console suite also leaves an exited console open through shutdown
   while another Lua finalizer runs a process. Included in 0.8.
+
+## Published 0.8 on the 23H2 host — 2026-09-11
+
+The final signed 0.8 release starts on build 22631.7517 and passes all
+48 console checks, including the additional shutdown/finalizer regression.
+The native orphaned-I/O fixture and signature/tamper checks also pass.
+The full signed suite reports 1,045 passed and two related failures caused
+by the previously observed Windows error 5 during a memory-file replacement.
+The isolated memory case then passes all 19 checks; the underlying finding
+remains open. Time Actual's task/recovery tests, all 2,191 engine checks,
+application build and isolated self-test pass with the promoted release.
+
+See the [dated adoption record](../notes/validation-0.8-23h2-2026-09-11_104022.md).
+
+## The replacement failure isolated and closed — 2026-09-11
+
+The Windows error 5 seen during atomic replacement since 0.5 is reproduced,
+explained, and fixed in 0.9.0.
+
+- **Reproduction.** 2000 atomic writes to one target from a **single**
+  process: 15 failed with `FS access`, Windows error 5. One process is enough,
+  which removes concurrency, `sync`, and kuu's own locking from the account.
+- **Transience.** Every one of the 15 succeeded on an immediate retry, with no
+  sleep and no change of permission. Zero hard failures.
+- **Cause.** `fs.write` writes `name.kuu-<pid>-<tick>.tmp` and renames it over
+  the target. On Windows a scanner or an indexer routinely opens a file the
+  moment its handle closes, and `MoveFileExW` on that freshly written
+  temporary then loses the race and reports access denied. This is
+  environmental and affects any program using write-temp-then-rename; it is
+  not specific to `mem`, which merely writes often enough to show it.
+- **Fix.** The rename is retried, bounded at six attempts over a few tens of
+  milliseconds, and only for access-denied and sharing-violation. No
+  permission is bypassed and no retry is unconditional: a target held open
+  past the window still fails with `FS access`, which stays the intended
+  answer. Atomicity is untouched, because each attempt either replaced the
+  target or left it alone.
+- **Verification.** 4000 writes after the change failed none. The two
+  previously failing `mem` checks pass, and the suite reports **1049 passed,
+  0 failed** — green for the first time since the finding was recorded. A
+  regression holds a reader open for the whole attempt and asserts the write
+  still fails, that it spent the retry window rather than giving up on the
+  first rename, and that the target kept its old bytes.
+
+Two intermittent failures seen while establishing the baseline are **not**
+covered by this and remain open: `proc.tree handles a 31-process chain`, which
+failed once and passed on rerun, and `an unknown host is HTTP notfound`, which
+returned `HTTP timeout` when sandbox DNS stalled past ten seconds. Neither is
+reproduced; neither should be attributed to a kuu defect without evidence.
+
+## The soak gate is clean — 2026-09-11
+
+The compatibility gate above recorded 38 soak rounds with 21 state writes
+failed, and that finding was open. With the bounded rename retry in place the
+same gate on the same host (build 22631.7517) reports **34 rounds in 61 s,
+handles -3, private +4.3 MB, failures 0**.
+
+Alongside it: the suite passes 1,062 checks with zero failures on five
+consecutive runs, native static analysis passes over every authored host file,
+and parser fuzzing passes 10,000 cases per family on both fixed seeds. Every
+component of `make gate` therefore passes on this host, which is the first
+host on which that has been true.

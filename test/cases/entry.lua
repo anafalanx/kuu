@@ -8,9 +8,15 @@ return function(T)
   local starts, contains = T.starts, T.contains
   local hello = T.fixtures .. "/hello.lua"
 
+  -- The suite is run by the kuu under test, so its own rt tells us what the
+  -- child must report.  A literal here fell behind the version twice.
+  local rt = require "rt"
+  local VERSION, LUA = rt.version, rt.lua
+  local VERSION_LINE = "kuu " .. VERSION .. " (" .. LUA .. ")\n"
+
   -- identity and usage ------------------------------------------------------
   local r = kuu { "--version" }
-  check("version line", r.code == 0 and r.out == "kuu 0.8 (Lua 5.5.1)\n", describe(r))
+  check("version line", r.code == 0 and r.out == VERSION_LINE, describe(r))
 
   r = kuu { "--help" }
   check("help exits 0 on stdout", r.code == 0 and contains(r.out, "usage: kuu FILE") and r.err == "", describe(r))
@@ -51,7 +57,8 @@ return function(T)
   check("inline arguments arrive as ...", r.out == "2\ta\tb c\n", describe(r))
 
   r = kuu { "-e", "local rt = require('rt'); print(rt.version, rt.lua, rt.route, #rt.args, rt.args[2], rt.program, rt.exe ~= nil)", "x", "y" }
-  check("rt module describes the launch", r.out == "0.8\tLua 5.5.1\teval\t2\ty\tnil\ttrue\n", describe(r))
+  check("rt module describes the launch",
+    r.out == VERSION .. "\t" .. LUA .. "\teval\t2\ty\tnil\ttrue\n", describe(r))
 
   local accented = "héllo wörld €"
   r = kuu { "-e", "io.write(...)", accented }
@@ -197,7 +204,7 @@ return function(T)
     fs.write(dir .. "/VERSION", "0.58\n")
     local version = kuu({ "version" }, { cwd = dir })
     check("version is a verb even beside a VERSION data file",
-      version.code == 0 and version.out == "kuu 0.8 (Lua 5.5.1)\n" and version.err == "", describe(version))
+      version.code == 0 and version.out == VERSION_LINE and version.err == "", describe(version))
     fs.write(dir .. "/VERSION", "io.write('explicit file')\n")
     local file = kuu({ "./version" }, { cwd = dir })
     check("an explicit path still executes a file named version", file.code == 0 and file.out == "explicit file", describe(file))

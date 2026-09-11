@@ -45,9 +45,9 @@ has the full contract; this is the shape:
 
 ```lua
 global none
-global <const> require, ipairs, print, error, tonumber
+global <const> require, ipairs, print, error
 
-local NEED_MAJOR, NEED_MINOR = 0, 7
+local NEED_MAJOR, NEED_MINOR = 0, 9
 
 local rt = require "rt"
 local task = require "task"
@@ -57,10 +57,8 @@ local fs = require "fs"
 local hash = require "hash"
 local err = require "err"
 
-local major, minor = rt.version:match("^(%d+)%.(%d+)$")
-major, minor = tonumber(major), tonumber(minor)
-if not major or major < NEED_MAJOR or (major == NEED_MAJOR and minor < NEED_MINOR) then
-  error(err.new("PROJECT", "version", "requires kuu 0.7 or later, found " .. rt.version .. "; copy a supported kuu.exe into the repository root"))
+if not rt.version_at_least(NEED_MAJOR, NEED_MINOR) then
+  error(err.new("PROJECT", "version", "requires kuu 0.9.0 or later, found " .. rt.version .. "; copy a supported kuu.exe into the repository root"))
 end
 task.defaults { timeout = "10m" }
 

@@ -38,6 +38,13 @@ sched.clock()          -- monotonic seconds, for measuring
 sched.now()            -- wall-clock Unix seconds; time.now() uses the same Windows clock
 ```
 
+`sched.clock` reads the performance counter, so its resolution is well under a
+microsecond; through 0.8 it resolved to exactly 1 millisecond, which could not
+measure anything short honestly. Its epoch is arbitrary and only differences
+between two readings mean anything. `sched.now` is wall time and can move
+backwards when the machine's clock is set; measure with `clock`, timestamp
+with `now`.
+
 Durations everywhere in kuu are a number of seconds or a string with a unit:
 `"250ms"`, `"30s"`, `"1.5m"`, `"2h"`. A string without a unit is refused.
 

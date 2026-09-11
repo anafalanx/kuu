@@ -25,9 +25,13 @@ A repository declares its tasks once in `tasks.lua` and runs them with
 `archive`. The manual rides inside the executable: `kuu docs`. kuu runs on
 Windows 11 23H2 and later, and Windows Server 2025 and later, only.
 
-Version 0.8 brings Windows 11 23H2 support and fixes the JSON duplicate-key
-diagnostic. The Lua API is unchanged from 0.7; see
-[upgrading to 0.8](docs/upgrading-0.8.md).
+Version 0.9.0 is the last release before the 1.0 freeze, and corrects contracts
+while correcting them is still allowed. The version grows a patch component,
+which breaks the minimum-version guard published through 0.8: replace it with
+`rt.at_least`. `fs.write` now retries its rename, closing an intermittent
+`FS access` failure. `svc`, `evt`, and `sys.signature` leave the planned freeze
+list until a project has driven them. See
+[upgrading to 0.9](docs/upgrading-0.9.md).
 
 ```text
 kuu FILE [arg ...]        run a Lua program file

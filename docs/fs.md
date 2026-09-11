@@ -32,6 +32,17 @@ torn file. It creates `name.kuu-<pid>-<tick>.tmp` in the same directory and
 renames it over the target, which a watcher sees as an added temporary file
 and a rename.
 
+The rename is retried, up to six attempts over a few tens of milliseconds,
+when it fails with access denied or a sharing violation. On Windows a scanner
+or an indexer routinely opens a file the moment its handle closes, and the
+rename of a freshly written temporary loses that race: 15 of 2000
+single-process writes failed that way on the owner's machine before the retry,
+and none of 4000 after. The retry bypasses no permission — a target that
+genuinely cannot be replaced still fails with `FS access`, only later — and it
+does not weaken atomicity, because each attempt either replaced the target or
+left it alone. A target somebody holds open for longer than that window still
+fails, and that is the intended answer rather than a defect.
+
 ## Facts about a path
 
 ```lua
@@ -74,8 +85,9 @@ for _, e in ipairs(l.entries) do print(e.name, e.kind, e.size, e.mtime) end
 
 local d = fs.dirs("C:/work", { depth = 3, prune = { "node_modules", ".git" } })
 d.root           -- as walked
-d.paths          -- every directory, depth-first, siblings in UTF-8 byte order
+d.paths          -- every directory entered, depth-first, siblings in UTF-8 byte order
 d.dirs           -- == #d.paths
+d.skipped        -- the directories a prune pattern excluded; never in d.paths
 d.links          -- { path, tag, surrogate, action, type, target } per reparse point
 d.errors         -- { path, win32, reason } per branch that could not be read
 d.pruned, d.depthlimited, d.maxdepth
@@ -87,6 +99,23 @@ directories are included. Nothing is omitted silently: a branch that could not
 be read is an `errors` row with the raw Windows code, and the counts add up.
 `depth` omitted is unlimited; `depth = 0` is the root alone. Prune patterns
 use `*` and `?`, match base names, and ignore case; at most 64 are accepted.
+
+**A pruned directory is not in `paths`.** It was excluded by name, so it is
+reported in `skipped` and `pruned` instead, and the plain walk below reads
+nothing the prune was asked to exclude:
+
+```lua
+for _, dir in ipairs(d.paths) do
+  for _, e in ipairs(fs.list(dir).entries) do ... end
+end
+```
+
+Through 0.8 a pruned directory appeared in `paths` and only its descent was
+skipped, so that loop listed the files of every excluded directory. Two
+independent programs made exactly that mistake. A directory stopped by the
+`depth` cap, or a link not followed, does stay in `paths`: those are the
+frontier the walk was asked to stop at, not names it was asked to exclude.
+See [upgrading to 0.9](upgrading-0.9.md).
 
 ## Watching
 

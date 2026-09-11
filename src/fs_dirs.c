@@ -363,10 +363,11 @@ typedef struct walk_item {
 
 typedef struct walk {
     lua_State *L;
-    int paths;  /* stack index of the paths array */
-    int links;  /* stack index of the links array */
-    int errors; /* stack index of the errors array */
-    lua_Integer path_count, link_count, error_count;
+    int paths;   /* stack index of the paths array */
+    int skipped; /* stack index of the skipped (pruned) array */
+    int links;   /* stack index of the links array */
+    int errors;  /* stack index of the errors array */
+    lua_Integer path_count, skipped_count, link_count, error_count;
     lua_Integer count, pruned, depthlimited, maxdepth;
     int depthcap;
     int unc;
@@ -446,11 +447,24 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
         luaL_checkstack(L, 8, "fs.dirs");
         /* Emission precedes every policy decision: pop, list, count, then
          * decide about descending.  Every skip is a descent skip. */
+        /* Decide before emitting.  A pruned directory was excluded by name, so
+         * it belongs in `skipped`, never in `paths`: listing it there made the
+         * obvious walk -- list the files of every path -- read exactly the
+         * content the prune was asked to exclude.  The depth cap and a name
+         * surrogate still emit into `paths`, because those directories are the
+         * frontier the caller asked to stop at rather than names it excluded. */
+        int depth_stop = (w->depthcap >= 0 && it.depth >= w->depthcap);
+        int prune_stop = (!depth_stop && it.pruned);
+
         char *shown = ku_wpath_show(it.path, w->unc);
         if (shown != NULL) {
             lua_pushstring(L, shown);
-            lua_rawseti(L, w->paths, ++w->path_count);
-            w->count++;
+            if (prune_stop) {
+                lua_rawseti(L, w->skipped, ++w->skipped_count);
+            } else {
+                lua_rawseti(L, w->paths, ++w->path_count);
+                w->count++;
+            }
         } else {
             walk_error(w, it.path, ERROR_NOT_ENOUGH_MEMORY);
         }
@@ -460,12 +474,12 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
         const char *action = "descended";
         int stop = 0;
         HANDLE h = INVALID_HANDLE_VALUE;
-        if (w->depthcap >= 0 && it.depth >= w->depthcap) {
+        if (depth_stop) {
             w->depthlimited++;
             action = "depthlimited";
             stop = 1;
         }
-        if (!stop && it.pruned) {
+        if (prune_stop) {
             w->pruned++;
             action = "pruned";
             stop = 1;
@@ -696,13 +710,15 @@ int ku_fs_dirs(lua_State *L)
     }
 
     lua_settop(L, 2);
-    lua_createtable(L, 0, 8); /* 3: result */
+    lua_createtable(L, 0, 9); /* 3: result */
     lua_newtable(L);          /* 4: paths */
     lua_newtable(L);          /* 5: links */
     lua_newtable(L);          /* 6: errors */
+    lua_newtable(L);          /* 7: skipped */
     w.paths = 4;
     w.links = 5;
     w.errors = 6;
+    w.skipped = 7;
     int status = walk_run(&w, root.text, root_reparse, root_tag);
     char *shown_root = ku_wpath_show(root.text, root.unc);
     ku_wpath_free(&root);
@@ -719,6 +735,8 @@ int ku_fs_dirs(lua_State *L)
     lua_setfield(L, 3, "links");
     lua_pushvalue(L, 6);
     lua_setfield(L, 3, "errors");
+    lua_pushvalue(L, 7);
+    lua_setfield(L, 3, "skipped");
     lua_pushinteger(L, w.count);
     lua_setfield(L, 3, "dirs");
     lua_pushinteger(L, w.pruned);

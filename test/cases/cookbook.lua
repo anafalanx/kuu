@@ -139,21 +139,32 @@ assert(starts == (initial == "running" and 0 or 1))
   local guard = stability:match("```lua\r?\n(.-)\r?\n```")
   check("stability documents a complete minimum-version guard", guard ~= nil)
   if guard then
-    local guard_path, driver_path = root .. "/version-guard.lua", root .. "/version-driver.lua"
+    local guard_path = root .. "/version-guard.lua"
     assert(fs.write(guard_path, guard))
-    assert(fs.write(driver_path, [[global none
-global <const> require, assert, load
-local rt, fs = require "rt", require "fs"
-rt.version = rt.args[2]
-assert(load(assert(fs.read(rt.args[1])), "@version-guard.lua", "t"))()
-]]))
     local checked = T.kuu { "check", guard_path }
     check("minimum-version guard passes kuu check", checked.code == 0
       and contains(checked.err, "0 errors, 0 warnings"), T.describe(checked))
-    for _, version in ipairs { "0.6", "0.7", "0.10", "1.0" } do
-      r = T.kuu { driver_path, guard_path, version }
-      check("minimum-version guard compares " .. version .. " numerically",
-        r.code == (version == "0.6" and 1 or 0), T.describe(r))
-    end
+    r = T.kuu { guard_path }
+    check("the documented guard accepts the runtime that ships it", r.code == 0, T.describe(r))
+
+    -- The guard no longer reads rt.version, so the comparison itself is what
+    -- needs exercising: a faked version field cannot stand in for it.
+    local probe = root .. "/at-least.lua"
+    assert(fs.write(probe, [[global none
+global <const> require, print, tostring, ipairs, table
+local rt = require "rt"
+local out = {}
+for _, want in ipairs { {0}, {0, 9}, {0, 9, 0}, {0, 9, 1}, {0, 10}, {1}, {1, 0} } do
+  out[#out + 1] = tostring(rt.version_at_least(table.unpack(want)))
+end
+print(table.concat(out, ","))
+]]))
+    r = T.kuu { probe }
+    check("version_at_least compares components numerically, so 0.10 follows 0.9",
+      r.code == 0 and r.out == "true,true,true,false,false,false,false\n", T.describe(r))
+
+    local bad = T.kuu { "-e", 'global none global <const> require require("rt").version_at_least("0.9")' }
+    check("a version component that is not a number raises RT badvalue",
+      bad.code == 1 and contains(bad.err, "RT badvalue"), T.describe(bad))
   end
 end

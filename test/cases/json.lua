@@ -29,6 +29,35 @@ return function(T)
   check("an empty table encodes as an object", json.encode({}) == "{}")
   check("json.array{} encodes as an empty array", json.encode(json.array {}) == "[]")
   check("json.null encodes as null", json.encode({ x = json.null }) == '{"x":null}')
+
+  -- json.object: a decided key order, because a Lua table has none and a
+  -- document compared byte for byte needs one.  New in 0.9.0.
+  do
+    local ordered = json.object {
+      { "tool", "sigil" }, { "version", "1" }, { "count", 14 },
+      { "files", json.array { json.object { { "path", "a.txt" }, { "size", 6 } } } },
+      { "none", json.null },
+    }
+    local text = '{"tool":"sigil","version":"1","count":14,"files":[{"path":"a.txt","size":6}],"none":null}'
+    check("json.object emits keys in the order given", json.encode(ordered) == text, json.encode(ordered))
+    check("the order is the same on every encode", json.encode(ordered) == json.encode(ordered))
+    check("json.object{} encodes as an empty object", json.encode(json.object {}) == "{}")
+    check("json.is_object tells them apart",
+      json.is_object(ordered) and not json.is_array(ordered)
+      and not json.is_object(json.array {}) and not json.is_object({}))
+    check("a decoded ordered document round trips by value", (function()
+      local back = json.decode(text)
+      return back.tool == "sigil" and back.version == "1" and back.count == 14
+        and back.files[1].path == "a.txt" and back.none == json.null
+    end)())
+    local ok1, e1 = pcall(json.encode, json.object { { "k" } })
+    check("an entry that is not a key/value pair is JSON badvalue",
+      not ok1 and err.is(e1, "JSON", "badvalue"), tostring(e1))
+    local ok2, e2 = pcall(json.encode, json.object { { 1, "x" } })
+    check("a non-string key is JSON badvalue", not ok2 and err.is(e2, "JSON", "badvalue"), tostring(e2))
+    local ok3, e3 = pcall(json.object, "not a table")
+    check("json.object refuses a non-table", not ok3, tostring(e3))
+  end
   check("integral floats keep a decimal point", json.encode(2.0) == "2.0")
   check("pretty output has newlines and two-space indents", contains(json.encode({ a = { 1 } }, { pretty = true }), '{\n  "a": [\n    1\n  ]\n}'))
 

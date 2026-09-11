@@ -36,6 +36,33 @@ Integers survive exactly; a document carrying 64-bit identifiers round-trips
 without loss. Integers beyond 64 bits decode as floats. Integral floats encode
 with a decimal point (`2.0`), so the two number kinds do not blur.
 
+## A decided key order
+
+A Lua table has no key order, so an object built from one encodes in whatever
+order the hash gives. That order is stable within a build, but it is not a
+promised interface and it cannot be chosen. A document compared byte for byte
+— a manifest, a lockfile, a golden fixture, anything signed — needs one, so
+`json.object` takes the pairs in the order they are to be written:
+
+```lua
+json.encode(json.object {
+  { "tool",    "sigil" },
+  { "version", "1" },
+  { "count",   14 },
+  { "files",   json.array { json.object { { "path", "a.txt" }, { "size", 6 } } } },
+})
+-- {"tool":"sigil","version":"1","count":14,"files":[{"path":"a.txt","size":6}]}
+
+json.object {}      -- encodes as {}
+json.is_object(v)   -- true for a marked ordered object
+```
+
+It marks the table it is given, exactly as `json.array` does, and nests at any
+depth. Each entry must be a two-element `{ key, value }` table whose key is a
+string; anything else raises `JSON badvalue` naming the entry. Decoding is
+unchanged: a document read back is an ordinary table, because the order is a
+property of writing, not of the value.
+
 ## Refusals
 
 Decoding is strict: a duplicate object key is `JSON duplicate` at any depth,

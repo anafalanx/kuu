@@ -12,7 +12,7 @@ later. The runtime uses native Windows process, console and filesystem APIs.
 Console shutdown adapts to the older 23H2 lifetime contract; the Lua API is
 the same on every supported version.
 
-This is version 0.8: the runner, the scheduler with scoped deadlines,
+This is version 0.9.0: the runner, the scheduler with scoped deadlines,
 processes with resource limits (its own children and the others on the machine), files, JSON, CSV, INI, HTTP, archives,
 hashing, text encodings, regular expressions, time, logging, argument
 parsing, a repository's tasks, a memory across runs, the machine's own facts,
@@ -49,7 +49,8 @@ array of the `rt` module. There is no `arg` global.
 ```lua
 local rt = require("rt")
 print(rt.version, rt.lua, rt.route, rt.exe, rt.program, #rt.args)
--- 0.8  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
+-- 0.9.0  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
+rt.version_at_least(0, 9)   -- true: this runtime is 0.9.0 or newer
 ```
 
 `rt.route` is `"file"`, `"stdin"`, `"eval"`, or `"cmd"` for a verb such as
@@ -153,6 +154,9 @@ Failures kuu detects before the program runs are spelled
 - [check](check.md): what `kuu check` finds without running a file.
 - [Toolchain](toolchain.md): what kuu's own `.tools` holds and where it comes
   from.
+- [Upgrading to 0.9](upgrading-0.9.md): the version grows a patch component,
+  which breaks the old pattern guard; `rt.version_at_least` replaces it. The atomic
+  write retries its rename, and three modules leave the planned freeze.
 - [Upgrading to 0.8](upgrading-0.8.md): Windows 11 23H2 support and the JSON
   duplicate-key diagnostic fix, with the same Lua API.
 - [Upgrading to 0.7](upgrading-0.7.md): deadlines, child limits, services,

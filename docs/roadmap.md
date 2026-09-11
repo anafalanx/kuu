@@ -16,7 +16,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | compiler | gcc 16.1 from MSYS2 UCRT64, copied into `.tools` | the estate's proven recipe; gcc and GNU make are the chosen production build, with Clang only for sanitizer tests |
 | build | GNU make from the same `.tools`, recipes under `cmd.exe` | no PowerShell in the repository, and kuu never builds kuu: the build is make and gcc, the tests are Lua run by the built kuu |
 | self-hosting | none, by owner decision | kuu is not required to bootstrap or build itself; a person with `.tools` populated runs `make` |
-| versions | `Major.Minor`, both natural numbers | 0.1, 0.2, ...; no patch component |
+| versions | `Major.Minor.Patch`, all natural numbers, since 0.9.0 | 0.1 through 0.8 had no patch component; a frozen 1.x needs a way to ship one correction without claiming new capability, and the component is cheaper to add before the freeze than after it. `rt.version_at_least` compares them so no project parses the text |
 | dependency pinning | none: a project fetches what it needs by url and hash with `http` and `archive`; kuu's own compiler is copied by hand | the lock built in 0.3 was removed in 0.4 as formalism; kuu does not bootstrap itself |
 | the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has only stock Lua's `io` and `os`, and a static check can list what else a file asks for |
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
@@ -57,7 +57,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `re` on PCRE2; `time`; `debug.traceback` and `debug.getinfo` only; `csv`, `ini`; the adopting page of the manual | 0.5 |
 | `reg`; `env`: the live environment and the persisted one, with the change broadcast | 0.5 |
 | `proc.list`, `proc.find`, `proc.tree`; `net.probe`, `net.listeners`, `net.resolve`, `net.addresses` | 0.5 |
-| `worker` processes; `serve` | deferred, on a real project need |
+| `worker` processes; `serve` | deferred to 1.1; prototyped on the 0.9.0 surface, which reached 2.74x on sixteen CPU-bound jobs using only `sched.spawn`/`join` and a streaming `proc` child, so nothing in the freeze has to move for it |
 | review fixes, dependency-only tasks, duration units, Unicode archives, TLS diagnostics, process path consistency; analysis and parser fuzz gates | 0.6 |
 | job-wide `proc` limits on memory, user CPU time, and active processes; result `status = "limit"` with its kind | 0.7 |
 | `sched.deadline` across waits; `task.defaults { timeout = ... }`; `task.exec` leaves the caller's options table untouched | 0.7 |
@@ -67,6 +67,12 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | ten executable cookbook programs; public stability statement and minimum-version guards; complete module map and JSON schemas | 0.7 |
 | `make gate`: suite, analysis, expanded parser fuzzing, soak; separate pinned Clang AddressSanitizer build required for release | 0.7 |
 | Windows 11 23H2 support with safe console shutdown; JSON duplicate-key diagnostic lifetime fix; unchanged Lua API | 0.8 |
+| `Major.Minor.Patch` versions and `rt.version_at_least`, replacing the pattern guard the third component breaks | 0.9.0 |
+| `fs.write` retries its rename over the target on transient sharing failures, closing the `FS access` finding open since 0.5 | 0.9.0 |
+| `fs.dirs` reports a pruned directory in `skipped` instead of `paths`, so the plain walk reads nothing the prune excluded | 0.9.0 |
+| `json.object`, an ordered object beside `json.array`, for documents compared byte for byte | 0.9.0 |
+| `sched.clock` on the performance counter: 1 ms resolution becomes about 500 ns | 0.9.0 |
+| `svc`, `evt`, `sys.signature` become provisional, outside the planned freeze until a project has driven them | 0.9.0 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
 
@@ -196,11 +202,38 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    keeps its parser-owned key alive while formatting the error. See
    [upgrading to 0.8](upgrading-0.8.md) and the validation evidence in
    [observed shortcomings](shortcomings.md).
-9. **1.0.** Criteria for the owner to set. Proposed: three projects driven
+9. **0.9.0, the pre-freeze correction release.** The last release in which a
+   contract may still be corrected, so it is mostly subtraction and
+   correction rather than features: additions stay legal at 1.x, contract
+   changes do not. The version grows a patch component and `rt.version_at_least`
+   replaces the published pattern guard, which `0.9.0` would otherwise break.
+   `svc`, `evt`, and `sys.signature` leave the freeze list until a project
+   has driven them. `fs.write` retries its rename, closing the intermittent
+   `FS access` failure that had left the suite red: one process reproduced it
+   15 times in 2000 writes, every one recovered on an immediate retry, and
+   4000 writes after the change failed none. A pruned directory leaves
+   `fs.dirs`'s `paths` for a new `skipped`, because listing it there made the
+   obvious walk read exactly the content the prune excluded. `json.object`
+   gives a document a decided key order, so a manifest no longer needs a
+   hand-rolled emitter. `sched.clock` reads the performance counter instead of
+   the loop's millisecond tick, taking its resolution from 1 ms to about
+   500 ns. The numeric-handoff audit found no boundary where unit agreement
+   was only conventional. A pool prototyped on the 0.9.0 surface reached 2.74x
+   on sixteen CPU-bound jobs using nothing outside the freeze list, so
+   `worker` and `serve` can still wait for 1.1 and are not a freeze blocker.
+   Every component of `make gate` passes: the suite five times over, native
+   analysis, parser fuzzing, and — for the first time on any host — a soak
+   gate with zero failures. See [upgrading to 0.9](upgrading-0.9.md).
+10. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
-   verdict. Between 0.8 and 1.0: the freeze, the month of use, and corrections
-   driven by what that use finds.
+   verdict. Two amendments agreed on 2026-09-11: a **clean soak gate on every
+   target host**, since freezing while it is knowingly unclean rests the 1.x
+   promise on a signal nobody trusts; and **at least one cold adopter**,
+   because every adoption finding on record comes from Time Actual, which
+   co-evolved with the runtime and therefore routes around contract mistakes
+   instead of reporting them. Between 0.9.0 and 1.0: the freeze, the month of
+   use, and corrections driven by what that use finds.
 
 ## The 0.5 review: fixes implemented
 

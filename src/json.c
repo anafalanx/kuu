@@ -34,6 +34,7 @@
 
 #define KU_JSON_MAX_DEPTH 512
 #define KU_JSON_ARRAY_META "kuu.json.array"
+#define KU_JSON_OBJECT_META "kuu.json.object"
 #define KU_JSON_NULL_KEY "kuu.json.null"
 
 /* ---- the sentinels -------------------------------------------------------- */
@@ -67,6 +68,24 @@ static int is_marked_array(lua_State *L, int idx)
         return 0;
     }
     luaL_getmetatable(L, KU_JSON_ARRAY_META);
+    int same = lua_rawequal(L, -1, -2);
+    lua_pop(L, 2);
+    return same;
+}
+
+static void mark_object(lua_State *L, int idx)
+{
+    idx = lua_absindex(L, idx);
+    luaL_getmetatable(L, KU_JSON_OBJECT_META);
+    lua_setmetatable(L, idx);
+}
+
+static int is_marked_object(lua_State *L, int idx)
+{
+    if (!lua_getmetatable(L, idx)) {
+        return 0;
+    }
+    luaL_getmetatable(L, KU_JSON_OBJECT_META);
     int same = lua_rawequal(L, -1, -2);
     lua_pop(L, 2);
     return same;
@@ -307,6 +326,40 @@ static yyjson_mut_val *build(lua_State *L, yyjson_mut_doc *doc, int idx, int dep
     case LUA_TTABLE: {
         lua_Integer n = 0;
         luaL_checkstack(L, 4, "json");
+        /* An ordered object: an array of { key, value } pairs emitted in the
+         * order given.  A Lua table has no key order, so a document that is
+         * compared byte for byte -- a manifest, a lockfile, a golden fixture --
+         * cannot be built from one.  Checked before the array tests, because
+         * the pair list is itself a sequence. */
+        if (is_marked_object(L, idx)) {
+            yyjson_mut_val *ordered = yyjson_mut_obj(doc);
+            n = (lua_Integer)lua_rawlen(L, idx);
+            for (lua_Integer i = 1; i <= n; i++) {
+                lua_rawgeti(L, idx, i);
+                if (lua_type(L, -1) != LUA_TTABLE || lua_rawlen(L, -1) != 2) {
+                    ku_err_raise(L, "JSON", "badvalue",
+                                 "json.object entry %d must be a { key, value } pair", (int)i);
+                }
+                lua_rawgeti(L, -1, 1);
+                if (lua_type(L, -1) != LUA_TSTRING) {
+                    ku_err_raise(L, "JSON", "badvalue",
+                                 "json.object key %d must be a string, got %s",
+                                 (int)i, luaL_typename(L, -1));
+                }
+                size_t klen = 0;
+                const char *k = lua_tolstring(L, -1, &klen);
+                if (!ku_utf8_valid((const unsigned char *)k, klen)) {
+                    ku_err_raise(L, "JSON", "encoding", "an object key is not valid UTF-8");
+                }
+                yyjson_mut_val *key = yyjson_mut_strn(doc, k, klen);
+                lua_pop(L, 1);
+                lua_rawgeti(L, -1, 2);
+                yyjson_mut_val *value = build(L, doc, -1, depth + 1);
+                lua_pop(L, 2);
+                yyjson_mut_obj_add(ordered, key, value);
+            }
+            return ordered;
+        }
         if (is_marked_array(L, idx) || is_sequence(L, idx, &n)) {
             yyjson_mut_val *arr = yyjson_mut_arr(doc);
             n = (lua_Integer)lua_rawlen(L, idx);
@@ -416,6 +469,26 @@ static int l_json_is_array(lua_State *L)
     return 1;
 }
 
+/* json.object([pairs]) -> pairs marked as an object with a decided key order */
+static int l_json_object(lua_State *L)
+{
+    if (lua_isnoneornil(L, 1)) {
+        lua_settop(L, 0);
+        lua_newtable(L);
+    } else {
+        luaL_checktype(L, 1, LUA_TTABLE);
+        lua_settop(L, 1);
+    }
+    mark_object(L, 1);
+    return 1;
+}
+
+static int l_json_is_object(lua_State *L)
+{
+    lua_pushboolean(L, lua_type(L, 1) == LUA_TTABLE && is_marked_object(L, 1));
+    return 1;
+}
+
 static int null_tostring(lua_State *L)
 {
     lua_pushliteral(L, "null");
@@ -426,6 +499,11 @@ int ku_open_json(lua_State *L)
 {
     if (luaL_newmetatable(L, KU_JSON_ARRAY_META)) {
         lua_pushliteral(L, "json.array");
+        lua_setfield(L, -2, "__name");
+    }
+    lua_pop(L, 1);
+    if (luaL_newmetatable(L, KU_JSON_OBJECT_META)) {
+        lua_pushliteral(L, "json.object");
         lua_setfield(L, -2, "__name");
     }
     lua_pop(L, 1);
@@ -450,6 +528,8 @@ int ku_open_json(lua_State *L)
         {"encode", l_json_encode},
         {"array", l_json_array},
         {"is_array", l_json_is_array},
+        {"object", l_json_object},
+        {"is_object", l_json_is_object},
         {NULL, NULL},
     };
     luaL_newlib(L, functions);
