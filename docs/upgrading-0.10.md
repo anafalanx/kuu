@@ -73,11 +73,11 @@ Error **domains** are not checked, only the codes inside a domain kuu owns.
 `err.new` is public and a project names its own, so an unfamiliar domain says
 nothing about correctness.
 
-**Grep as well as check.** All four follow the local binding, so
-`require("rt").version == "0.5"` written inline is invisible where
-`local rt = require "rt"` then `rt.version == "0.5"` is reported. The two dead
-branches above are of the inline shape, so upgrading will not surface them;
-only reading the code will. See [check](check.md).
+All four follow a module indexed where it is required as readily as one
+reached through a local binding, so `require("rt").version == "0.5"` is
+reported and so is `require("proc").run { cwdd = "x" }`. The two dead branches
+above are of that shape, and upgrading is what found them. A computed
+`require(name)` is still left alone.
 
 ## `check` reads a project's own modules too
 

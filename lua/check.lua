@@ -450,6 +450,14 @@ local function inspect(tokens, report, root)
           local call = { name = args[1].literal, line = t.line }
           calls[#calls + 1] = call
           result.call = call
+          -- Indexed where it is required, `require("rt").version` is the same
+          -- access as through a local binding, and it is the shape a real
+          -- project turned out to use for two branches none of these checks
+          -- saw. A binding of its own stands in for the local one: it is in no
+          -- scope, so nothing can shadow or reassign it, and everything
+          -- downstream -- names, codes, options, closed sets -- is unchanged.
+          result.binding = { call = call }
+          result.name = "require(\"" .. call.name .. "\")"
         elseif original.module then
           contracts[#contracts + 1] = { kind = "call", binding = original.binding,
             module = original.module, member = original.member,

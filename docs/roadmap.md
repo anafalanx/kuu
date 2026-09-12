@@ -75,7 +75,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `json.object`, an ordered object beside `json.array`, for documents compared byte for byte | 0.9.0 |
 | `sched.clock` on the performance counter: 1 ms resolution becomes about 500 ns | 0.9.0 |
 | `svc`, `evt`, `sys.signature` become provisional, outside the planned freeze until a project has driven them | 0.9.0 |
-| `check` reads `_palette`, an authored description of kuu's interface: an error code its domain lacks, an option a call does not take, a closed set compared with a non-member, `rt.version` compared by text | 0.10.0 |
+| `check` reads `_palette`, an authored description of kuu's interface: an error code its domain lacks, an option a call does not take, a closed set compared with a non-member, `rt.version` compared by text; through a local binding or a module indexed where it is required | 0.10.0 |
 | `check` reads a project's own modules from their text, so its exports are checked too; an export set the text cannot bound goes unchecked rather than guessed. `check.exports`, `check.modules` | 0.10.0 |
 | `kuu check --fix [--adopt]`: the global declaration written in both directions, the Lua compiler as the authority, and a refusal to declare a name this runtime lacks | 0.10.0 |
 | `kuu capabilities [--json]`: the verbs, the public modules and their names, the error domains and closed sets, and this project's tasks and modules; `rt.verbs`, `rt.pages` | 0.10.0 |
@@ -264,9 +264,9 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    not take, a closed set compared with a literal outside it, and `rt.version`
    compared by text are now errors. Time Actual carries two of the last kind,
    dead since 0.6, which survived the commit that migrated it and a review
-   looking for exactly them — and which `check` still does not see, because
-   they index the module where they require it rather than through a binding,
-   which is the one shape none of these four follows.
+   looking for exactly them, and which the first draft of these checks also
+   walked past: they index the module where they require it, and only a local
+   binding was followed. Both shapes are now, which is what found them.
    Domains themselves stay open, since `err.new` is
    public and projects name their own: the first draft that checked them
    offered `TEXT` for the suite's `TEST`, one edit away, on a correct line.

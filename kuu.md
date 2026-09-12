@@ -1534,12 +1534,12 @@ through another variable, function arguments, or a function result are not
 inferred. Shadowing or reassigning `require` likewise stops treating it as
 kuu's loader in that scope.
 
-**A module indexed where it is required is not checked.** The binding is what
-`check` follows, so `require("rt").version == "0.5"` inside an expression is
-invisible to every check on this page, where the same comparison through
-`local rt = require "rt"` is reported. A project carries two of exactly that
-shape; grep for `require(` followed by a dot when a version or a code set
-matters, since this will not find them.
+A module indexed where it is required is followed too:
+`require("rt").version == "0.5"` reports exactly as it would through a local
+binding, and so does `require("proc").run { cwdd = "x" }`. Such an expression
+has no binding to shadow or reassign, so nothing can make it uncertain. The
+module name must be a literal, as it must be everywhere else here; a computed
+`require(name)` says nothing and is left alone.
 
 Four things are checked against kuu's own interface, and all four are
 mistakes that run without complaint today. A code its domain does not have,
@@ -4305,7 +4305,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `json.object`, an ordered object beside `json.array`, for documents compared byte for byte | 0.9.0 |
 | `sched.clock` on the performance counter: 1 ms resolution becomes about 500 ns | 0.9.0 |
 | `svc`, `evt`, `sys.signature` become provisional, outside the planned freeze until a project has driven them | 0.9.0 |
-| `check` reads `_palette`, an authored description of kuu's interface: an error code its domain lacks, an option a call does not take, a closed set compared with a non-member, `rt.version` compared by text | 0.10.0 |
+| `check` reads `_palette`, an authored description of kuu's interface: an error code its domain lacks, an option a call does not take, a closed set compared with a non-member, `rt.version` compared by text; through a local binding or a module indexed where it is required | 0.10.0 |
 | `check` reads a project's own modules from their text, so its exports are checked too; an export set the text cannot bound goes unchecked rather than guessed. `check.exports`, `check.modules` | 0.10.0 |
 | `kuu check --fix [--adopt]`: the global declaration written in both directions, the Lua compiler as the authority, and a refusal to declare a name this runtime lacks | 0.10.0 |
 | `kuu capabilities [--json]`: the verbs, the public modules and their names, the error domains and closed sets, and this project's tasks and modules; `rt.verbs`, `rt.pages` | 0.10.0 |
@@ -4494,9 +4494,9 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    not take, a closed set compared with a literal outside it, and `rt.version`
    compared by text are now errors. Time Actual carries two of the last kind,
    dead since 0.6, which survived the commit that migrated it and a review
-   looking for exactly them — and which `check` still does not see, because
-   they index the module where they require it rather than through a binding,
-   which is the one shape none of these four follows.
+   looking for exactly them, and which the first draft of these checks also
+   walked past: they index the module where they require it, and only a local
+   binding was followed. Both shapes are now, which is what found them.
    Domains themselves stay open, since `err.new` is
    public and projects name their own: the first draft that checked them
    offered `TEXT` for the suite's `TEST`, one edit away, on a correct line.
@@ -5581,11 +5581,11 @@ Error **domains** are not checked, only the codes inside a domain kuu owns.
 `err.new` is public and a project names its own, so an unfamiliar domain says
 nothing about correctness.
 
-**Grep as well as check.** All four follow the local binding, so
-`require("rt").version == "0.5"` written inline is invisible where
-`local rt = require "rt"` then `rt.version == "0.5"` is reported. The two dead
-branches above are of the inline shape, so upgrading will not surface them;
-only reading the code will. See [check](#check).
+All four follow a module indexed where it is required as readily as one
+reached through a local binding, so `require("rt").version == "0.5"` is
+reported and so is `require("proc").run { cwdd = "x" }`. The two dead branches
+above are of that shape, and upgrading is what found them. A computed
+`require(name)` is still left alone.
 
 ### `check` reads a project's own modules too
 

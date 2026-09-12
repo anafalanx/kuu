@@ -212,6 +212,42 @@ other.custom()
     report = inspect(head .. 'if rt.route == "file" then print(1) end\n')
     check("a literal inside it is not", #report.errors == 0, first(report))
 
+    -- Indexed where it is required. A consuming project carried two dead
+    -- `require('rt').version == '0.5'` branches that every check above walked
+    -- past, because each followed the local binding and this shape has none.
+    local bare = 'global none\nglobal <const> require, print\n'
+    report = inspect(bare .. 'if require("rt").version == "0.5" then print(1) end\n')
+    check("a module indexed where it is required is checked too",
+      #report.errors == 1 and report.errors[1].kind == "value"
+        and contains(report.errors[1].message, 'require("rt").version is Major.Minor.Patch'),
+      first(report))
+
+    report = inspect(bare .. 'print(require("fs").exist("x"))\n')
+    check("and its names are",
+      #report.errors == 1 and report.errors[1].kind == "name"
+        and report.errors[1].module == "fs" and report.errors[1].suggestion == "exists",
+      first(report))
+
+    report = inspect(bare .. 'print(require("proc").run { "git", cwdd = "x" })\n')
+    check("and its options are",
+      #report.errors == 1 and report.errors[1].kind == "option"
+        and report.errors[1].suggestion == "cwd", first(report))
+
+    report = inspect(bare .. 'if require("err").is(nil, "PROC", "notfund") then print(1) end\n')
+    check("and its codes are",
+      #report.errors == 1 and report.errors[1].kind == "code"
+        and report.errors[1].suggestion == "notfound", first(report))
+
+    report = inspect(bare .. 'print(require("fs").exists("x"), require("rt").version_at_least(0, 9))\n')
+    check("a correct one through that shape is still not an error",
+      #report.errors == 0, first(report))
+
+    -- The name it is required by is the only thing that shape can be read
+    -- from, so a computed one says nothing and is left alone.
+    report = inspect(bare .. 'local n = "fs"\nprint(require(n).exist("x"))\n')
+    check("a computed module name through it is left alone",
+      #report.errors == 0, first(report))
+
     -- A reassigned binding is uncertain, and its findings are dropped like
     -- every other finding on one.
     report = inspect(head .. 'proc = nil\nlocal r = proc.run { cwdd = "x" }\nprint(r)\n')
