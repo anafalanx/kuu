@@ -73,6 +73,13 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `json.object`, an ordered object beside `json.array`, for documents compared byte for byte | 0.9.0 |
 | `sched.clock` on the performance counter: 1 ms resolution becomes about 500 ns | 0.9.0 |
 | `svc`, `evt`, `sys.signature` become provisional, outside the planned freeze until a project has driven them | 0.9.0 |
+| `check` reads `_palette`, an authored description of kuu's interface: an error code its domain lacks, an option a call does not take, a closed set compared with a non-member, `rt.version` compared by text | 0.10.0 |
+| `check` reads a project's own modules from their text, so its exports are checked too; an export set the text cannot bound goes unchecked rather than guessed. `check.exports`, `check.modules` | 0.10.0 |
+| `kuu check --fix [--adopt]`: the global declaration written in both directions, the Lua compiler as the authority, and a refusal to declare a name this runtime lacks | 0.10.0 |
+| `kuu capabilities [--json]`: the verbs, the public modules and their names, the error domains and closed sets, and this project's tasks and modules; `rt.verbs`, `rt.pages` | 0.10.0 |
+| `text.trim`, native, replacing a helper hand-rolled six times; the unanchored `$` out of every hot path in `lua/` and `tools/`; `check` lexes by byte | 0.10.0 |
+| `kuu.md`: what kuu is, what its predecessors taught, and the whole manual inlined by `tools/bundle_docs.lua`, held to `docs/` by the suite | 0.10.0 |
+| no language: no successor, no compiler, no emission subset; capabilities and options instead | decided 2026-09-11 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
 
@@ -224,7 +231,86 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    Every component of `make gate` passes: the suite five times over, native
    analysis, parser fuzzing, and — for the first time on any host — a soak
    gate with zero failures. See [upgrading to 0.9](upgrading-0.9.md).
-10. **1.0.** Criteria for the owner to set. Proposed: three projects driven
+10. **0.10.0, the interface described, and no language.** On main and
+   unreleased: the executable still reports `0.9.0`. The owner decided on
+   2026-09-11 that there is no successor language, no compiler and no emission
+   subset; kuu is a runtime for Lua 5.5, and grows capabilities in the palette
+   and options on the calls already there. `kuu.md` lost the part that
+   described the direction, with four design notes and the subset checker.
+   What the release adds instead is what kuu can say about a program before it
+   runs. `lua/_palette.lua` is an authored description of kuu's own interface
+   — 27 error domains with their code sets, 16 closed sets, and per-function
+   options and results for the modules carrying the most field access — and
+   `check` reads it, so a code its domain does not have, an option a call does
+   not take, a closed set compared with a literal outside it, and `rt.version`
+   compared by text are now errors. Time Actual carries two of the last kind,
+   dead since 0.6, which survived the commit that migrated it and a review
+   looking for exactly them. Domains themselves stay open, since `err.new` is
+   public and projects name their own: the first draft that checked them
+   offered `TEXT` for the suite's `TEST`, one edit away, on a correct line.
+   The description is authored because scraping was tried, and returned option
+   names, result fields and `re`'s flags as error codes and nothing at all for
+   six domains. `check.file`'s documented error kinds grow from three to six,
+   and `--fix` adds two report fields beside them.
+   - A project's own modules are read from their text too, which in a
+     consuming project is the larger half: Time Actual reaches through one of
+     them 210 times and nothing verified a call. Exports come from what a
+     module assigns to the table it returns, 73 of the 75 export sites in the
+     corpus, and project code is still never executed. A module whose export
+     set the text cannot bound goes unchecked rather than guessed at, because
+     a field wrongly included costs a missed diagnostic while one wrongly
+     excluded is a false positive on correct code. `kuu check --fix` writes
+     the global declaration in both directions, with the Lua compiler as the
+     authority and a refusal to declare a name this runtime lacks, so
+     `print(reuslt)` keeps its error instead of acquiring a silent nil; 54
+     declared names in kuu's own Lua were used nowhere, a forgotten addition
+     failing loudly and a forgotten removal never. `kuu capabilities` reports
+     the verbs, the 27 public modules and the 176 names they export, the
+     domains and the closed sets, and a project's tasks and modules — and not
+     what a task installs under `.tools`, of which kuu keeps no manifest.
+   - Strings, where the cost was a pattern. A Lua pattern ending in `$` is not
+     anchored, so `s:match("%s$")` is retried at every position: one byte of
+     information for a scan of the whole string. That one call was 65% of
+     `csv.encode`, which over 50,000 rows went from 303 ms to 183; `ini.decode`
+     over 20,000 keys went 171 to 88, and to 69 once `text.trim` existed —
+     native, because a byte walk in Lua pays a crossing per byte, at 300 ms by
+     pattern, 111 ms in Lua and 13 ms in C over a 15-byte line trimmed 300,000
+     times. `check` lexes by byte instead of matching patterns against
+     one-character substrings, 448 ms to 327 over `lua`, `tools` and `test`.
+     Two measurements went the other way: flattening a build to avoid
+     intermediate strings measured 1.03x, so no string builder was written;
+     and `log`'s `format_text` on one `table.concat` ran 30% slower and was
+     reverted, so [pitfalls](pitfalls.md) now carries the crossover, about ten
+     short pieces, instead of the rule it was written from.
+   - Recorded, not built. `_ENV` is an upvalue, so under `global none` with
+     nothing declared it reaches `load` and the whole palette while
+     `kuu check --json` reports `"requires":[]` and a clean bill; the `require`
+     gate holds only for a program that does not reach around it, and the
+     small answer, reporting such a reference from `check`, is unimplemented
+     ([observations](shortcomings.md)). And a JavaScript capability is
+     designed, on Deno: about 24 MB, downloaded by the consumer on request,
+     pinned to the kuu release that uses it, never shipped, never fetched in a
+     non-interactive run, unpacked into the project's own `.kuu/`. It won on
+     the one property Tcl with twapi and a compiled Go helper per capability
+     both lack, an explicit permission model, which is what keeps a capability
+     gate over a general escape hatch; it is also the youngest of the three,
+     2.0 having broken compatibility in 2024 under a company rather than a
+     foundation, and pinning is what makes that acceptable, since churn
+     upstream cannot reach a project that never re-pins. PowerShell through a
+     bridge was rejected on four counts, one a measured 68 MB idle working set
+     per bridge against kuu's 1.6 MB. Replaceability comes from the internal
+     boundary, one module owning the runtime and every engine-specific call
+     going through one shim, not from where the engine is named. See
+     [the JavaScript capability design](../notes/design-js-capability-2026-09-12_155114.md).
+   - The suite is at 1140 checks, with four new cases: `_palette` held to the
+     runtime, to the manual in both directions and to itself; `capabilities`;
+     the fixer's invariant, which keeps every declaration outside
+     `test/fixtures` correct so a name that falls out of use fails instead of
+     rotting; and `kuu.md` regenerated and compared. `docs/capabilities.md` is
+     the manual's forty-first page. Outstanding: there is no upgrading page for
+     this release, and [stability](stability.md) still names four verbs, so
+     nothing yet says whether `capabilities` is inside the 1.0 freeze.
+11. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
    verdict. Two amendments agreed on 2026-09-11: a **clean soak gate on every
