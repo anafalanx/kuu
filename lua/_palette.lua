@@ -27,6 +27,20 @@ global none
 
 return {
 
+-- The public modules, in the order the manual's table introduces them, which
+-- is roughly the order an agent reaches for them.  `capabilities` reports
+-- this list, so it has to be the contract and not a guess: a name here is a
+-- promise, and `project` is the counterexample -- a module kuu ships, with no
+-- underscore and no page, that no program outside kuu may require.
+--
+-- This is a different question from the one `check` asks.  `check` wants to
+-- know whether it can read a module's exports, and the answer is yes for
+-- anything kuu carries; this is what a program may rely on.
+public = { "proc", "fs", "http", "sched", "json", "hash", "text", "log",
+           "cli", "err", "task", "check", "archive", "sys", "svc", "evt",
+           "pty", "mem", "sync", "re", "time", "net", "csv", "ini", "reg",
+           "env", "rt" },
+
 -- Nominal scalars.  Each is a Lua number or string that carries a unit or a
 -- shape the language cannot see, which is exactly where mistakes hide: the
 -- worst bug on record turned a 100 ms deadline into a 100 second one between
@@ -254,6 +268,8 @@ modules = {
     args             = { field = "table" },
     root             = { result = "string" },
     source           = { result = "string?" },
+    verbs            = { result = "table" },
+    pages            = { result = "table" },
   },
 
   err = {

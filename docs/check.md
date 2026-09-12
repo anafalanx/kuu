@@ -180,6 +180,14 @@ In a program, `require("check").file(path, root)` returns
 `{path, errors, warnings, requires}` with an absolute `path` and the same
 finding kinds. `check.tree(dir, root)` returns `{root, reports = {...}}`.
 
+The extraction above is reachable on its own. `check.exports(path)` is the set
+of names a module exports, read from its text, or nil when the text does not
+bound them; `check.modules(root)` returns
+`{root, files, modules = {{name, path, exports}, ...}}` -- every `.lua` file
+below the root that a `require` name could reach and whose exports it could
+bound, in name order, with `files` counting all of them.
+[capabilities](capabilities.md) reports what it returns.
+
 ## Errors
 
 The command's complete `CHECK` code set is `notfound`, for an explicitly

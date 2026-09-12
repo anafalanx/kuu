@@ -153,6 +153,58 @@ static int l_rt_source(lua_State *L)
     return 1;
 }
 
+/* The names carried under `prefix` and ending in `suffix`, at that level
+ * only, in order.  Selection over the payload rather than a sort buffer: the
+ * sets are small, and this way there is nothing to allocate and nothing to
+ * free on the error path.  Whole names are compared, which orders the bases
+ * identically because every candidate shares the prefix and the suffix. */
+static int push_payload_names(lua_State *L, const char *prefix, const char *suffix)
+{
+    size_t prefix_length = strlen(prefix), suffix_length = strlen(suffix);
+    lua_newtable(L);
+    const char *previous = NULL;
+    int n = 0;
+    for (;;) {
+        const ku_payload_entry *best = NULL;
+        for (const ku_payload_entry *e = ku_payload; e->name != NULL; e++) {
+            size_t length = strlen(e->name);
+            if (length <= prefix_length + suffix_length ||
+                strncmp(e->name, prefix, prefix_length) != 0 ||
+                strcmp(e->name + length - suffix_length, suffix) != 0 ||
+                memchr(e->name + prefix_length, '/', length - prefix_length - suffix_length) != NULL) {
+                continue;
+            }
+            if (previous != NULL && strcmp(e->name, previous) <= 0) {
+                continue;
+            }
+            if (best == NULL || strcmp(e->name, best->name) < 0) {
+                best = e;
+            }
+        }
+        if (best == NULL) {
+            return 1;
+        }
+        previous = best->name;
+        lua_pushlstring(L, best->name + prefix_length, strlen(best->name) - prefix_length - suffix_length);
+        lua_rawseti(L, -2, ++n);
+    }
+}
+
+/* rt.verbs() -> the verbs this executable answers to; rt.pages() -> the
+ * manual's pages.  Both are carried in the payload, where Lua cannot see
+ * them: a verb is a program under lua/cmd and a page is a file under docs,
+ * and neither reaches package.preload.  `capabilities` reports both, and
+ * without these it would have to keep a list of its own that drifts. */
+static int l_rt_verbs(lua_State *L)
+{
+    return push_payload_names(L, "lua/cmd/", ".lua");
+}
+
+static int l_rt_pages(lua_State *L)
+{
+    return push_payload_names(L, "docs/", ".md");
+}
+
 static int ku_searcher(lua_State *L)
 {
     const char *name = luaL_checkstring(L, 1);
@@ -250,7 +302,7 @@ static int ku_rt_open(lua_State *L)
 
 static void push_rt_table(lua_State *L, const ku_launch *launch)
 {
-    lua_createtable(L, 0, 6);
+    lua_createtable(L, 0, 11);
     lua_pushliteral(L, KUU_VERSION);
     lua_setfield(L, -2, "version");
     lua_pushliteral(L, LUA_RELEASE);
@@ -273,6 +325,10 @@ static void push_rt_table(lua_State *L, const ku_launch *launch)
     lua_setfield(L, -2, "root");
     lua_pushcfunction(L, l_rt_source);
     lua_setfield(L, -2, "source");
+    lua_pushcfunction(L, l_rt_verbs);
+    lua_setfield(L, -2, "verbs");
+    lua_pushcfunction(L, l_rt_pages);
+    lua_setfield(L, -2, "pages");
     lua_pushcfunction(L, l_rt_version_at_least);
     lua_setfield(L, -2, "version_at_least");
 }

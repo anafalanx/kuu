@@ -72,6 +72,7 @@ Running, checking, and driving a project:
 kuu FILE [arg ...]             run a program
 kuu -e SCRIPT [arg ...]        run an inline script
 kuu check [--json] PATH ...    syntax, globals, requires, palette names
+kuu capabilities [--json]      what a program can reach from here
 kuu run [--dry-run] [TASK]     a task from the nearest tasks.lua
 kuu list                       those tasks
 ```
@@ -90,8 +91,9 @@ Building and verifying kuu itself, from the repository root:
 |---|---|
 | `kuu.md` (this file) | why kuu is shaped this way, what was learned, where it is going |
 | `README.md` | the short introduction and the build |
-| `docs/` — 40 pages, shipped inside the executable | the reference: one page per module, plus the pages below |
+| `docs/` — 41 pages, shipped inside the executable | the reference: one page per module, plus the pages below |
 | `docs/pitfalls.md` | what an agent's Lua priors get wrong here. Read once, first |
+| `docs/capabilities.md` | `kuu capabilities`: the verbs, the palette, and this project's tasks and modules, in one command |
 | `docs/adopting.md` | how a repository comes to be driven by kuu: `tasks.lua`, prerequisites by URL and hash |
 | `docs/powershell.md` | each cmdlet you would reach for, and the kuu call that replaces it |
 | `docs/cookbook.md` | ten complete programs, extracted and checked by the suite |
@@ -102,11 +104,14 @@ Building and verifying kuu itself, from the repository root:
 | `docs/upgrading-0.N.md` | what changed in a release and what a project must do |
 | `notes/` | dated handoff and validation records; not shipped |
 
-Two habits worth forming early. `kuu check` finds misspelled names, unresolved
-`require`s and wrong palette names without running anything — use it before
-running, not after. And when a result surprises you, the manual page for that
-module is usually more specific than a guess: the palette documents its
-refusals as carefully as its successes.
+Three habits worth forming early. In a checkout you do not know, `kuu
+capabilities` answers what is here in one command — the verbs, every module
+and the names it exports, and the project's own tasks and modules — so the
+first thing you write is written against what exists. `kuu check` finds
+misspelled names, unresolved `require`s and wrong palette names without
+running anything; use it before running, not after. And when a result
+surprises you, the manual page for that module is usually more specific than a
+guess: the palette documents its refusals as carefully as its successes.
 
 ---
 
@@ -622,6 +627,7 @@ kuu docs [PAGE | search TEXT]   this manual, from inside the executable
 kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest tasks.lua      (see Tasks)
 kuu list [--json]         those tasks
 kuu check [--json] [PATH ...]   syntax, globals, requires, palette names, without running  (see check)
+kuu capabilities [--json] what a program can reach from here                      (see capabilities)
 kuu version | --version | --help
 ```
 
@@ -645,7 +651,10 @@ rt.version_at_least(0, 9)   -- true: this runtime is 0.9.0 or newer
 `run`. `rt.program` is the path as given for the file route, the verb for the
 cmd route, and nil otherwise. `rt.root([dir])` reads or moves the directory
 `require` searches after kuu's own modules; `rt.source(name)` is the text of
-one of kuu's own Lua modules.
+one of kuu's own Lua modules. `rt.verbs()` and `rt.pages()` are the verbs this
+executable answers to and the manual's pages, both sorted; they are carried in
+the executable where nothing else can see them, and
+[capabilities](#capabilities) reports them.
 
 ### Modules
 
@@ -729,6 +738,8 @@ Failures kuu detects before the program runs are spelled
   and the Windows facts kuu refuses to hide.
 - [Adopting kuu](#adopting): a repository gets its own kuu.exe, a
   tasks.lua, and prerequisites by hash; nothing on the machine.
+- [capabilities](#capabilities): what a program can reach from here -- the
+  verbs, the palette, and this project's tasks and modules, in one command.
 - [Cookbook](#cookbook): ten complete programs for common automation jobs.
 - [Stability](#stability): the future 1.x contract and minimum-version guards.
 - [proc](#proc), [fs](#fs), [http](#http), [net](#net),
@@ -900,6 +911,131 @@ refuses to hide. Read it once.
 
 Every message kuu produces has the shape `DOMAIN code: text`, and the codes
 are listed per module page. `kuu docs search CODE` finds the page.
+
+---
+
+## capabilities
+
+`kuu capabilities` says what a program can reach from here: this executable's
+verbs, manual and palette, and this project's tasks and its own modules.
+
+```text
+kuu capabilities [--json]
+```
+
+It exists because the answer was scattered. The palette is in the manual, the
+tasks are in `kuu list`, and a project's own modules are in its Lua; an agent
+arriving in a repository had to assemble those three itself, and an agent that
+guesses wrong writes code against a module that is not there. This is the
+answer assembled once, and it is the first thing to run in an unfamiliar
+checkout.
+
+Nothing is reported that kuu cannot know.
+
+- **The palette comes from the modules' own export tables**, so the listing
+  cannot drift from the runtime: it is read out of the same tables a program
+  would index. Which modules are public is authored in the interface
+  description `check` reads, and the suite holds that list to the manual's
+  module table in both directions.
+- **A project's modules are read from their text and never executed.** The
+  extraction is the one [check](#check) uses, so the two agree; it
+  over-approximates, and a module whose exports the text does not bound is
+  counted rather than named. A program is not a module, and from the text
+  alone the two do not differ.
+- **Tasks are declared by running `tasks.lua`**, which is project code. `kuu
+  run` and `kuu list` already do that, and this does no more. A `tasks.lua`
+  that does not load costs the task list and nothing else: the reason is
+  reported and the rest of the descriptor still stands.
+- **What a task installs under `.tools` is not reported at all.** kuu keeps no
+  manifest of it, and a guess about a toolchain is worse than saying nothing.
+
+Without a `tasks.lua` at or above the current directory there is no project
+half. kuu does not walk whatever directory it was started in instead: that is
+a different question, and an expensive one to answer by accident.
+
+```text
+kuu 0.9.0 (Lua 5.5.1) at C:\work\app\kuu.exe
+
+  verbs      capabilities, check, list, run    kuu VERB --help
+  manual     41 pages                          kuu docs PAGE | search TEXT
+  modules    27, 176 names                     require "NAME"
+  errors     27 domains, codes in --json       err.is(e, DOMAIN, code)
+
+modules
+  proc       alive, detach, find, kill, list, run, start, tree, wait_all,
+             wait_any
+  fs         absolute, basename, canon, chdir, copy, cwd, dirname, dirs,
+             exists, ext, glob, join, link, list, mkdir, read, relative,
+             remove, rename, same, space, stat, stem, temp, tempdir, tempfile,
+             watch, write
+  ...
+
+project C:/work/app
+  tasks      build, test*, fmt
+             * the default. kuu run TASK; kuu list describes them
+  modules    2 of the 4 .lua files below the root bound their exports
+    lib.util      VERSION, slug, titlecase
+    tools.report  render, write
+
+Whatever a task installs under .tools is not listed: kuu keeps no manifest
+of it, and a guess would be worse than the silence.
+Read kuu docs pitfalls first; it is where kuu differs from the Lua you know.
+```
+
+Modules are listed in the order the manual's table introduces them, which is
+roughly the order they are reached for. Everything goes to standard output;
+there is no summary on standard error.
+
+`--json` prints one envelope instead. The structural schema below uses `?` for
+an omitted optional field; array fields are present even when empty:
+
+```typescript
+type CapabilityReport = {
+  ok: true; // this command has no failure of its own
+  result: {
+    kuu: {
+      version: string; // Major.Minor.Patch
+      lua: string; // the Lua release, "Lua 5.5.1"
+      exe: string; // this executable
+      verbs: string[]; // kuu VERB, sorted
+      pages: string[]; // kuu docs PAGE, sorted
+    };
+    modules: {
+      name: string; // require "NAME"
+      page?: string; // its manual page, omitted when it has none
+      names: string[]; // everything it exports, sorted
+    }[];
+    errors: { domain: string; codes: string[] }[]; // err.is(e, DOMAIN, code)
+    sets: { name: string; values: string[] }[]; // the closed sets, in their own order
+    project?: {
+      root: string; // absolute path of the directory holding tasks.lua
+      tasks: { name: string; desc: string }[]; // hidden tasks omitted
+      default?: string; // the task kuu run alone runs
+      note?: string; // why tasks.lua did not load; tasks is then empty
+      modules: { name: string; path: string; names: string[] }[];
+      files: number; // .lua files below the root, whether or not they are modules
+    };
+  };
+};
+```
+
+`project` is omitted when there is no project. `kuu list --json` has each
+task's dependencies and arguments; they are not repeated here.
+
+`errors` is every domain kuu raises and the complete set of codes in it, which
+is what `err.is(e, DOMAIN, code)` matches against: a code a domain does not
+have makes `err.is` answer false for every error, and the handler it guards is
+dead. `sets` is the closed sets a result field or an option is drawn from,
+such as `ProcStatus`; a literal outside one never matches either. `check`
+reports both mistakes where it can see them, and this is the same description
+it reads.
+
+### Errors
+
+The command has no error code of its own. Invalid command arguments use
+`CLI usage` and exit 2; `--help` prints usage and exits 0. Everything else
+exits 0, including a project whose `tasks.lua` does not load, because a
+descriptor that fails is worse than one that says what it could not find out.
 
 ---
 
@@ -1500,6 +1636,14 @@ before a report is available and print a diagnostic on stderr, even with
 In a program, `require("check").file(path, root)` returns
 `{path, errors, warnings, requires}` with an absolute `path` and the same
 finding kinds. `check.tree(dir, root)` returns `{root, reports = {...}}`.
+
+The extraction above is reachable on its own. `check.exports(path)` is the set
+of names a module exports, read from its text, or nil when the text does not
+bound them; `check.modules(root)` returns
+`{root, files, modules = {{name, path, exports}, ...}}` -- every `.lua` file
+below the root that a `require` name could reach and whose exports it could
+bound, in name order, with `files` counting all of them.
+[capabilities](#capabilities) reports what it returns.
 
 ### Errors
 

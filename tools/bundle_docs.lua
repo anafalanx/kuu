@@ -23,7 +23,7 @@ local MARKER = "# Part III — the complete manual"
 -- A deliberate order: the map, the one page to read first, then getting a
 -- project going, the palette, the recipes, and finally the record.
 local ORDER = {
-  "index", "pitfalls",
+  "index", "pitfalls", "capabilities",
   "adopting", "task", "check", "cli",
   "proc", "fs", "http", "net", "sched", "json", "csv", "ini",
   "hash", "text", "re", "time", "archive", "log", "err",

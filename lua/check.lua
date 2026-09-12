@@ -207,6 +207,12 @@ local function project_exports(path)
   return exports
 end
 
+-- check.exports(path) -> the set of names a project module exports, or nil
+-- when its text does not bound them.  Public because `capabilities` reports
+-- the same set, and reporting a different one than the checker uses would be
+-- worse than reporting none.
+check.exports = project_exports
+
 local function nearest(name, exports)
   local best, distance
   for candidate in pairs(exports) do
@@ -620,6 +626,57 @@ function check.tree(dir, root)
   end
   table.sort(reports, function(a, b) return a.path < b.path end)
   return { root = root, reports = reports }
+end
+
+-- check.modules(root) -> { root, files, modules }: the project's own modules
+-- and what each one exports, `{ name, path, exports }` in name order.
+--
+-- Every *.lua below the root is read and the ones whose exports the text
+-- bounds are returned; the rest are only counted. A program is not a module,
+-- and from the text alone it does not differ from a module whose exports
+-- cannot be bounded, so naming either would be a guess. Nothing is executed.
+function check.modules(root)
+  root = fs.absolute(root)
+  local skip = {}
+  for _, name in ipairs(check.PRUNE) do skip[name:lower()] = true end
+  local walk = fs.dirs(root, { prune = check.PRUNE })
+  local files, candidates = 0, {}
+  for _, sub in ipairs(walk.paths) do
+    local base = sub:match("^.*/(.*)$") or sub
+    local listing = (sub == root or not skip[base:lower()]) and fs.list(sub) or nil
+    if listing then
+      for _, entry in ipairs(listing.entries) do
+        if entry.kind == "file" and entry.name:sub(-4) == ".lua" then
+          files = files + 1
+          local path = sub .. "/" .. entry.name
+          local stem = path:sub(#root + 2, -5)
+          -- `a/b.lua` is a.b, and so is `a/b/init.lua`; require tries the
+          -- first of the two, so where both exist that is the one described.
+          local init = stem:sub(-5) == "/init"
+          local dotted = (init and stem:sub(1, -6) or stem):gsub("/", ".")
+          local plain = true
+          for part in dotted:gmatch("[^%.]+") do
+            if not part:match("^[%w_%-]+$") then plain = false break end
+          end
+          if plain and dotted ~= "" and (candidates[dotted] == nil or not init) then
+            candidates[dotted] = path
+          end
+        end
+      end
+    end
+  end
+  local modules = {}
+  for name, path in pairs(candidates) do
+    local exports = project_exports(path)
+    if exports ~= nil then
+      local names = {}
+      for export in pairs(exports) do names[#names + 1] = export end
+      table.sort(names)
+      modules[#modules + 1] = { name = name, path = path, exports = names }
+    end
+  end
+  table.sort(modules, function(a, b) return a.name < b.name end)
+  return { root = root, files = files, modules = modules }
 end
 
 return check

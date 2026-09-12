@@ -46,6 +46,36 @@ return function(T)
   check("every described name is an export of its module", #missing_names == 0,
     table.concat(missing_names, ", "))
 
+  -- The public list is a promise -- `capabilities` reports it as the contract
+  -- -- so it is held to the manual's own module table in both directions. A
+  -- module that gains a page and is not listed goes unreported; one listed
+  -- without a page is reported as public when nothing documents it.
+  local table_names, table_order = {}, {}
+  for line in fs.read(root .. "/docs/index.md"):gmatch("[^\n]+") do
+    local name = line:match("^| %[?`([%a][%w_]*)`")
+    if name then
+      table_names[name] = true
+      table_order[#table_order + 1] = name
+    end
+  end
+  local unlisted, unpaged = {}, {}
+  local listed = {}
+  for _, name in ipairs(description.public) do listed[name] = true end
+  for _, name in ipairs(table_order) do
+    if not listed[name] then unlisted[#unlisted + 1] = name end
+  end
+  for _, name in ipairs(description.public) do
+    if not table_names[name] then unpaged[#unpaged + 1] = name end
+  end
+  table.sort(unlisted); table.sort(unpaged)
+  check("every module the manual's table introduces is public", #unlisted == 0,
+    table.concat(unlisted, ", "))
+  check("and every public module is in that table", #unpaged == 0,
+    table.concat(unpaged, ", "))
+  check("in the same order, which is the one capabilities reports",
+    table.concat(description.public, " ") == table.concat(table_order, " "),
+    table.concat(description.public, " ") .. " vs " .. table.concat(table_order, " "))
+
   -- Against itself: every type a field names must resolve to a scalar, an
   -- enum, a record, or a plain Lua type.  This is what catches a typo in the
   -- description, which would otherwise become a checker that silently knows

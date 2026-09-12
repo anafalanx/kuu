@@ -34,6 +34,7 @@ kuu docs [PAGE | search TEXT]   this manual, from inside the executable
 kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest tasks.lua      (see Tasks)
 kuu list [--json]         those tasks
 kuu check [--json] [PATH ...]   syntax, globals, requires, palette names, without running  (see check)
+kuu capabilities [--json] what a program can reach from here                      (see capabilities)
 kuu version | --version | --help
 ```
 
@@ -57,7 +58,10 @@ rt.version_at_least(0, 9)   -- true: this runtime is 0.9.0 or newer
 `run`. `rt.program` is the path as given for the file route, the verb for the
 cmd route, and nil otherwise. `rt.root([dir])` reads or moves the directory
 `require` searches after kuu's own modules; `rt.source(name)` is the text of
-one of kuu's own Lua modules.
+one of kuu's own Lua modules. `rt.verbs()` and `rt.pages()` are the verbs this
+executable answers to and the manual's pages, both sorted; they are carried in
+the executable where nothing else can see them, and
+[capabilities](capabilities.md) reports them.
 
 ## Modules
 
@@ -141,6 +145,8 @@ Failures kuu detects before the program runs are spelled
   and the Windows facts kuu refuses to hide.
 - [Adopting kuu](adopting.md): a repository gets its own kuu.exe, a
   tasks.lua, and prerequisites by hash; nothing on the machine.
+- [capabilities](capabilities.md): what a program can reach from here -- the
+  verbs, the palette, and this project's tasks and modules, in one command.
 - [Cookbook](cookbook.md): ten complete programs for common automation jobs.
 - [Stability](stability.md): the future 1.x contract and minimum-version guards.
 - [proc](proc.md), [fs](fs.md), [http](http.md), [net](net.md),

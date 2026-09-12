@@ -49,6 +49,7 @@ static void usage(FILE *to)
           "       kuu run [TASK [arg ...]]  run a task from the nearest tasks.lua\n"
           "       kuu list [--json]         list those tasks\n"
           "       kuu check [--json] [PATH ...]   parse, global declarations, requires\n"
+          "       kuu capabilities [--json] the palette, the verbs, and this project\n"
           "       kuu version | --version | --help\n",
           to);
 }
