@@ -19,9 +19,10 @@ codes; and their documented JSON reports. It includes the supported Windows
 baseline and the documented Lua language version. The freeze is a promise
 for 1.x, not a claim that the 0.9.0 interface can no longer improve.
 
-`pty`, `svc`, `evt`, and `sys.signature` are provisional. Their APIs may
-change before or after 1.0, with an upgrading note, and they are outside the
-freeze until a later release explicitly brings them in.
+`pty`, `svc`, `evt`, and `sys.signature` are provisional, and so is the
+`capabilities` verb with its JSON report. Their APIs may change before or
+after 1.0, with an upgrading note, and they are outside the freeze until a
+later release explicitly brings them in.
 
 `pty` is provisional for its interpretation of terminal output. The other
 three left the freeze list in 0.9.0 for a plainer reason: they arrived in 0.7
@@ -30,6 +31,12 @@ event-log query, and an Authenticode trust decision are three of the easiest
 Windows surfaces to shape wrongly, and a wrong shape inside the freeze costs
 the whole 1.x line. They are brought in at 1.1 with adoption evidence behind
 them. Nothing is removed from the executable; only the promise is withheld.
+
+`capabilities` is outside for the same reason, one release later: it arrived
+in 0.10.0 and nothing has driven it yet. What it reports is kuu describing
+itself, so the shape of that description is exactly what a consuming agent
+would build on, and a descriptor is cheaper to widen after adoption evidence
+than to narrow inside the freeze.
 
 Private modules and names starting with `_`, command implementation modules
 under `cmd`, internal helper processes, build artifacts, and undocumented

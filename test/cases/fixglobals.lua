@@ -3,8 +3,9 @@
 -- rather than by knowing Lua's scoping rules itself.
 --
 -- The measurement that motivated it: declarations are 1.8% of the repository's
--- Lua, but 54 of 559 declared names were dead, because forgetting to add a
--- name is a loud error while forgetting to remove one is silent forever. The
+-- Lua, and the first run over it removed 62 dead names and added none, because
+-- forgetting to add a name is a loud error while forgetting to remove one is
+-- silent forever. The
 -- last check here is the one that matters most -- it holds the tree at zero,
 -- so the list cannot rot again.
 global none

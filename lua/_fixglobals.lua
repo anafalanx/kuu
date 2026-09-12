@@ -2,10 +2,10 @@
 -- directions.  Private: `kuu check --fix` is the public face.
 --
 -- `global none` and its list of standard names costs little in lines and a
--- lot in attention: across the repository's own Lua, 54 of 559 declared names
--- were dead, because forgetting to add a name is a loud load-time error while
--- forgetting to remove one is silent forever.  The list rots in one direction
--- only.
+-- lot in attention: run over this repository for the first time, this removed
+-- 62 dead names and added none, because forgetting to add a name is a loud
+-- load-time error while forgetting to remove one is silent forever.  The list
+-- rots in one direction only.
 --
 -- This fixes both directions, and knows nothing about Lua's scoping rules,
 -- because the Lua compiler already does.  Under a global declaration the

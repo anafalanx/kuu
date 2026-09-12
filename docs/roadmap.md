@@ -12,18 +12,20 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 |---|---|---|
 | platform | Windows 11 23H2 and later; Windows Server 2025 and later | native Windows APIs; 23H2 console teardown uses isolated close/drain workers and completion-aware pipe ownership |
 | language for programs | Lua 5.5.1, vendored, compiled as C | agents write it correctly from a hundred-page manual; coroutines make waiting read as straight-line code; `global none` turns the classic typo into a compile error; errors are `longjmp`, so C, never C++ |
+| a language of kuu's own | none, by owner decision on 2026-09-11: no successor language, no compiler, no emission subset | kuu is a runtime for Lua 5.5 and grows capabilities in the palette and options on the calls already there; existing technology is recombined, not syntax invented |
+| a JavaScript runtime | Deno, pinned to the kuu release that uses it, downloaded by the consumer on request into the project's own `.kuu/`, never shipped | designed 2026-09-12 and not built. The palette was reachable only through C, so every capability meant vendoring, rebuilding and releasing; an explicit permission model is what keeps a capability gate over a general escape hatch, and pinning is what makes the youngest of the candidates acceptable |
 | host language | C, the els method's subset | the host lives on two C boundaries, Win32 and the Lua API, and machteld's process-lifetime and text-boundary code transfers verbatim |
 | compiler | gcc 16.1 from MSYS2 UCRT64, copied into `.tools` | the estate's proven recipe; gcc and GNU make are the chosen production build, with Clang only for sanitizer tests |
 | build | GNU make from the same `.tools`, recipes under `cmd.exe` | no PowerShell in the repository, and kuu never builds kuu: the build is make and gcc, the tests are Lua run by the built kuu |
 | self-hosting | none, by owner decision | kuu is not required to bootstrap or build itself; a person with `.tools` populated runs `make` |
 | versions | `Major.Minor.Patch`, all natural numbers, since 0.9.0 | 0.1 through 0.8 had no patch component; a frozen 1.x needs a way to ship one correction without claiming new capability, and the component is cheaper to add before the freeze than after it. `rt.version_at_least` compares them so no project parses the text |
 | dependency pinning | none: a project fetches what it needs by url and hash with `http` and `archive`; kuu's own compiler is copied by hand | the lock built in 0.3 was removed in 0.4 as formalism; kuu does not bootstrap itself |
-| the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has only stock Lua's `io` and `os`, and a static check can list what else a file asks for |
+| the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has only stock Lua's `io` and `os`, and a static check can list what else a file asks for. It gates a program that does not reach around it: `_ENV` is an upvalue, needs no declaration, and reaches `load` and the whole palette from a file `check` reports with `"requires":[]` and a clean bill ([shortcomings](shortcomings.md)) |
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
 | process lifetime | the no-orphans law, first thing in the palette | every child is born into a kill-on-close job; only `detach`, and a child's own deliberate breakaway, step outside it |
-| what stays out | `store` (SQLite), publishing, Tk, a wrap verb, any Tcl, PATH lookup, `io.popen`, `os.execute` | tools or hazards, not organs |
+| what stays out | `store` (SQLite), publishing, Tk, a wrap verb, Tcl in the runtime, PATH lookup, `io.popen`, `os.execute` | tools or hazards, not organs. Tcl reached as a fetched helper behind a capability is a different question and is open: the JavaScript design keeps Tcl with twapi as the right answer for Windows API reach specifically, and says a capability module may yet use it |
 | projects share nothing | every project carries its own `kuu.exe`, copied in by hand, directly in its root since 0.6 (0.4 and 0.5 put it in `.tools`); nothing on `PATH`, no machine changes, no bootstrap scripts | the owner ended estate-wide management; a small executable is copied, not fetched by glue |
-| what a project may fetch | upstream downloads only, into its own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger fetches from the same public sources |
+| what a project may fetch | upstream downloads only, into its own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger fetches from the same public sources. The JavaScript runtime is the one thing kuu itself would fetch, into `.kuu/` beside the project's own tools, on request and never shared |
 | kuu's own repository | free of kuu: build and release are make, gcc, and cmd recipes; no `tasks.lua` there | self-reference is unwelcome, for release steps too |
 | releases | anafalanx/kuu public; GitHub Releases carry `kuu.exe` and its `.sha256`; signed with the owner's existing Certum certificate through the Windows SDK's signtool | the estate already signs this way, and public releases need no credentials to fetch |
 | the second project | `C:\dev\kuu-test-project`, local, no remote, tailored to test kuu features | a project built to exercise the runtime, before any existing one is converted |
@@ -79,7 +81,6 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `kuu capabilities [--json]`: the verbs, the public modules and their names, the error domains and closed sets, and this project's tasks and modules; `rt.verbs`, `rt.pages` | 0.10.0 |
 | `text.trim`, native, replacing a helper hand-rolled six times; the unanchored `$` out of every hot path in `lua/` and `tools/`; `check` lexes by byte | 0.10.0 |
 | `kuu.md`: what kuu is, what its predecessors taught, and the whole manual inlined by `tools/bundle_docs.lua`, held to `docs/` by the suite | 0.10.0 |
-| no language: no successor, no compiler, no emission subset; capabilities and options instead | decided 2026-09-11 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
 
@@ -231,6 +232,21 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    Every component of `make gate` passes: the suite five times over, native
    analysis, parser fuzzing, and — for the first time on any host — a soak
    gate with zero failures. See [upgrading to 0.9](upgrading-0.9.md).
+   - Released 2026-09-11 at 12:55:48 UTC: the tag names `81f9fd7`, the signed
+     executable is 1,563,512 bytes, and the local file, the asset downloaded
+     again, and the published sidecar all carry the same SHA-256, with the
+     released binary reporting its own Certum identity through
+     `sys.signature`. Three clean soak gates ran in a row on the release host
+     — `make gate`, the required separate `make asan`, and the `make publish`
+     repeat — which with the 23H2 evidence from the other machine puts two
+     hosts behind the 1.0 soak criterion rather than one. Time Actual adopted
+     it the same day: it guards with `rt.version_at_least(0, 9)`, raising its
+     minimum from 0.5 retired the two compatibility branches it carried, its
+     CI pins the release and its checksum, and its `test` task passed 2,191
+     engine checks with CI green in 1 min 19 s. That is the project that
+     co-evolved with the runtime, so it does not answer the cold-adopter
+     amendment. Recorded in the
+     [release handoff](../notes/handoff-2026-09-11_145745.md).
 10. **0.10.0, the interface described, and no language.** On main and
    unreleased: the executable still reports `0.9.0`. The owner decided on
    2026-09-11 that there is no successor language, no compiler and no emission
@@ -262,9 +278,9 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      excluded is a false positive on correct code. `kuu check --fix` writes
      the global declaration in both directions, with the Lua compiler as the
      authority and a refusal to declare a name this runtime lacks, so
-     `print(reuslt)` keeps its error instead of acquiring a silent nil; 54
-     declared names in kuu's own Lua were used nowhere, a forgotten addition
-     failing loudly and a forgotten removal never. `kuu capabilities` reports
+     `print(reuslt)` keeps its error instead of acquiring a silent nil; its
+     first run over this repository removed 62 dead names and added none, a
+     forgotten addition failing loudly and a forgotten removal never. `kuu capabilities` reports
      the verbs, the 27 public modules and the 176 names they export, the
      domains and the closed sets, and a project's tasks and modules — and not
      what a task installs under `.tools`, of which kuu keeps no manifest.
@@ -398,6 +414,15 @@ raiser's non-returning contract explicit and led to entry-allocation cleanup.
 ## Open decisions
 
 - **1.0 criteria.** The proposal above stands until the owner sets them.
+- **The JavaScript runtime, five questions the design leaves open.** Consent
+  is per project, so a fresh clone of the eighth prompts again — correct, or
+  maddening by the third time? What removes a superseded pinned version under
+  `.kuu/`? How is the unpacked runtime verified cheaply on every run, when
+  hashing it is too slow? What does `check` report for a file using the
+  capability when the runtime is absent? And is the general escape hatch a
+  public module or reached through a capability — which decides whether
+  `require` stays a meaningful gate for it, or the permission flags carry it
+  alone.
 
 ## Backlog
 
@@ -420,8 +445,9 @@ Tcl for this job. The ledger so far:
   written by hand in `project.lua`, and `info script` became `rt.source`.
 - **No insertion-ordered table.** Tcl's dict remembers order, so a `cli`
   spec could be a mapping; in Lua a spec must be an array of entries, and
-  `pairs` order is undefined, so `log` sorts fields and `json` objects come
-  out in arbitrary key order. Minor, but felt three times in one day.
+  `pairs` order is undefined, so `log` sorts fields, and a JSON object came
+  out in arbitrary key order until 0.9.0 added `json.object` to give one a
+  decided order. Minor, but felt three times in one day.
 - **Lua patterns are not regular expressions.** No alternation, no counted
   repetition, no grouping of a repeated sequence, no Unicode classes. Tcl's
   `regexp` had all of it, and an agent's first instinct in any language is a
@@ -436,14 +462,30 @@ Tcl for this job. The ledger so far:
   had to find `é.txt` under `É*.TXT`, as the file system does, needed
   `text.upper` on Windows' own folding. Small, and now closed, but the kind
   of thing Tcl simply had.
+- **No trim in the language, and `$` does not anchor.** Tcl ships `string
+  trim`, `trimleft` and `trimright`, and its `regexp` anchors with `$`. Lua
+  has neither, so the trim must be written, and the obvious spelling of it is
+  a trap: only `^` anchors a Lua pattern, so `gsub("%s+$", "")` is retried at
+  every position and costs a scan of the whole string. That one call was 65%
+  of `csv.encode`, and over the 278 KB `kuu.md` it took 14.4 ms against
+  0.19 ms for walking back from the end. Real cost: the helper was hand-rolled
+  six times across the projects driving kuu and three more inside it, every
+  copy carrying the trap, until `text.trim` was written in C — 13 ms where the
+  pattern took 300, over a 15-byte line trimmed 300,000 times. Now closed, and
+  the kind of thing Tcl simply had.
 - **`global none` is opt-in boilerplate.** Tcl has no equivalent check at all,
   so this is a Lua advantage in the end, but every file must start with two
   lines to get it, and an agent that forgets them gets stock Lua's silent
-  globals.
+  globals. `check` warns about a file without them and `kuu check --fix
+  --adopt` writes them and keeps the list correct in both directions, with
+  the compiler as the authority, so what is left is that the boilerplate
+  exists at all rather than that it must be kept by hand.
 
-Nothing decisive: the pattern entry, the one to watch, closed with `re`. The
-coroutine model, the byte strings, and the C API have been strengths at every
-step so far.
+Still nothing decisive, though Lua's patterns have now cost twice rather than
+once: the alternation gap closed with `re`, and the anchoring gap with
+`text.trim`, both of them C that Tcl would not have needed. The coroutine
+model, the byte strings, and the C API have been strengths at every step so
+far.
 
 ## 0.6: fixes from real repository adoption
 

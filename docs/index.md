@@ -146,7 +146,8 @@ Failures kuu detects before the program runs are spelled
 - [Adopting kuu](adopting.md): a repository gets its own kuu.exe, a
   tasks.lua, and prerequisites by hash; nothing on the machine.
 - [capabilities](capabilities.md): what a program can reach from here -- the
-  verbs, the palette, and this project's tasks and modules, in one command.
+  verbs, the palette, and this project's tasks and modules, in one command;
+  provisional.
 - [Cookbook](cookbook.md): ten complete programs for common automation jobs.
 - [Stability](stability.md): the future 1.x contract and minimum-version guards.
 - [proc](proc.md), [fs](fs.md), [http](http.md), [net](net.md),

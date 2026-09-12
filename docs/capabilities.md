@@ -14,6 +14,11 @@ guesses wrong writes code against a module that is not there. This is the
 answer assembled once, and it is the first thing to run in an unfamiliar
 checkout.
 
+It is **provisional**: it arrived in 0.10.0, nothing has driven it yet, and
+what it reports is the shape a consuming agent would build on, so it sits
+outside the planned 1.0 freeze until a project has used it in earnest. See
+[stability](stability.md).
+
 Nothing is reported that kuu cannot know.
 
 - **The palette comes from the modules' own export tables**, so the listing

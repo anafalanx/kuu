@@ -51,8 +51,11 @@ end
 -- for every byte of every file; it also tried the long-bracket pattern at
 -- every position rather than only where a bracket is, and counted line
 -- breaks with a substring and two gsubs per token. Comparing byte values
--- does the same work about one and a half times faster, and the suite
--- checks the token streams are identical.
+-- does the same work about one and a half times faster. The two token
+-- streams were compared over every Lua file in the repository and were
+-- identical, text, kind, line and decoded value for every token; that was a
+-- check run while replacing the lexer, not one the suite keeps, since the
+-- pattern version no longer exists to compare against.
 local NAME_START, DIGIT, SPACE = {}, {}, {}
 for b = 65, 90 do NAME_START[b] = true end
 for b = 97, 122 do NAME_START[b] = true end
