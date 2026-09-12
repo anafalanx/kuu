@@ -103,7 +103,12 @@ with its error intact.
 A file with no global declaration at all is left alone unless `--adopt` is
 given, since switching a chunk to declared-only mode is a larger change than
 correcting a list that is already there. Nothing else in the file is touched:
-a declaration that merely wraps differently is not rewritten.
+a declaration that merely wraps differently is not rewritten, and the file's
+line endings are written back as they were, so correcting two lines of a CRLF
+file does not rewrite every line of it.
+
+With no paths it rewrites every `.lua` file below the nearest project root,
+which is the same set it checks.
 
 ```text
 app.lua:

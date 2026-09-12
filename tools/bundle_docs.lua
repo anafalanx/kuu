@@ -30,7 +30,7 @@ local ORDER = {
   "mem", "sync", "sys", "reg", "env", "svc", "evt", "pty",
   "powershell", "cookbook",
   "inheritance", "roadmap", "shortcomings", "stability", "toolchain",
-  "upgrading-0.9", "upgrading-0.8", "upgrading-0.7", "upgrading-0.6",
+  "upgrading-0.10", "upgrading-0.9", "upgrading-0.8", "upgrading-0.7", "upgrading-0.6",
 }
 
 local function root()

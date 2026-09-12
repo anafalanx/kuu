@@ -111,12 +111,18 @@ local function render(order, const, none)
   return out
 end
 
-local function assemble(lines, block, replacement)
+-- Rejoined with the endings the file already had.  Splitting normalises CRLF
+-- so the block can be read, but writing LF back would rewrite every line of a
+-- CRLF file to correct two of them, which is the opposite of the promise that
+-- nothing but the declaration is touched.
+local function assemble(lines, block, replacement, newline)
   local out = {}
   for i = 1, block.first - 1 do out[#out + 1] = lines[i] end
   for _, line in ipairs(replacement) do out[#out + 1] = line end
   for i = block.last + 1, #lines do out[#out + 1] = lines[i] end
-  return table.concat(out, "\n")
+  -- The trial assemblies below only feed `load`, where the ending is
+  -- immaterial; the file's own is passed in only when one is written.
+  return table.concat(out, newline or "\n")
 end
 
 -- Ask the compiler what the chunk needs.  Each pass adds the one name it
@@ -180,6 +186,8 @@ local function fix(path, adopt)
   local text, e = fs.read(path)
   if not text then return nil, tostring(e) end
   local lines = split(text)
+  -- Written back with the endings the file already had.
+  local newline = text:find("\r\n", 1, true) ~= nil and "\r\n" or "\n"
 
   local block, why = declaration(lines)
   if why then return nil, why end
@@ -221,7 +229,7 @@ local function fix(path, adopt)
   end
 
   return { path = path, before = before, after = after, added = added,
-           removed = removed, text = assemble(lines, block, after) .. "\n",
+           removed = removed, text = assemble(lines, block, after, newline) .. newline,
            changed = adopted or #added > 0 or #removed > 0 or reattributed }
 end
 

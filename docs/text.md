@@ -33,8 +33,8 @@ It is here because writing it as a pattern is a trap. `s:gsub("%s+$", "")`
 looks like it inspects the end of the string and does not: only `^` anchors a
 Lua pattern, so Lua retries the match at every position and the cost grows
 with the whole string rather than with the blanks. Trimming a 15-byte line
-300,000 times measured 300 ms by that pattern, 13 ms through `trim`; on a
-278 KB document the pattern took 3.2 seconds against 26 ms. See
+300,000 times measured 300 ms by that pattern and 13 ms through `trim`;
+trimming a 278 KB document 200 times, 3.2 seconds against 26 ms. See
 [Pitfalls](#pitfalls).
 
 Encodings: `utf-8`, `utf-16le`, `utf-16be`, `latin1`, `ansi` (the system code

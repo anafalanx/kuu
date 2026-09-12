@@ -184,14 +184,36 @@ local function project_exports(path)
   if returned == nil then return nil end
 
   -- and it has to have been built here, not received from somewhere else.
-  local built = false
+  local opened
   for i = 1, #tokens - 3 do
     if tokens[i].text == "local" and tokens[i + 1].text == returned
-      and tokens[i + 2].text == "=" and tokens[i + 3].text == "{" then built = true break end
+      and tokens[i + 2].text == "=" and tokens[i + 3].text == "{" then opened = i + 3 break end
   end
-  if not built then return nil end
+  if opened == nil then return nil end
 
   local exports = {}
+
+  -- The constructor's own named keys are exports: `local M = { LIMIT = 10 }`
+  -- declares one as surely as `M.LIMIT = 10` does, and a module that opens
+  -- with a table of constants is an ordinary shape. Only the top level of
+  -- that constructor counts, and a computed key in it puts the set out of
+  -- reach exactly as an assigned one does.
+  local depth = 0
+  for i = opened, #tokens do
+    local t = tokens[i]
+    if t.text == "{" then depth = depth + 1
+    elseif t.text == "}" then
+      depth = depth - 1
+      if depth == 0 then break end
+    elseif depth == 1 and t.text == "[" then return nil
+    elseif depth == 1 and t.kind == "name" and tokens[i + 1] ~= nil and tokens[i + 1].text == "=" then
+      local before = tokens[i - 1]
+      if before ~= nil and (before.text == "{" or before.text == "," or before.text == ";") then
+        exports[t.text] = true
+      end
+    end
+  end
+
   for i = 1, #tokens do
     local t = tokens[i]
     if t.text == "setmetatable" or t.text == "rawset" then return nil end
@@ -362,7 +384,14 @@ local function inspect(tokens, report, root)
   end
   local function field(base)
     local name = take()
-    if base.binding then
+    -- Only the first field after a module alias names one of its exports.
+    -- In `cfg.paths.build`, `paths` is asked of the module and `build` is
+    -- asked of whatever `paths` turned out to be, which the module's export
+    -- set cannot answer. A bare name is the only node carrying `name`, so
+    -- that is the test; without it the second field was recorded against the
+    -- module with no alias at all, and the report crashed building its
+    -- message.
+    if base.binding and base.name then
       accesses[#accesses + 1] = { binding = base.binding, alias = base.name, name = name.text, line = name.line }
       -- Carry which module member this is, so that a call on it can be
       -- checked against the description, and so that comparing it with a

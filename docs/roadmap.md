@@ -326,9 +326,14 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      the fixer's invariant, which keeps every declaration outside
      `test/fixtures` correct so a name that falls out of use fails instead of
      rotting; and `kuu.md` regenerated and compared. `docs/capabilities.md` is
-     the manual's forty-first page. Outstanding: there is no upgrading page for
-     this release, and [stability](stability.md) still names four verbs, so
-     nothing yet says whether `capabilities` is inside the 1.0 freeze.
+     a new manual page, and
+     [upgrading to 0.10](upgrading-0.10.md) the migration: no call moves, but
+     a project green on 0.9.0 can be red here without changing, and the
+     documented set of `check` error kinds grows from three to six, which is
+     the one change that can break a program reading the JSON.
+     `capabilities` is provisional and outside the planned freeze until a
+     project has driven it, by the rule [stability](stability.md) already
+     applies to `pty`, `svc`, `evt` and `sys.signature`.
 11. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a

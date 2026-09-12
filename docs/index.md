@@ -161,6 +161,10 @@ Failures kuu detects before the program runs are spelled
 - [check](check.md): what `kuu check` finds without running a file.
 - [Toolchain](toolchain.md): what kuu's own `.tools` holds and where it comes
   from.
+- [Upgrading to 0.10](upgrading-0.10.md): no call moves, but `check` reports
+  four mistakes it used to pass and reads a project's own modules, so a green
+  project can turn red without changing. `check --fix`, `capabilities`, and
+  `text.trim`.
 - [Upgrading to 0.9](upgrading-0.9.md): the version grows a patch component,
   which breaks the old pattern guard; `rt.version_at_least` replaces it. The atomic
   write retries its rename, and three modules leave the planned freeze.

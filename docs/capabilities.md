@@ -46,7 +46,7 @@ a different question, and an expensive one to answer by accident.
 kuu 0.9.0 (Lua 5.5.1) at C:\work\app\kuu.exe
 
   verbs      capabilities, check, list, run    kuu VERB --help
-  manual     41 pages                          kuu docs PAGE | search TEXT
+  manual     42 pages                          kuu docs PAGE | search TEXT
   modules    27, 176 names                     require "NAME"
   errors     27 domains, codes in --json       err.is(e, DOMAIN, code)
 

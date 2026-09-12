@@ -98,6 +98,24 @@ return function(T)
   check("running again changes nothing: it reads back what it writes",
     #((report("--fix", long) or {}).fixed or {}) == 0)
 
+  -- It writes the declaration and nothing else, and a file's line endings are
+  -- part of "nothing else". Rewriting every line of a CRLF file to correct two
+  -- of them turns a two-line fix into a whole-file diff, which on Windows is
+  -- most of the files it will ever be pointed at.
+  local crlf = write("crlf.lua",
+    "global none\r\nglobal <const> print, select\r\nlocal x = 1\r\nprint(x)\r\n")
+  check("a CRLF file is fixed without its endings being rewritten",
+    #((report("--fix", crlf) or {}).fixed or {}) == 1
+      and (fs.read(crlf) or ""):find("print(x)\r\n", 1, true) ~= nil
+      and (fs.read(crlf) or ""):find("\n\n", 1, true) == nil,
+    fs.read(crlf))
+  local lf = write("lf.lua",
+    "global none\nglobal <const> print, select\nlocal x = 1\nprint(x)\n")
+  check("and an LF file keeps its own",
+    #((report("--fix", lf) or {}).fixed or {}) == 1
+      and (fs.read(lf) or ""):find("\r", 1, true) == nil,
+    fs.read(lf))
+
   fs.remove(dir, { recursive = true })
 
   -- The invariant. Every declaration in the tree is already correct, so a

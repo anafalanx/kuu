@@ -271,6 +271,41 @@ other.custom()
       check("and one that returns a table it did not build",
         r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
 
+      -- A module that opens with a table of constants is an ordinary shape,
+      -- and its constructor's keys are exports. Missing them reported every
+      -- correct use of one as a typo, which is the false positive this
+      -- extraction exists to avoid.
+      put("tools/consts.lua",
+        'global none\nlocal M = {\n  VERSION = "1",\n  LIMIT = 10,\n  paths = { build = "b" },\n}\nfunction M.go() end\nreturn M\n')
+      put("consts.lua",
+        'global none\nglobal <const> require, print\nlocal c = require "tools.consts"\nprint(c.VERSION, c.LIMIT, c.paths, c.go)\n')
+      r = T.kuu({ "check", "consts.lua" }, { cwd = dir })
+      check("a constructor's own keys are exports, not typos",
+        r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+
+      put("constbad.lua",
+        'global none\nglobal <const> require, print\nlocal c = require "tools.consts"\nprint(c.LIMITT)\n')
+      r = T.kuu({ "check", "constbad.lua" }, { cwd = dir })
+      check("and a misspelling of one is still caught",
+        r.code == 1 and contains(r.out, "did you mean c.LIMIT"), T.describe(r))
+
+      put("tools/constcomputed.lua",
+        'global none\nlocal k = "a"\nlocal M = { [k] = 1, real = 2 }\nreturn M\n')
+      put("constdyn.lua",
+        'global none\nglobal <const> require\nlocal c = require "tools.constcomputed"\nreturn c.anything\n')
+      r = T.kuu({ "check", "constdyn.lua" }, { cwd = dir })
+      check("a computed key in the constructor bails like any other",
+        r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+
+      -- Only the first field after an alias names a module export. Reaching
+      -- further asks a value the module returned, which its export set cannot
+      -- answer -- and recording it against the module crashed the report.
+      put("nested.lua",
+        'global none\nglobal <const> require, print\nlocal c = require "tools.consts"\nprint(c.paths.build, c.paths.build.deeper)\n')
+      r = T.kuu({ "check", "nested.lua" }, { cwd = dir })
+      check("a second field is not checked against the module, and does not crash",
+        r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+
       fs.remove(dir, { recursive = true })
     end
   end
