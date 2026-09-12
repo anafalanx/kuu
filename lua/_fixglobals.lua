@@ -1,28 +1,19 @@
--- Write a file's global declaration for it, in both directions.
+-- _fixglobals.lua -- write a file's global declaration for it, in both
+-- directions.  Private: `kuu check --fix` is the public face.
 --
--- `global none` and its list of standard names is the most-felt papercut in
--- the language, and the measurement says the cost is drift rather than
--- volume: across the corpus the declarations are 1.8% of lines, but 54 of 559
--- declared names are never used -- 9.7%, in 36 files.  The asymmetry is why.
--- Forgetting to add a name is a loud load-time error; forgetting to remove
--- one when its last use goes is silent forever, so the list rots in one
--- direction only.
+-- `global none` and its list of standard names costs little in lines and a
+-- lot in attention: across the repository's own Lua, 54 of 559 declared names
+-- were dead, because forgetting to add a name is a loud load-time error while
+-- forgetting to remove one is silent forever.  The list rots in one direction
+-- only.
 --
--- This fixes both directions, and it does so without knowing anything about
--- Lua's scoping rules, because the Lua compiler already does.  Under a global
--- declaration the compiler names each undeclared variable in turn, so the
--- needed set is found by compiling and reading the complaint; and a declared
--- name is unnecessary exactly when removing it still compiles.  The compiler
--- is the authority on what a chunk needs, as it is for `kuu check`.
---
---   kuu tools/fixglobals.lua PATH ...            report what would change
---   kuu tools/fixglobals.lua --write PATH ...    rewrite the files
---   kuu tools/fixglobals.lua --adopt PATH ...    also switch stock-mode files on
---
--- Exit 0 when nothing would change, 1 when something would, 2 for usage.
-global none
-global <const> require, ipairs, pairs, load, tostring, table, io, os, string,
-               _G
+-- This fixes both directions, and knows nothing about Lua's scoping rules,
+-- because the Lua compiler already does.  Under a global declaration the
+-- compiler names each undeclared variable in turn, so the needed set is found
+-- by compiling and reading the complaint; and a declared name is unnecessary
+-- exactly when removing it still compiles.  The compiler is the authority on
+-- what a chunk needs, as it is for the rest of `check`.
+global <const> require, ipairs, pairs, load, tostring, table, string, _G
 
 local fs = require "fs"
 local trim = require("text").trim
@@ -185,6 +176,7 @@ local function split(text)
 end
 
 local function fix(path, adopt)
+  local adopted = false
   local text, e = fs.read(path)
   if not text then return nil, tostring(e) end
   local lines = split(text)
@@ -193,6 +185,7 @@ local function fix(path, adopt)
   if why then return nil, why end
   if not block then
     if not adopt then return { skipped = "no global declaration" } end
+    adopted = true
     -- Adopting a stock-mode file: put the declaration after any leading
     -- comments, which is where every file in the corpus keeps it.
     local at = 1
@@ -229,59 +222,8 @@ local function fix(path, adopt)
 
   return { path = path, before = before, after = after, added = added,
            removed = removed, text = assemble(lines, block, after) .. "\n",
-           changed = #added > 0 or #removed > 0 or reattributed }
+           changed = adopted or #added > 0 or #removed > 0 or reattributed }
 end
 
-local function gather(paths)
-  local files = {}
-  for _, p in ipairs(paths) do
-    if fs.exists(p) == "directory" then
-      local walk = fs.dirs(p, { prune = { ".git", ".tools", "build", "node_modules" } })
-      for _, dir in ipairs(walk.paths) do
-        for _, entry in ipairs(fs.list(dir).entries) do
-          if entry.kind == "file" and entry.name:sub(-4) == ".lua" then
-            files[#files + 1] = dir .. "/" .. entry.name
-          end
-        end
-      end
-    else
-      files[#files + 1] = p
-    end
-  end
-  table.sort(files)
-  return files
-end
 
-local args, write, adopt = {}, false, false
-for _, a in ipairs(require("rt").args) do
-  if a == "--write" then write = true
-  elseif a == "--adopt" then adopt = true
-  else args[#args + 1] = a end
-end
-if #args == 0 then
-  io.stderr:write("usage: kuu tools/fixglobals.lua [--write] [--adopt] PATH ...\n")
-  os.exit(2)
-end
-
-local changed, failed, skipped = 0, 0, 0
-for _, path in ipairs(gather(args)) do
-  local result, problem = fix(path, adopt)
-  if not result then
-    failed = failed + 1
-    io.write(path, ": cannot fix: ", tostring(problem), "\n")
-  elseif result.skipped then
-    skipped = skipped + 1
-  elseif result.changed then
-    changed = changed + 1
-    io.write(path, ":\n")
-    if #result.added > 0 then io.write("  + ", table.concat(result.added, ", "), "\n") end
-    if #result.removed > 0 then io.write("  - ", table.concat(result.removed, ", "), "\n") end
-    if write then
-      local ok, e2 = fs.write(path, result.text)
-      if not ok then failed = failed + 1 io.write("  write failed: ", tostring(e2), "\n") end
-    end
-  end
-end
-io.stderr:write(string.format("kuu: %d to change, %d skipped, %d failed%s\n",
-  changed, skipped, failed, write and " (written)" or ""))
-os.exit((failed > 0 or changed > 0) and 1 or 0)
+return { fix = fix }

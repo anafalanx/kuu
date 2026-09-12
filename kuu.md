@@ -1325,7 +1325,7 @@ original domain and code; [proc](#proc) lists them. A job limit produces
 nothing more.
 
 ```text
-kuu check [--json] [PATH ...]
+kuu check [--json] [--fix [--adopt]] [PATH ...]
 ```
 
 Without paths it checks every `.lua` file below the nearest project (the
@@ -1386,6 +1386,41 @@ says nothing about correctness.
 Beyond these, no call is type-checked: argument counts, option values, and
 types still belong to runtime validation.
 
+### Fixing the declaration
+
+`--fix` writes each file's global declaration: it adds the standard names the
+chunk uses and removes the ones it does not, then checks the files again so
+the report describes what is now on disk.
+
+It knows nothing about Lua's scoping rules, because the compiler already does.
+Under a global declaration the compiler names each undeclared variable in
+turn, so the needed set is found by compiling and reading the complaint; and a
+declared name is unnecessary exactly when removing it still compiles.
+
+The direction that matters is removal. Forgetting to add a name is a loud
+load-time error and fixes itself; forgetting to remove one when its last use
+goes is silent forever, so a hand-kept list rots in one direction only.
+
+**A name is only ever added when this runtime has a global by that name.**
+`global none` exists so that a misspelling is a load-time error, and a fixer
+that declared whatever the compiler complained about would answer
+`print(reuslt)` by declaring `reuslt` -- turning a caught mistake into a silent
+nil. Such a file is reported as not fixed, with the reason, and left alone
+with its error intact.
+
+A file with no global declaration at all is left alone unless `--adopt` is
+given, since switching a chunk to declared-only mode is a larger change than
+correcting a list that is already there. Nothing else in the file is touched:
+a declaration that merely wraps differently is not rewritten.
+
+```text
+app.lua:
+  + tostring, ipairs
+  - select, math
+typo.lua: not fixed: `reuslt` is not a global this runtime has; it reads like a misspelling, and declaring it would hide one
+kuu: 6 files, 1 fixed, 1 errors, 0 warnings
+```
+
 ```text
 bad.lua:1: unexpected symbol near '='
 strict.lua:2: variable 'print' is not declared
@@ -1410,6 +1445,8 @@ type CheckReport = {
   ok: boolean; // true exactly when result.errors is zero
   result: {
     root: string; // absolute path
+    fixed?: { path: string; added: string[]; removed: string[] }[];   // --fix only
+    unfixed?: { path: string; message: string }[];                    // --fix only
     files: {
       path: string; // relative to root when under it, otherwise as reported
       errors: CheckError[];
@@ -1438,6 +1475,9 @@ literal outside it, `rt.version` compared by text included). Warning kinds
 are `globals` (no declaration) and `require` (unresolved module). For `name`,
 `code`, `option` and `value`, `module` and `name` identify what was written
 and `suggestion` is the nearest real spelling, omitted when none is close.
+
+`fixed` and `unfixed` are present only with `--fix`: the declarations that
+were rewritten, and the files that were left alone with the reason.
 
 Exit 0 or 1 produces this envelope, with no summary on stderr. Invalid
 command arguments or an explicitly named path that does not exist exit 2

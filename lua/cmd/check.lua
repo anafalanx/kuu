@@ -1,6 +1,7 @@
--- check.lua -- `kuu check [--json] [PATH ...]`: parse, global declarations, requires.
+-- check.lua -- `kuu check [--json] [--fix] [PATH ...]`: parse, global
+-- declarations, requires, palette names and contracts.
 global none
-global <const> require, ipairs, tostring, string, io, os
+global <const> require, ipairs, tostring, string, io, os, table
 
 local rt = require "rt"
 local cli = require "cli"
@@ -11,6 +12,8 @@ local check = require "check"
 
 local spec = {
   { "--json", type = "flag", help = "machine-readable report" },
+  { "--fix", type = "flag", help = "write each file's global declaration: add the standard names it uses, remove the ones it does not" },
+  { "--adopt", type = "flag", help = "with --fix, also give a file that has no global declaration one" },
   { "paths", rest = true, help = "files or directories (default: the nearest project, else the current directory)" },
 }
 local opts, e = cli.parse(rt.args, spec, "kuu check")
@@ -36,9 +39,48 @@ else
   end
 end
 
+-- --fix rewrites the declaration and nothing else, then the files are checked
+-- again, so the report describes what is now on disk rather than what was. A
+-- name is only ever added when the runtime has a global by that name, so a
+-- misspelling is refused rather than declared; see _fixglobals.
+local fixed, unfixable = {}, {}
+if opts.fix then
+  local fixer = require "_fixglobals"
+  local paths = {}
+  for _, r in ipairs(reports) do paths[#paths + 1] = r.path end
+  for _, path in ipairs(paths) do
+    local result, why = fixer.fix(path, opts.adopt)
+    if not result then
+      unfixable[#unfixable + 1] = { path = path, message = tostring(why) }
+    elseif result.changed then
+      local ok, e2 = fs.write(path, result.text)
+      if ok then
+        fixed[#fixed + 1] = { path = path, added = result.added, removed = result.removed }
+      else
+        unfixable[#unfixable + 1] = { path = path, message = tostring(e2) }
+      end
+    end
+  end
+  if #fixed > 0 then
+    reports = {}
+    for _, path in ipairs(paths) do reports[#reports + 1] = check.file(path, root) end
+  end
+end
+
 local function shown(path)
   if path:sub(1, #root + 1) == root .. "/" then return path:sub(#root + 2) end
   return path
+end
+
+if opts.fix and not opts.json then
+  for _, f in ipairs(fixed) do
+    io.write(shown(f.path), ":\n")
+    if #f.added > 0 then io.write("  + ", table.concat(f.added, ", "), "\n") end
+    if #f.removed > 0 then io.write("  - ", table.concat(f.removed, ", "), "\n") end
+  end
+  for _, u in ipairs(unfixable) do
+    io.write(shown(u.path), ": not fixed: ", u.message, "\n")
+  end
 end
 
 local errors, warnings = 0, 0
@@ -64,8 +106,24 @@ if opts.json then
   for _, r in ipairs(reports) do
     files[#files + 1] = { path = shown(r.path), errors = json.array(r.errors), warnings = json.array(r.warnings), requires = json.array(r.requires) }
   end
-  io.write(json.encode { ok = errors == 0, result = { root = root, files = files, errors = errors, warnings = warnings } }, "\n")
+  local result = { root = root, files = files, errors = errors, warnings = warnings }
+  if opts.fix then
+    result.fixed, result.unfixed = json.array {}, json.array {}
+    for _, f in ipairs(fixed) do
+      result.fixed[#result.fixed + 1] = { path = shown(f.path),
+        added = json.array(f.added), removed = json.array(f.removed) }
+    end
+    for _, u in ipairs(unfixable) do
+      result.unfixed[#result.unfixed + 1] = { path = shown(u.path), message = u.message }
+    end
+  end
+  io.write(json.encode { ok = errors == 0, result = result }, "\n")
 else
-  io.stderr:write(string.format("kuu: %d files, %d errors, %d warnings\n", #reports, errors, warnings))
+  if opts.fix then
+    io.stderr:write(string.format("kuu: %d files, %d fixed, %d errors, %d warnings\n",
+      #reports, #fixed, errors, warnings))
+  else
+    io.stderr:write(string.format("kuu: %d files, %d errors, %d warnings\n", #reports, errors, warnings))
+  end
 end
 os.exit(errors > 0 and 1 or 0)
