@@ -236,10 +236,13 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      executable is 1,563,512 bytes, and the local file, the asset downloaded
      again, and the published sidecar all carry the same SHA-256, with the
      released binary reporting its own Certum identity through
-     `sys.signature`. Three clean soak gates ran in a row on the release host
-     — `make gate`, the required separate `make asan`, and the `make publish`
-     repeat — which with the 23H2 evidence from the other machine puts two
-     hosts behind the 1.0 soak criterion rather than one. Time Actual adopted
+     `sys.signature`. Three gates ran in a row on the release host — `make
+     gate`, the required separate `make asan`, and the `make publish` repeat,
+     1062 checks each — and the two of them that carry a soak were clean at 25
+     and 29 rounds, which with the 23H2 evidence from the other machine puts
+     two hosts behind the 1.0 soak criterion rather than one. The release
+     note's "three clean soak gates" counts the gates, not the soaks: `make
+     asan` runs the suite alone. Time Actual adopted
      it the same day: it guards with `rt.version_at_least(0, 9)`, raising its
      minimum from 0.5 retired the two compatibility branches it carried, its
      CI pins the release and its checksum, and its `test` task passed 2,191

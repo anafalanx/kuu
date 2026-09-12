@@ -28,7 +28,7 @@ Windows 11 23H2 and later, and Windows Server 2025 and later, only.
 Version 0.9.0 is the last release before the 1.0 freeze, and corrects contracts
 while correcting them is still allowed. The version grows a patch component,
 which breaks the minimum-version guard published through 0.8: replace it with
-`rt.at_least`. `fs.write` now retries its rename, closing an intermittent
+`rt.version_at_least`. `fs.write` now retries its rename, closing an intermittent
 `FS access` failure. `svc`, `evt`, and `sys.signature` leave the planned freeze
 list until a project has driven them. See
 [upgrading to 0.9](docs/upgrading-0.9.md).
@@ -40,6 +40,7 @@ kuu -e SCRIPT [arg ...]   run an inline script
 kuu run [--json] [--dry-run] [TASK [arg ...]]  a task from the nearest tasks.lua
 kuu list [--json]         those tasks
 kuu check [--json] [PATH ...]  syntax, globals, requires, palette names, without running
+kuu capabilities [--json]  what a program can reach from here; provisional
 kuu docs [PAGE | search TEXT]   the manual
 kuu version | --version | --help
 ```

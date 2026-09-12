@@ -173,7 +173,7 @@ wrong thing.
 
 Entry routes are a program file, a program on standard input, and an inline
 script with `-e`. Arguments arrive as `...` and as `rt.args`; there is no `arg`
-global. The verbs are `run`, `list`, `check`, `docs` and `version`.
+global. The verbs are `run`, `list`, `check`, `capabilities`, `docs` and `version`.
 
 ## The palette, by area
 
@@ -1003,7 +1003,7 @@ type CapabilityReport = {
       version: string; // Major.Minor.Patch
       lua: string; // the Lua release, "Lua 5.5.1"
       exe: string; // this executable
-      verbs: string[]; // kuu VERB, sorted
+      verbs: string[]; // the verbs carried as programs, sorted; see below
       pages: string[]; // kuu docs PAGE, sorted
     };
     modules: {
@@ -1027,6 +1027,12 @@ type CapabilityReport = {
 
 `project` is omitted when there is no project. `kuu list --json` has each
 task's dependencies and arguments; they are not repeated here.
+
+`verbs` lists the verbs kuu carries as programs, which is what it can
+enumerate. `docs` and `version` are answered in C before that dispatch and are
+not in the list: `pages` is how the manual shows up in the report, and
+`kuu --help` is the complete usage. A reader of the text form sees both,
+since the manual has a line of its own there.
 
 `errors` is every domain kuu raises and the complete set of codes in it, which
 is what `err.is(e, DOMAIN, code)` matches against: a code a domain does not
@@ -4444,10 +4450,13 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      executable is 1,563,512 bytes, and the local file, the asset downloaded
      again, and the published sidecar all carry the same SHA-256, with the
      released binary reporting its own Certum identity through
-     `sys.signature`. Three clean soak gates ran in a row on the release host
-     — `make gate`, the required separate `make asan`, and the `make publish`
-     repeat — which with the 23H2 evidence from the other machine puts two
-     hosts behind the 1.0 soak criterion rather than one. Time Actual adopted
+     `sys.signature`. Three gates ran in a row on the release host — `make
+     gate`, the required separate `make asan`, and the `make publish` repeat,
+     1062 checks each — and the two of them that carry a soak were clean at 25
+     and 29 rounds, which with the 23H2 evidence from the other machine puts
+     two hosts behind the 1.0 soak criterion rather than one. The release
+     note's "three clean soak gates" counts the gates, not the soaks: `make
+     asan` runs the suite alone. Time Actual adopted
      it the same day: it guards with `rt.version_at_least(0, 9)`, raising its
      minimum from 0.5 retired the two compatibility branches it carried, its
      CI pins the release and its checksum, and its `test` task passed 2,191

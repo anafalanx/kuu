@@ -86,7 +86,7 @@ type CapabilityReport = {
       version: string; // Major.Minor.Patch
       lua: string; // the Lua release, "Lua 5.5.1"
       exe: string; // this executable
-      verbs: string[]; // kuu VERB, sorted
+      verbs: string[]; // the verbs carried as programs, sorted; see below
       pages: string[]; // kuu docs PAGE, sorted
     };
     modules: {
@@ -110,6 +110,12 @@ type CapabilityReport = {
 
 `project` is omitted when there is no project. `kuu list --json` has each
 task's dependencies and arguments; they are not repeated here.
+
+`verbs` lists the verbs kuu carries as programs, which is what it can
+enumerate. `docs` and `version` are answered in C before that dispatch and are
+not in the list: `pages` is how the manual shows up in the report, and
+`kuu --help` is the complete usage. A reader of the text form sees both,
+since the manual has a line of its own there.
 
 `errors` is every domain kuu raises and the complete set of codes in it, which
 is what `err.is(e, DOMAIN, code)` matches against: a code a domain does not
