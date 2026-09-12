@@ -1534,6 +1534,13 @@ through another variable, function arguments, or a function result are not
 inferred. Shadowing or reassigning `require` likewise stops treating it as
 kuu's loader in that scope.
 
+**A module indexed where it is required is not checked.** The binding is what
+`check` follows, so `require("rt").version == "0.5"` inside an expression is
+invisible to every check on this page, where the same comparison through
+`local rt = require "rt"` is reported. A project carries two of exactly that
+shape; grep for `require(` followed by a dot when a version or a code set
+matters, since this will not find them.
+
 Four things are checked against kuu's own interface, and all four are
 mistakes that run without complaint today. A code its domain does not have,
 so `err.is` answers false for every error and the handler it guards is dead:
@@ -4487,7 +4494,10 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    not take, a closed set compared with a literal outside it, and `rt.version`
    compared by text are now errors. Time Actual carries two of the last kind,
    dead since 0.6, which survived the commit that migrated it and a review
-   looking for exactly them. Domains themselves stay open, since `err.new` is
+   looking for exactly them — and which `check` still does not see, because
+   they index the module where they require it rather than through a binding,
+   which is the one shape none of these four follows.
+   Domains themselves stay open, since `err.new` is
    public and projects name their own: the first draft that checked them
    offered `TEXT` for the suite's `TEST`, one edit away, on a correct line.
    The description is authored because scraping was tried, and returned option
@@ -5560,9 +5570,9 @@ app.lua:9: cwdd is not an option of proc.run; did you mean cwd?
   `FsKind`, `SvcState` and thirteen more.
 - **`rt.version` compared by text.** Since 0.9.0 the version has three
   components, so `rt.version == "0.9"` is false against `0.9.0`. Use
-  `rt.version_at_least`. This is not hypothetical: a consuming project carried
-  two such branches, dead since 0.6, which survived both the commit that
-  migrated it and a review looking for exactly them.
+  `rt.version_at_least`. This is not hypothetical: a consuming project carries
+  two such branches, dead since 0.6, which survived the commit that migrated it
+  to `rt.version_at_least` and a review looking for exactly them.
 - **An option a call does not take.** `proc.run { cwdd = "x" }` raises
   `PROC usage`, not silently but late: an error path may not reach that line
   until production.
@@ -5570,6 +5580,12 @@ app.lua:9: cwdd is not an option of proc.run; did you mean cwd?
 Error **domains** are not checked, only the codes inside a domain kuu owns.
 `err.new` is public and a project names its own, so an unfamiliar domain says
 nothing about correctness.
+
+**Grep as well as check.** All four follow the local binding, so
+`require("rt").version == "0.5"` written inline is invisible where
+`local rt = require "rt"` then `rt.version == "0.5"` is reported. The two dead
+branches above are of the inline shape, so upgrading will not surface them;
+only reading the code will. See [check](#check).
 
 ### `check` reads a project's own modules too
 

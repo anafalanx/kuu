@@ -62,9 +62,9 @@ app.lua:9: cwdd is not an option of proc.run; did you mean cwd?
   `FsKind`, `SvcState` and thirteen more.
 - **`rt.version` compared by text.** Since 0.9.0 the version has three
   components, so `rt.version == "0.9"` is false against `0.9.0`. Use
-  `rt.version_at_least`. This is not hypothetical: a consuming project carried
-  two such branches, dead since 0.6, which survived both the commit that
-  migrated it and a review looking for exactly them.
+  `rt.version_at_least`. This is not hypothetical: a consuming project carries
+  two such branches, dead since 0.6, which survived the commit that migrated it
+  to `rt.version_at_least` and a review looking for exactly them.
 - **An option a call does not take.** `proc.run { cwdd = "x" }` raises
   `PROC usage`, not silently but late: an error path may not reach that line
   until production.
@@ -72,6 +72,12 @@ app.lua:9: cwdd is not an option of proc.run; did you mean cwd?
 Error **domains** are not checked, only the codes inside a domain kuu owns.
 `err.new` is public and a project names its own, so an unfamiliar domain says
 nothing about correctness.
+
+**Grep as well as check.** All four follow the local binding, so
+`require("rt").version == "0.5"` written inline is invisible where
+`local rt = require "rt"` then `rt.version == "0.5"` is reported. The two dead
+branches above are of the inline shape, so upgrading will not surface them;
+only reading the code will. See [check](check.md).
 
 ## `check` reads a project's own modules too
 

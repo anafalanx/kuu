@@ -264,7 +264,10 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
    not take, a closed set compared with a literal outside it, and `rt.version`
    compared by text are now errors. Time Actual carries two of the last kind,
    dead since 0.6, which survived the commit that migrated it and a review
-   looking for exactly them. Domains themselves stay open, since `err.new` is
+   looking for exactly them — and which `check` still does not see, because
+   they index the module where they require it rather than through a binding,
+   which is the one shape none of these four follows.
+   Domains themselves stay open, since `err.new` is
    public and projects name their own: the first draft that checked them
    offered `TEXT` for the suite's `TEST`, one edit away, on a correct line.
    The description is authored because scraping was tried, and returned option

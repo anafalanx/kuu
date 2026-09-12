@@ -61,6 +61,13 @@ through another variable, function arguments, or a function result are not
 inferred. Shadowing or reassigning `require` likewise stops treating it as
 kuu's loader in that scope.
 
+**A module indexed where it is required is not checked.** The binding is what
+`check` follows, so `require("rt").version == "0.5"` inside an expression is
+invisible to every check on this page, where the same comparison through
+`local rt = require "rt"` is reported. A project carries two of exactly that
+shape; grep for `require(` followed by a dot when a version or a code set
+matters, since this will not find them.
+
 Four things are checked against kuu's own interface, and all four are
 mistakes that run without complaint today. A code its domain does not have,
 so `err.is` answers false for every error and the handler it guards is dead:
