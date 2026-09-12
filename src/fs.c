@@ -249,23 +249,62 @@ static int write_all(HANDLE h, const unsigned char *data, size_t length, DWORD *
  * untouched: each attempt either replaced the target or left it alone. */
 #define KU_REPLACE_ATTEMPTS 6
 
-static int replace_target(const wchar_t *temp, const wchar_t *target, DWORD *error)
+/* The window is not peculiar to the atomic write.  A rename over a target and
+ * a copy onto one are refused the same two ways while a scanner holds the
+ * file, and succeed on the same immediate retry.  0.9.0 gave the retry to
+ * `write` alone, and the suite's intermittent rename and copy failures were
+ * exactly the two calls it had not reached.  One helper, one bound, the same
+ * two errors, for all three. */
+typedef BOOL (*ku_sharing_op)(void *context);
+
+static BOOL retry_sharing(ku_sharing_op op, void *context, DWORD *error)
 {
     DWORD wait = 0;
     for (int attempt = 0; attempt < KU_REPLACE_ATTEMPTS; attempt++) {
-        if (MoveFileExW(temp, target, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-            return 0;
+        if (op(context)) {
+            *error = 0;
+            return TRUE;
         }
         *error = GetLastError();
         if (*error != ERROR_ACCESS_DENIED && *error != ERROR_SHARING_VIOLATION) {
-            return -1;
+            return FALSE;
         }
         if (attempt + 1 < KU_REPLACE_ATTEMPTS) {
             Sleep(wait);
             wait = wait == 0 ? 1 : wait * 2;
         }
     }
-    return -1;
+    return FALSE;
+}
+
+typedef struct move_op {
+    const wchar_t *from;
+    const wchar_t *to;
+    DWORD flags;
+} move_op;
+
+static BOOL do_move(void *context)
+{
+    const move_op *op = context;
+    return MoveFileExW(op->from, op->to, op->flags);
+}
+
+typedef struct copy_op {
+    const wchar_t *from;
+    const wchar_t *to;
+    DWORD flags;
+} copy_op;
+
+static BOOL do_copy(void *context)
+{
+    const copy_op *op = context;
+    return CopyFileExW(op->from, op->to, NULL, NULL, NULL, op->flags);
+}
+
+static int replace_target(const wchar_t *temp, const wchar_t *target, DWORD *error)
+{
+    move_op op = {temp, target, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH};
+    return retry_sharing(do_move, &op, error) ? 0 : -1;
 }
 
 /* fs.write(path, data [, { atomic = true, append = false }]) */
@@ -724,9 +763,9 @@ static int l_fs_rename(lua_State *L)
     path_arg(L, 1, &from);
     path_arg(L, 2, &to);
     const char *shown = lua_tostring(L, 1);
-    DWORD flags = MOVEFILE_COPY_ALLOWED | (replace ? MOVEFILE_REPLACE_EXISTING : 0);
-    BOOL ok = MoveFileExW(from.text, to.text, flags);
-    DWORD error = ok ? 0 : GetLastError();
+    move_op op = {from.text, to.text, MOVEFILE_COPY_ALLOWED | (replace ? MOVEFILE_REPLACE_EXISTING : 0)};
+    DWORD error = 0;
+    BOOL ok = retry_sharing(do_move, &op, &error);
     ku_wpath_free(&from);
     ku_wpath_free(&to);
     if (!ok) {
@@ -746,8 +785,9 @@ static int l_fs_copy(lua_State *L)
     path_arg(L, 1, &from);
     path_arg(L, 2, &to);
     const char *shown = lua_tostring(L, 1);
-    BOOL ok = CopyFileExW(from.text, to.text, NULL, NULL, NULL, replace ? 0 : COPY_FILE_FAIL_IF_EXISTS);
-    DWORD error = ok ? 0 : GetLastError();
+    copy_op op = {from.text, to.text, replace ? 0 : COPY_FILE_FAIL_IF_EXISTS};
+    DWORD error = 0;
+    BOOL ok = retry_sharing(do_copy, &op, &error);
     ku_wpath_free(&from);
     ku_wpath_free(&to);
     if (!ok) {

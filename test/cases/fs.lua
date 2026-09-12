@@ -46,6 +46,38 @@ return function(T)
       elapsed >= 10, string.format("%.0f ms", elapsed))
     check("the held target kept its old bytes", fs.read(held) == "before")
   end
+
+  -- The same window for rename and copy.  0.9.0 gave the retry to the atomic
+  -- write alone, and the suite's intermittent rename and copy failures were
+  -- the two calls it had not reached; the held reader stands in for the
+  -- scanner here as above, and both must fail rather than bypass it.
+  do
+    local held, source = root .. "/held2.bin", root .. "/source.bin"
+    fs.write(held, "before", { atomic = false })
+    fs.write(source, "source", { atomic = false })
+    local handle = io.open(held, "rb")
+    local began = sched.clock()
+    local moved, why = fs.rename(source, held, { replace = true })
+    local elapsed = (sched.clock() - began) * 1000
+    check("a rename over a held target still fails, with no permission bypassed",
+      moved == nil and err.is(why, "FS", "access"), tostring(why))
+    check("and was retried rather than abandoned at once", elapsed >= 10, string.format("%.0f ms", elapsed))
+    check("the held target kept its old bytes", fs.read(held) == "before")
+    check("and the source is still there", fs.read(source) == "source")
+    handle:close()
+
+    -- A reader does not stand in for the scanner on a copy: CopyFileEx opens
+    -- the target for writing, and the C runtime's fopen shares that, so a copy
+    -- over a read-held target simply succeeds on Windows.  The retry is shown
+    -- from the other side instead -- a failure that is not transient returns
+    -- at once rather than waiting out the window.
+    began = sched.clock()
+    local copied, why2 = fs.copy(source, held)
+    elapsed = (sched.clock() - began) * 1000
+    check("a copy onto an existing target without replace is exists, and is not retried",
+      copied == nil and err.is(why2, "FS", "exists") and elapsed < 10, tostring(why2) .. string.format(" %.0f ms", elapsed))
+    check("a copy with replace over it succeeds", fs.copy(source, held, { replace = true }) == true and fs.read(held) == "source")
+  end
   fs.write(root .. "/text.txt", "\239\187\191caf\195\169\r\nx")
   check("read with encoding utf-8 drops the BOM and validates", fs.read(root .. "/text.txt", { encoding = "utf-8" }) == "café\r\nx")
   fs.write(root .. "/cp.txt", "caf\233")

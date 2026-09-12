@@ -37,14 +37,26 @@ static void push_meta(lua_State *L)
 static void push_err_v(lua_State *L, const char *domain, const char *code,
                        const char *format, va_list args)
 {
-    char message[1024];
-    vsnprintf(message, sizeof message, format, args);
+    /* The message is exactly as long as it is.  A 1024-byte cut lost the end
+     * of a failure that carried a long path, and the end is the Windows
+     * reason -- the part that says why.  The buffer is Lua's, so a raise
+     * between here and the push cannot leak it. */
+    va_list measure;
+    va_copy(measure, args);
+    int length = vsnprintf(NULL, 0, format, measure);
+    va_end(measure);
+    if (length < 0) {
+        length = 0;
+    }
     lua_createtable(L, 0, 3);
     lua_pushstring(L, domain);
     lua_setfield(L, -2, "domain");
     lua_pushstring(L, code);
     lua_setfield(L, -2, "code");
-    lua_pushstring(L, message);
+    luaL_Buffer buffer;
+    char *text = luaL_buffinitsize(L, &buffer, (size_t)length + 1);
+    vsnprintf(text, (size_t)length + 1, format, args);
+    luaL_pushresultsize(&buffer, (size_t)length);
     lua_setfield(L, -2, "message");
     push_meta(L);
     lua_setmetatable(L, -2);

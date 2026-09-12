@@ -3,6 +3,7 @@
 #include "err.h"
 #include "payload.h"
 #include "program.h"
+#include "fspath.h"
 #include "wintext.h"
 #include "values.h"
 
@@ -244,14 +245,18 @@ static int ku_searcher(lua_State *L)
         if (written < 0 || (size_t)written >= sizeof path) {
             return luaL_error(L, "module path for '%s' is too long", name);
         }
-        wchar_t *wide = ku_utf8_to_wide(path);
-        if (wide == NULL) {
-            return luaL_error(L, "module path '%s' is not valid UTF-8", path);
+        /* Through the same normaliser `fs` uses, so a root beyond 260
+         * characters gets the \\?\ prefix here as everywhere else.  Before,
+         * a module under such a root was "no file" while fs.read of the
+         * same path succeeded. */
+        ku_wpath wide;
+        ku_fail fail;
+        if (ku_wpath_make(path, &wide, &fail) != 0) {
+            return luaL_error(L, "module path '%s': %s", path, fail.message);
         }
         ku_program program;
-        ku_fail fail;
-        int status = ku_program_read_file(wide, path, &program, &fail);
-        free(wide);
+        int status = ku_program_read_file(wide.text, path, &program, &fail);
+        ku_wpath_free(&wide);
         if (status != 0) {
             if (strcmp(fail.code, "notfound") == 0) {
                 int more = snprintf(missing + missing_used, sizeof missing - missing_used,

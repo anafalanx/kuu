@@ -2061,6 +2061,11 @@ does not weaken atomicity, because each attempt either replaced the target or
 left it alone. A target somebody holds open for longer than that window still
 fails, and that is the intended answer rather than a defect.
 
+`rename` and `copy` retry the same way, since 0.10.0, for the same two
+errors and the same bound. 0.9.0 gave the retry to the atomic write alone,
+and the intermittent failures the suite kept seeing were exactly the two
+calls it had not reached.
+
 ### Facts about a path
 
 ```lua

@@ -16,6 +16,7 @@
 #include "kuu.h"
 #include "loop.h"
 #include "payload.h"
+#include "fspath.h"
 #include "program.h"
 #include "state.h"
 #include "pseudoconsole.h"
@@ -469,7 +470,21 @@ static int run_entry(int argc, wchar_t **argv, char **words)
         launch.argv = (const char *const *)(words + 2);
         char what[KU_PROGRAM_WHAT_MAX];
         snprintf(what, sizeof what, "program file '%s'", first);
-        if (ku_program_read_file(argv[1], what, &program, &fail) != 0) {
+        /* Through the same normaliser `fs` uses, so a program beyond 260
+         * characters opens here as it does everywhere else; the raw argv
+         * went to CreateFileW unprefixed and was "cannot find" past that
+         * length while fs.read of the same file succeeded.  A path the
+         * normaliser refuses stays an ENTRY failure, in ENTRY's own words. */
+        ku_wpath program_path;
+        ku_fail refused;
+        if (ku_wpath_make(first, &program_path, &refused) != 0) {
+            ku_fail_set(&fail, "ENTRY", "badvalue", "%s", refused.message);
+            exit_code = report_fail(&fail);
+            goto done;
+        }
+        int read_status = ku_program_read_file(program_path.text, what, &program, &fail);
+        ku_wpath_free(&program_path);
+        if (read_status != 0) {
             exit_code = report_fail(&fail);
             goto done;
         }

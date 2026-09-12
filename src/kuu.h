@@ -35,7 +35,10 @@
 typedef struct ku_fail {
     const char *domain;
     const char *code;
-    char message[1024];
+    /* Wide enough for a failure that names a long path and still says why:
+     * an extended-length path is bounded at 32,767 characters, but the ones
+     * a project has are hundreds, and 1024 cut the reason off the end. */
+    char message[4096];
 } ku_fail;
 
 /* Fill `fail` and return 1, so callers can write `return ku_fail_set(...)`. */

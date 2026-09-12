@@ -1,7 +1,7 @@
 -- entry.lua -- routes, arguments, decoding, the removed hazards, require,
 -- error reporting, and exit codes, by running kuu as a child.
 global none
-global <const> require, ipairs, string, io
+global <const> require, ipairs, string, io, tostring
 
 return function(T)
   local check, kuu, describe = T.check, T.kuu, T.describe
@@ -161,6 +161,20 @@ return function(T)
 
   r = kuu({ "main.lua", "rel" }, { cwd = unicode_dir })
   check("relative program path resolves require from its directory", r.code == 0 and r.out == "mod says hi\trel\n", describe(r))
+
+  -- The entry route and the require root go through the same normaliser as
+  -- fs, so a program beyond 260 characters opens.  Before, the raw argv went
+  -- to CreateFileW unprefixed: fs.read of the file succeeded and running it
+  -- was "cannot find program file".
+  local fs = require "fs"
+  local long_dir = T.work .. "/" .. string.rep("d", 120) .. "/" .. string.rep("e", 120) .. "/" .. string.rep("f", 60)
+  check("a directory beyond 260 characters can be made", fs.mkdir(long_dir) == true and #long_dir > 260, tostring(#long_dir))
+  -- fs.write, not the harness's io.open: the C runtime is exactly what
+  -- cannot open a path this long, which is the point.
+  check("files can be written under it", fs.write(long_dir .. "/mod.lua", T.read_file(T.fixtures .. "/mod.lua")) == true
+    and fs.write(long_dir .. "/main.lua", "print(require('mod').hi, ...)\n") == true)
+  r = kuu { long_dir .. "/main.lua", "far" }
+  check("a program beyond 260 characters runs, and requires a module beside it", r.code == 0 and r.out == "mod says hi\tfar\n", describe(r))
 
   -- stdin route ---------------------------------------------------------------
   r = kuu({ "-", "from-stdin" }, { stdin = T.read_file(hello) })
