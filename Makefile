@@ -4,7 +4,7 @@
 #   make test       build, then run the test suite with the built kuu
 #   make analyze    run GCC static analysis on authored native code
 #   make fuzz       run deterministic parser fuzzing (FUZZ cases per seed)
-#   make gate       run test, analyze, fuzz, and soak in that order
+#   make gate       run test, asan, analyze, fuzz, and soak in that order
 #   make asan       build with the test-only CLANG64 toolchain and run the suite
 #   make clean      remove build/
 #
@@ -175,6 +175,7 @@ soak: $(OUT) $(FIXTURES)
 .PHONY: gate
 gate:
 	$(MAKE) test
+	$(MAKE) asan
 	$(MAKE) analyze
 	$(MAKE) fuzz
 	$(MAKE) soak

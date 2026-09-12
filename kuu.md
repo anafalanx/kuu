@@ -321,9 +321,10 @@ Verification is layered and all of it runs locally:
   durations, dates, paths, CSV, INI, JSON and registry text, plus command
   lines, on fixed seeds.
 - `make soak` — repeated full runs watching handle counts and private bytes.
-- `make asan` — a separate build under Clang's AddressSanitizer, a required
-  release check.
-- `make gate` — the first four in order.
+- `make asan` — a separate build under Clang's AddressSanitizer, run inside
+  the gate since 0.10.0; before that it was a release check run by hand, and
+  its build was found 22 commits stale.
+- `make gate` — all five in order: `test`, `asan`, `analyze`, `fuzz`, `soak`.
 
 ## Where 0.9.0 stands
 
@@ -4245,11 +4246,11 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | a language of kuu's own | none, by owner decision on 2026-09-11: no successor language, no compiler, no emission subset | kuu is a runtime for Lua 5.5 and grows capabilities in the palette and options on the calls already there; existing technology is recombined, not syntax invented |
 | a mandated runtime | none. No JavaScript, Go, Tcl or other runtime is shipped, fetched by kuu, mandated, or recommended; kuu is never extended, a project is, and `.kuu/` never holds anything that runs | decided 2026-09-13. A design for a downloaded, pinned JavaScript runtime was recorded on 2026-09-12 and set aside the next day; the note stands as the record of what was considered and measured. The problem it answered — the palette grows only through C — is answered by the front door instead: a project builds the tool it needs and calls it through `kuu.exe`, and the manual says what a confined tool must provide without naming what to write it in |
 | host language | C, the els method's subset | the host lives on two C boundaries, Win32 and the Lua API, and machteld's process-lifetime and text-boundary code transfers verbatim |
-| compiler | gcc 16.1 from MSYS2 UCRT64, copied into `.tools` | the estate's proven recipe; gcc and GNU make are the chosen production build, with Clang only for sanitizer tests |
+| compiler | gcc 16.2.0-3 from MSYS2 UCRT64, unpacked into `.tools` from 18 archives pinned by SHA-256 and retained | the estate's proven recipe; gcc and GNU make are the chosen production build, with Clang only for sanitizer tests. Pinned on 2026-09-13, when the 16.1 tree that built everything before turned out to be a copy of a live install whose packages the mirror no longer served; the record is the table in [toolchain](#toolchain), the check is `certutil`, and no tool in the repository fetches or verifies it |
 | build | GNU make from the same `.tools`, recipes under `cmd.exe` | no PowerShell in the repository, and kuu never builds kuu: the build is make and gcc, the tests are Lua run by the built kuu |
 | self-hosting | none, by owner decision | kuu is not required to bootstrap or build itself; a person with `.tools` populated runs `make` |
 | versions | `Major.Minor.Patch`, all natural numbers, since 0.9.0 | 0.1 through 0.8 had no patch component; a frozen 1.x needs a way to ship one correction without claiming new capability, and the component is cheaper to add before the freeze than after it. `rt.version_at_least` compares them so no project parses the text |
-| dependency pinning | none: a project fetches what it needs by url and hash with `http` and `archive`; kuu's own compiler is copied by hand | the lock built in 0.3 was removed in 0.4 as formalism; kuu does not bootstrap itself |
+| dependency pinning | none: a project fetches what it needs by url and hash with `http` and `archive`; kuu's own compiler is obtained by hand from archives pinned by hash and retained, never fetched by kuu | the lock built in 0.3 was removed in 0.4 as formalism; kuu does not bootstrap itself |
 | the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has only stock Lua's `io` and `os`, and a static check can list what else a file asks for. It gates a program that does not reach around it: `_ENV` is an upvalue, needs no declaration, and reaches `load` and the whole palette from a file `check` reports with `"requires":[]` and a clean bill ([shortcomings](#shortcomings)) |
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
 | process lifetime | the no-orphans law, first thing in the palette | every child is born into a kill-on-close job; only `detach`, and a child's own deliberate breakaway, step outside it |
@@ -5328,34 +5329,67 @@ prints nothing. The `Makefile` sets the path itself and runs its recipes under
 .tools\msys2\ucrt64\bin\mingw32-make.exe test
 ```
 
-The tree in use on 2026-09-09, by MSYS2 package:
-
-| package | version |
-|---|---|
-| mingw-w64-ucrt-x86_64-gcc | 16.1.0-5 (reports "gcc version 16.1.0 (Rev5, Built by MSYS2 project)") |
-| mingw-w64-ucrt-x86_64-binutils | 2.46-3 |
-| mingw-w64-ucrt-x86_64-crt | 14.0.0.r47.g0636d42e1-1 |
-| mingw-w64-ucrt-x86_64-headers | 14.0.0.r47.g0636d42e1-1 (the headers identify as mingw-w64 15.0) |
-| mingw-w64-ucrt-x86_64-winpthreads | 14.0.0.r47.g0636d42e1-1 |
-
 Target triple `x86_64-w64-mingw32`; C runtime UCRT, which every supported
 Windows carries as `ucrtbase.dll`, so the executable has no redistributable.
 
+#### The UCRT64 pins
+
+The production tree is unpacked from these 18 MSYS2 packages, fetched on
+2026-09-13 from the [MSYS2 UCRT64 mirror](https://mirror.msys2.org/mingw/ucrt64/)
+and checked against the SHA-256 each
+[package page](https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-gcc)
+publishes before extraction. They are gcc's complete runtime closure plus
+GNU make; `cc-libs` is a virtual dependency that `gcc-libs` provides. The
+same day, the complete gate — suite, `asan`, `analyze`, `fuzz`, `soak` —
+passed under this tree before it replaced the previous one.
+
+Until then the tree was a robocopy of a live MSYS2 install carrying gcc
+16.1.0-5, recorded by version only: 42,000 files, of which the 6,384 in this
+closure are the ones a build touches. That compiler had already left the
+mirror, which keeps only current versions, by the time anyone tried to obtain
+it again. The archives are retained so that this cannot happen twice.
+
+For each row, the download name is
+`mingw-w64-ucrt-x86_64-<package>-<version>-any.pkg.tar.zst`, below the mirror
+URL above. Keep the archives under `.tools/downloads/ucrt64`. Download the
+exact versions, compare `certutil -hashfile <archive> SHA256` with the table,
+then unpack each verified archive with Windows' own tar, which reads zstd —
+`C:\Windows\System32\tar.exe -xf <archive> -C .tools\msys2 ucrt64` — taking
+only the `ucrt64` member so the package's own metadata files are left out. Do
+not run package scripts. The first check is
+`.tools\msys2\ucrt64\bin\gcc.exe --version`, which must report
+`gcc.exe (Rev3, Built by MSYS2 project) 16.2.0`.
+
+| package | version | SHA-256 |
+|---|---|---|
+| gcc | 16.2.0-3 | `1cd86e5817f6e0d7310d7cb2bb91f4a55e1256cb4ce580a0c5f2a74e013d144d` |
+| gcc-libs | 16.2.0-3 | `5763fabf86fa13a4449ee765006d3446384ed66af7bf827459710eb777e0b11c` |
+| binutils | 2.47-3 | `ba98af202fe71e0884bb51daf78ce10bd8a51c69528c700dcf5855e6ece06dd3` |
+| crt | 14.0.0.r375.g9c1abbbf5-1 | `09bccbb31c7bdc9090358cac429a78b8bffe5142a98a1e1d54f5b869f3068055` |
+| headers | 14.0.0.r375.g9c1abbbf5-1 | `046cc32a88739738e94976486ace1e8e457e6beb6ae866de2f07d2d3eebcabb6` |
+| winpthreads | 14.0.0.r375.g9c1abbbf5-1 | `3cdd84d957e4bb8b5a30df548afd82b97a52fedc77974a43debd1d0685ed669c` |
+| libwinpthread | 14.0.0.r375.g9c1abbbf5-1 | `61d340fe8eebc77ee821badca246827fe90545e99685e503bdea16a8d25df512` |
+| gmp | 6.3.0-2 | `e82a75968a556484a50084578238a84eb60fb93e34986fd6695c537975bd39ea` |
+| isl | 0.28-1 | `8594e01a253d5a72646c586cf5a1626c1b1c2be7c30060fe67abd9bebe3fe223` |
+| mpc | 1.4.1-1 | `f06556e811c711ce91609484e31d358e4f495811ba29813bf2284a3b236d82ce` |
+| mpfr | 4.2.2-3 | `6b70a275d2ec75c70aa50a236c218e6b7ee9a5ab4c6d52cb0b580267b7d200fe` |
+| zlib | 1.3.2-2 | `841401182976d2f9e17e5c0ebaac51f2a8014140ea53d67625e91c8fb3c85ea0` |
+| zstd | 1.5.7-2 | `dbdb8427280046a2b41697780aa4c52983b708082b0da4755951dc3bea96ca89` |
+| windows-default-manifest | 20260815-1 | `b39039f754a600cc0dec49df7d675a59a3cb2b63691d91b4ae60735ee7075eca` |
+| make | 4.4.1-5 | `871f760657a360279f29b945a7fd7d9655fe46a3e1e06dd783c9e74514aa0b27` |
+| gettext-runtime | 1.0-1 | `ba693dda4ac375af76ce481ff3a6e7481286546cc7dc6d56c7021dae34084157` |
+| tzdata | 2026c-1 | `b6af6fd6acb676b9bb0761b75b1d8330b89abd4c8d467fda35cee8925b170db9` |
+| libiconv | 1.19-1 | `9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16` |
+
 ### Populating `.tools`
 
-From an existing MSYS2 installation with the packages above:
-
-```bash
-robocopy "C:\msys64\ucrt64" ".tools\msys2\ucrt64" /E /MT:16 /R:1 /W:1 /NFL /NDL /NJH /NP
-```
-
-Robocopy exits 1 when it copied files; that is success. From nothing: install
-MSYS2, run `pacman -S mingw-w64-ucrt-x86_64-gcc` (binutils, crt, headers, and
-winpthreads come with it), then copy as above. About 1.1 GB, 42,000 files.
+From the pinned archives, as above: 18 downloads, 70 MB, verified, unpacked
+into `.tools/msys2/ucrt64`. No MSYS2 install and no pacman are involved.
 
 kuu's own compiler is not fetched by kuu, by the owner's decision: kuu does not
-build or bootstrap itself. Only verification targets run the built executable.
-The versions above are a record.
+build or bootstrap itself, and there is no tool in the repository that fetches
+or verifies these archives — the table is the record, `certutil` is the
+check. Only verification targets run the built executable.
 
 ### Verification
 
@@ -5365,10 +5399,13 @@ Run the complete production gate from the checkout root:
 .tools\msys2\ucrt64\bin\mingw32-make.exe -j8 gate
 ```
 
-`gate` runs the regression suite, `analyze`, `fuzz`, and `soak` in that order,
-stopping at the first failure. Recursive makes keep these stages sequential
-even with `-j8`: the suite and soak share scratch files. Each stage is also
-available separately (`test`, `analyze`, `fuzz`, `soak`). `SOAK` defaults to
+`gate` runs the regression suite, `asan`, `analyze`, `fuzz`, and `soak` in
+that order, stopping at the first failure. Recursive makes keep these stages
+sequential even with `-j8`: the suite and soak share scratch files. Each
+stage is also available separately (`test`, `asan`, `analyze`, `fuzz`,
+`soak`). `asan` is inside the gate since 0.10.0; before that it was described
+as a required release check and run by hand, and on 2026-09-12 its build was
+found 22 commits stale. `SOAK` defaults to
 60 seconds; `FUZZ` and `FUZZ_SEED` below are inherited by the gate.
 
 `analyze` compiles all authored `src/*.c` files separately into `build/analyze`
