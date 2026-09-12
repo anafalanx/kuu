@@ -22,7 +22,7 @@
 -- these.
 global none
 global <const> require, ipairs, pairs, tostring, tonumber, type, table, load,
-               package, pcall, math, error, string
+               package, pcall, math, error, string, next
 
 local fs = require "fs"
 local rt = require "rt"
@@ -141,6 +141,69 @@ local function exports_of(name)
   -- Public optional fields are absent from their tables when nil.
   if name == "task" then exports.relay = true end
   if name == "rt" then exports.program = true end
+  return exports
+end
+
+-- Where a `require` name resolves under the project root, or nil.
+local function module_path(root, name)
+  if not name:match("^[%w_%-]+$") and not name:match("^[%w_%-]+%.[%w_%.%-]+$") then return nil end
+  local rel = root .. "/" .. name:gsub("%.", "/")
+  if fs.exists(rel .. ".lua") == "file" then return rel .. ".lua" end
+  if fs.exists(rel .. "/init.lua") == "file" then return rel .. "/init.lua" end
+  return nil
+end
+
+-- The exports of a project module, read from its text rather than by running
+-- it -- project code is never executed, and that rule is not relaxed here.
+--
+-- It over-approximates on purpose. A field wrongly included costs only a
+-- missed diagnostic; one wrongly excluded is a false positive on correct
+-- code, which is far more expensive. So anything that puts the set out of
+-- reach yields nothing at all and the module goes unchecked: a computed key,
+-- a metatable, a return that is not a plain local, or a local that was not
+-- freshly built as a table.
+local function project_exports(path)
+  local text = fs.read(path, { encoding = "utf-8" })
+  if text == nil then return nil end
+  if load(text, "@check", "t") == nil then return nil end
+  local tokens = tokens_of(text)
+
+  -- The module's table is whatever the file's last statement returns, and it
+  -- has to be a plain name.
+  local returned
+  for i = #tokens - 1, 2, -1 do
+    if tokens[i].text == "return" and tokens[i + 1].kind == "name"
+      and tokens[i + 2] ~= nil and tokens[i + 2].kind == "eof" then
+      returned = tokens[i + 1].text
+      break
+    end
+  end
+  if returned == nil then return nil end
+
+  -- and it has to have been built here, not received from somewhere else.
+  local built = false
+  for i = 1, #tokens - 3 do
+    if tokens[i].text == "local" and tokens[i + 1].text == returned
+      and tokens[i + 2].text == "=" and tokens[i + 3].text == "{" then built = true break end
+  end
+  if not built then return nil end
+
+  local exports = {}
+  for i = 1, #tokens do
+    local t = tokens[i]
+    if t.text == "setmetatable" or t.text == "rawset" then return nil end
+    if t.text == returned then
+      local next1, next2, next3 = tokens[i + 1], tokens[i + 2], tokens[i + 3]
+      if next1 ~= nil and next1.text == "[" then return nil end
+      if next1 ~= nil and next1.text == "." and next2 ~= nil and next2.kind == "name" then
+        local before = tokens[i - 1]
+        if (next3 ~= nil and next3.text == "=") or (before ~= nil and before.text == "function") then
+          exports[next2.text] = true
+        end
+      end
+    end
+  end
+  if next(exports) == nil then return nil end
   return exports
 end
 
@@ -479,7 +542,14 @@ local function inspect(tokens, report, root)
       local b = access.binding
       if b.call and not b.changed then
         local name = b.call.name
-        if modules[name] == nil then modules[name] = exports_of(name) or false end
+        if modules[name] == nil then
+          local found = exports_of(name)
+          if found == nil then
+            local path = module_path(root, name)
+            found = path ~= nil and project_exports(path) or nil
+          end
+          modules[name] = found or false
+        end
         local exports = modules[name]
         if exports and not exports[access.name] then
           local suggestion = nearest(access.name, exports)

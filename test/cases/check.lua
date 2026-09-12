@@ -218,4 +218,61 @@ other.custom()
     check("a reassigned module binding reports nothing", #report.errors == 0, first(report))
   end
 
+
+  -- A project's own modules, read from their text and never run. This is the
+  -- larger half of the checking in a consuming project: Time Actual reaches
+  -- through one such module 210 times.
+  do
+    local dir = fs.tempdir { prefix = "kuu-project-" }
+    if not dir then
+      check("a temporary project for the module fixtures", false, "fs.tempdir failed")
+    else
+      local function put(rel, text)
+        local path = dir .. "/" .. rel
+        fs.mkdir(fs.dirname(path))
+        fs.write(path, text)
+        return path
+      end
+      put("tasks.lua", 'global none\nlocal task = require "task"\ntask "x" { run = function() end }\n')
+      put("tools/project.lua",
+        'global none\nlocal M = {}\nfunction M.setup() end\nfunction M.capture(argv) return argv end\nM.root = "."\nreturn M\n')
+
+      put("good.lua", 'global none\nglobal <const> require, print\nlocal p = require "tools.project"\np.setup()\nprint(p.root, p.capture({}))\n')
+      local r = T.kuu({ "check", "good.lua" }, { cwd = dir })
+      check("a correct project-module access passes",
+        r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+
+      put("bad.lua", 'global none\nglobal <const> require, print\nlocal p = require "tools.project"\nprint(p.captur({}))\n')
+      r = T.kuu({ "check", "bad.lua" }, { cwd = dir })
+      check("a misspelled one is an error, with the nearest real name",
+        r.code == 1 and contains(r.out, "p.captur is not a name in tools.project")
+          and contains(r.out, "did you mean p.capture"), T.describe(r))
+
+      -- Over-approximate, and bail when the set cannot be bounded. A field
+      -- wrongly included costs a missed diagnostic; one wrongly excluded is a
+      -- false positive on correct code, which is far worse.
+      put("tools/opaque.lua",
+        'global none\nglobal <const> setmetatable\nlocal M = {}\nfunction M.known() end\nreturn setmetatable(M, { __index = function() return function() end end })\n')
+      put("dyn.lua", 'global none\nglobal <const> require\nlocal o = require "tools.opaque"\nreturn o.anything_at_all()\n')
+      r = T.kuu({ "check", "dyn.lua" }, { cwd = dir })
+      check("a module behind a metatable is left unchecked, not guessed at",
+        r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+
+      put("tools/computed.lua",
+        'global none\nglobal <const> ipairs\nlocal M = {}\nfor _, n in ipairs { "a", "b" } do M[n] = function() end end\nreturn M\n')
+      put("comp.lua", 'global none\nglobal <const> require\nlocal c = require "tools.computed"\nreturn c.whatever()\n')
+      r = T.kuu({ "check", "comp.lua" }, { cwd = dir })
+      check("so is one whose keys are computed",
+        r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+
+      put("tools/borrowed.lua", 'global none\nglobal <const> require\nlocal M = require "fs"\nreturn M\n')
+      put("bor.lua", 'global none\nglobal <const> require\nlocal b = require "tools.borrowed"\nreturn b.anything()\n')
+      r = T.kuu({ "check", "bor.lua" }, { cwd = dir })
+      check("and one that returns a table it did not build",
+        r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+
+      fs.remove(dir, { recursive = true })
+    end
+  end
+
 end

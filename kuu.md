@@ -1357,8 +1357,21 @@ Four things are checked:
 
 Strings and comments contribute no requires or field accesses. The checker
 opens kuu's own public modules to read their export tables; it never runs
-the checked file or loads a project module. A project module's fields and
-dynamic indexing such as `files[name]` are left alone.
+the checked file. Dynamic indexing such as `files[name]` is left alone.
+
+**A project's own modules are checked too, from their text.** Project code is
+never executed, so the exports of `require "tools.project"` are read by
+scanning the module for what it assigns to the table it returns -- the
+`function M.name` and `M.name =` forms. In a consuming project this is the
+larger half of the checking: Time Actual reaches through one such module 210
+times.
+
+The extraction over-approximates deliberately. A field wrongly included costs
+only a missed diagnostic; one wrongly excluded is a false positive on correct
+code, which is far more expensive. So when the export set cannot be bounded
+the module is left unchecked entirely rather than guessed at: a computed key
+(`M[name] = ...`), a metatable, a return that is not a plain local, or a local
+that was not built as a table in that file.
 
 Name checking follows direct local require bindings and lexical scopes.
 Parameters, block locals, and loop variables can shadow an alias. If an
