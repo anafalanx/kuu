@@ -1,5 +1,13 @@
 # A JavaScript capability for kuu
 
+> Superseded on 2026-09-13 by
+> [the front-door plan](plan-front-door-2026-09-13_001735.md). Nothing below
+> is built or will be built as written: kuu mandates no runtime and is never
+> extended; a project builds the tools it needs and calls them through the
+> door. This note stands as the record of what was considered and measured,
+> and a spike on 2026-09-12 confirmed its confinement model works and found
+> that a junction inside a granted directory escapes it.
+
 kuu gains the ability to run JavaScript and TypeScript, so that capability can
 be added to a project without writing C and without depending on anything
 installed on the machine. The runtime is Deno, pinned to a version by the kuu

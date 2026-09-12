@@ -4,6 +4,12 @@
 corrects: no call moved, no result changed shape, and nothing was removed. A
 program that ran on 0.9.0 runs here unchanged.
 
+It is not yet released. It is held until the front-door work recorded in the
+[roadmap](roadmap.md) has landed — the declaration file becomes
+`manifest.lua`, tools are declared beside tasks, and the door keeps a ledger
+— and this page will grow to describe that. What follows is what has landed
+so far.
+
 What it changes is what kuu tells you about code that already runs. `check`
 reads an authored description of kuu's own interface and a project's own
 modules, so **a project that was green on 0.9.0 can be red on 0.10.0 without a

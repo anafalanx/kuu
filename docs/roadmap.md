@@ -13,7 +13,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | platform | Windows 11 23H2 and later; Windows Server 2025 and later | native Windows APIs; 23H2 console teardown uses isolated close/drain workers and completion-aware pipe ownership |
 | language for programs | Lua 5.5.1, vendored, compiled as C | agents write it correctly from a hundred-page manual; coroutines make waiting read as straight-line code; `global none` turns the classic typo into a compile error; errors are `longjmp`, so C, never C++ |
 | a language of kuu's own | none, by owner decision on 2026-09-11: no successor language, no compiler, no emission subset | kuu is a runtime for Lua 5.5 and grows capabilities in the palette and options on the calls already there; existing technology is recombined, not syntax invented |
-| a JavaScript runtime | Deno, pinned to the kuu release that uses it, downloaded by the consumer on request into the project's own `.kuu/`, never shipped | designed 2026-09-12 and not built. The palette was reachable only through C, so every capability meant vendoring, rebuilding and releasing; an explicit permission model is what keeps a capability gate over a general escape hatch, and pinning is what makes the youngest of the candidates acceptable |
+| a mandated runtime | none. No JavaScript, Go, Tcl or other runtime is shipped, fetched by kuu, mandated, or recommended; kuu is never extended, a project is, and `.kuu/` never holds anything that runs | decided 2026-09-13. A design for a downloaded, pinned JavaScript runtime was recorded on 2026-09-12 and set aside the next day; the note stands as the record of what was considered and measured. The problem it answered — the palette grows only through C — is answered by the front door instead: a project builds the tool it needs and calls it through `kuu.exe`, and the manual says what a confined tool must provide without naming what to write it in |
 | host language | C, the els method's subset | the host lives on two C boundaries, Win32 and the Lua API, and machteld's process-lifetime and text-boundary code transfers verbatim |
 | compiler | gcc 16.1 from MSYS2 UCRT64, copied into `.tools` | the estate's proven recipe; gcc and GNU make are the chosen production build, with Clang only for sanitizer tests |
 | build | GNU make from the same `.tools`, recipes under `cmd.exe` | no PowerShell in the repository, and kuu never builds kuu: the build is make and gcc, the tests are Lua run by the built kuu |
@@ -23,13 +23,15 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has only stock Lua's `io` and `os`, and a static check can list what else a file asks for. It gates a program that does not reach around it: `_ENV` is an upvalue, needs no declaration, and reaches `load` and the whole palette from a file `check` reports with `"requires":[]` and a clean bill ([shortcomings](shortcomings.md)) |
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
 | process lifetime | the no-orphans law, first thing in the palette | every child is born into a kill-on-close job; only `detach`, and a child's own deliberate breakaway, step outside it |
-| what stays out | `store` (SQLite), publishing, Tk, a wrap verb, Tcl in the runtime, PATH lookup, `io.popen`, `os.execute` | tools or hazards, not organs. Tcl reached as a fetched helper behind a capability is a different question and is open: the JavaScript design keeps Tcl with twapi as the right answer for Windows API reach specifically, and says a capability module may yet use it |
+| what stays out | `store` (SQLite), publishing, Tk, a wrap verb, Tcl in the runtime, PATH lookup, `io.popen`, `os.execute` | tools or hazards, not organs. Any of them may be a project's tool, fetched by hash into its own root and called through the door; none is recommended, and none enters the palette unless it cannot be a tool |
 | projects share nothing | every project carries its own `kuu.exe`, copied in by hand, directly in its root since 0.6 (0.4 and 0.5 put it in `.tools`); nothing on `PATH`, no machine changes, no bootstrap scripts | the owner ended estate-wide management; a small executable is copied, not fetched by glue |
-| what a project may fetch | upstream downloads only, into its own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger fetches from the same public sources. The JavaScript runtime is the one thing kuu itself would fetch, into `.kuu/` beside the project's own tools, on request and never shared |
+| what a project may fetch | upstream downloads only, into its own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger fetches from the same public sources. kuu itself fetches nothing, ever; `.kuu/` holds only kuu's own state, the notebook and the ledger |
+| a project's tools | whatever a project builds or fetches into its own root, in any technology, declared in its manifest with the arguments it takes and the shape it emits, and called through the door | there are exactly two kinds of thing a program can reach: the palette, kuu's, described by `_palette` and gated by `require`; and the project's tools, the project's, declared in `manifest.lua`. There is no third kind; a tool that wants to read like a module is wrapped by an ordinary project module |
+| the project's declaration file | `manifest.lua` at the root: prerequisites by hash, tasks, and `tool` declarations, in one file; `tasks.lua` still found for one release, with a warning | decided 2026-09-13; one authored file, read two ways from one source — executed by `run`, `list` and `capabilities`, read as literals by `check`, held equal by the suite |
 | kuu's own repository | free of kuu: build and release are make, gcc, and cmd recipes; no `tasks.lua` there | self-reference is unwelcome, for release steps too |
 | releases | anafalanx/kuu public; GitHub Releases carry `kuu.exe` and its `.sha256`; signed with the owner's existing Certum certificate through the Windows SDK's signtool | the estate already signs this way, and public releases need no credentials to fetch |
 | the second project | `C:\dev\kuu-test-project`, local, no remote, tailored to test kuu features | a project built to exercise the runtime, before any existing one is converted |
-| what kuu is | a Windows-only power tool in the agent's hand: set up, configure, run, test, script, control, keep in check; every feature replaces a PowerShell fumble | the agent knows its prerequisites; kuu removes the fumbling, not the knowing |
+| what kuu is | the front door of a project: everything that *runs* in a project runs through `kuu.exe` — a task, a build, a test, a tool, a fetch — and gets a job, a deadline, limits, tree-kill on the door's death, a record, and where the door can read it, a check. Writing code is not a crossing; what an agent writes becomes the door's business the moment it first runs, and `check` stands at that threshold | decided 2026-09-13, after the review of 2026-09-12 ([plan](../notes/plan-front-door-2026-09-13_001735.md)). The door is the only part that must last fifteen years, so it is Lua on C, small, built with great care, and it stops growing; what a project needs beyond it is a tool the project builds, in any technology, and calls through the door. The earlier row — a power tool in the agent's hand that removes the fumbling, not the knowing — stands as the description of the palette |
 | dependencies | no lock: verification is a capability (`http.get` with `sha256`, `fs.unpack`), and the agent writes its own setup | the lock was formalism for a shared-payload world that no longer exists |
 | memory across runs | `mem`, a small JSON notebook per project, Lua only, capped at 1 MiB | agents need to remember between runs; the executable stays nimble; SQLite stays out |
 
@@ -309,21 +311,20 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      `kuu check --json` reports `"requires":[]` and a clean bill; the `require`
      gate holds only for a program that does not reach around it, and the
      small answer, reporting such a reference from `check`, is unimplemented
-     ([observations](shortcomings.md)). And a JavaScript capability is
-     designed, on Deno: about 24 MB, downloaded by the consumer on request,
-     pinned to the kuu release that uses it, never shipped, never fetched in a
-     non-interactive run, unpacked into the project's own `.kuu/`. It won on
-     the one property Tcl with twapi and a compiled Go helper per capability
-     both lack, an explicit permission model, which is what keeps a capability
-     gate over a general escape hatch; it is also the youngest of the three,
-     2.0 having broken compatibility in 2024 under a company rather than a
-     foundation, and pinning is what makes that acceptable, since churn
-     upstream cannot reach a project that never re-pins. PowerShell through a
-     bridge was rejected on four counts, one a measured 68 MB idle working set
-     per bridge against kuu's 1.6 MB. Replaceability comes from the internal
-     boundary, one module owning the runtime and every engine-specific call
-     going through one shim, not from where the engine is named. See
-     [the JavaScript capability design](../notes/design-js-capability-2026-09-12_155114.md).
+     ([observations](shortcomings.md)). And a JavaScript capability was
+     designed on 2026-09-12 — a downloaded, pinned runtime under a permission
+     model, never shipped — and set aside the next day, after a whole-project
+     review and a spike, for the front door: kuu stays Lua on C and stops
+     growing, and what a project needs beyond the palette is a tool the
+     project builds, in any technology, called through `kuu.exe`. The spike
+     established one fact that outlives the design and belongs to any lexical
+     path sandbox on Windows: a junction inside a granted directory walks out
+     of it, and neither an allow list nor a deny list sees it, which is why
+     the door will supply a reparse-point preflight. The
+     [design note](../notes/design-js-capability-2026-09-12_155114.md) stands
+     as the record of what was considered and measured; the
+     [front-door plan](../notes/plan-front-door-2026-09-13_001735.md) is what
+     follows, and 0.10.0 is held until it lands.
    - The suite is at 1140 checks, with four new cases: `_palette` held to the
      runtime, to the manual in both directions and to itself; `capabilities`;
      the fixer's invariant, which keeps every declaration outside
@@ -425,15 +426,14 @@ raiser's non-returning contract explicit and led to entry-allocation cleanup.
 ## Open decisions
 
 - **1.0 criteria.** The proposal above stands until the owner sets them.
-- **The JavaScript runtime, five questions the design leaves open.** Consent
-  is per project, so a fresh clone of the eighth prompts again — correct, or
-  maddening by the third time? What removes a superseded pinned version under
-  `.kuu/`? How is the unpacked runtime verified cheaply on every run, when
-  hashing it is too slow? What does `check` report for a file using the
-  capability when the runtime is absent? And is the general escape hatch a
-  public module or reached through a capability — which decides whether
-  `require` stays a meaningful gate for it, or the permission flags carry it
-  alone.
+- **The shape of a `tool` declaration.** The plan carries a draft — `exe`,
+  `args`, `output`, `emits`, `timeout`, `reach` — to be settled when the
+  first project writes one, and `emits` is descriptive until `check` can
+  follow a value through `json.decode`, which it does not.
+- **Whether the ledger's `reach` is ever enforced by the door**, or only
+  declared and shown. Enforcement for every tool is C in the door —
+  restricted tokens are moderate, path allow-lists are not — and waits for a
+  real need.
 
 ## Backlog
 

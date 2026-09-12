@@ -25,8 +25,8 @@ A repository declares its tasks once in `tasks.lua` and runs them with
 `archive`. The manual rides inside the executable: `kuu docs`. kuu runs on
 Windows 11 23H2 and later, and Windows Server 2025 and later, only.
 
-Version 0.9.0 is the last release before the 1.0 freeze, and corrects contracts
-while correcting them is still allowed. The version grows a patch component,
+Version 0.9.0 is a correction release ahead of the planned 1.0 freeze, and
+corrects contracts while correcting them is still allowed. The version grows a patch component,
 which breaks the minimum-version guard published through 0.8: replace it with
 `rt.version_at_least`. `fs.write` now retries its rename, closing an intermittent
 `FS access` failure. `svc`, `evt`, and `sys.signature` leave the planned freeze
