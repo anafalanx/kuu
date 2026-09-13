@@ -51,7 +51,8 @@ static void usage(FILE *to)
           "       kuu list [--json]         list those tasks\n"
           "       kuu check [--json] [PATH ...]   parse, global declarations, requires\n"
           "       kuu capabilities [--json] the palette, the verbs, and this project\n"
-          "       kuu version | --version | --help\n",
+          "       kuu version | --version | --help\n"
+          "kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.\n",
           to);
 }
 
@@ -75,7 +76,8 @@ static int docs_route(int argc, const char *const *argv)
                 printf("  %.*s\n", page_name_length(e->name), e->name + 5);
             }
         }
-        printf("\nkuu docs PAGE prints a page; kuu docs search TEXT finds lines.\n");
+        printf("\nkuu docs PAGE prints a page; kuu docs search TEXT finds lines.\n"
+               "Start with agent, what is expected of you here; then pitfalls, once; index is the map.\n");
         return KUU_EXIT_OK;
     }
     if (strcmp(argv[0], "search") == 0) {

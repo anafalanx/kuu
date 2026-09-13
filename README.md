@@ -57,8 +57,10 @@ assert(fs.mkdir("build"))
 assert(fs.write("build/status.json", json.encode { version = r.out }))
 ```
 
-The manual starts at [docs/index.md](docs/index.md). Agents should read
-[docs/pitfalls.md](docs/pitfalls.md) once; it is the only page about the
+The manual starts at [docs/index.md](docs/index.md). An agent working in a
+project reads [docs/agent.md](docs/agent.md) first — what is expected of it,
+and how it reports back in the project's `kuu-eval.md` — and
+[docs/pitfalls.md](docs/pitfalls.md) once; that is the only page about the
 language. [docs/powershell.md](docs/powershell.md) maps each PowerShell habit
 to the kuu call that replaces it. [docs/roadmap.md](docs/roadmap.md) records the decisions.
 [docs/shortcomings.md](docs/shortcomings.md) tracks problems observed during

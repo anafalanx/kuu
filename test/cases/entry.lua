@@ -20,6 +20,12 @@ return function(T)
 
   r = kuu { "--help" }
   check("help exits 0 on stdout", r.code == 0 and contains(r.out, "usage: kuu FILE") and r.err == "", describe(r))
+  check("and points at the conduct page", contains(r.out, "kuu docs agent"), r.out)
+  r = kuu { "docs" }
+  check("the page list carries the conduct page and says where to start",
+    r.code == 0 and contains(r.out, "  agent\n") and contains(r.out, "Start with agent"), describe(r))
+  r = kuu { "docs", "agent" }
+  check("the conduct page prints from inside the executable", r.code == 0 and contains(r.out, "# For the agent") and contains(r.out, "kuu-eval.md"), describe(r))
 
   r = kuu {}
   check("no arguments is a usage error", r.code == 2 and contains(r.err, "usage:") and r.out == "", describe(r))

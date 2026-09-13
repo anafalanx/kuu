@@ -17,10 +17,21 @@ global <const> require, ipairs, pairs, pcall, tostring, type, table, string, io,
 
 local rt = require "rt"
 local cli = require "cli"
+local fs = require "fs"
 local json = require "json"
 local project = require "project"
 local task = require "task"
 local check = require "check"
+
+-- What to read and do next, in order, said the same way in both forms:
+-- the descriptor is the first thing an agent runs, so it carries the
+-- conduct as well as the inventory.
+local NEXT = {
+  "kuu docs agent: what is expected of an agent here, and how to report back; read it first",
+  "kuu docs pitfalls: where kuu differs from the Lua you know; read it once",
+  "kuu docs index: the map of the manual; kuu docs PAGE prints a page, kuu docs search TEXT finds lines",
+  "if something cannot be done from here, build a tool for it and call it through the door: kuu docs tools",
+}
 
 local spec = { { "--json", type = "flag", help = "machine-readable descriptor" } }
 local opts, e = cli.parse(rt.args, spec, "kuu capabilities")
@@ -131,6 +142,30 @@ if root then
   if sound then here.ledger.records = detail
   else here.ledger.intact, here.ledger.broken = false, detail.message end
 
+  -- What agents wrote back: kuu-eval.md at the root, one `## DATE ...`
+  -- heading per entry, appended and never rewritten (kuu docs agent).
+  -- Counted, not read: the door shows that someone has written.
+  -- The shape counted is `## YYYY-MM-DD ...` at the start of a line
+  -- outside fenced code, since a difficulty pastes output that may hold
+  -- such a line; the bytes are read as they are, so one byte that is not
+  -- UTF-8 does not erase the count.
+  here.eval = { present = false, entries = 0 }
+  local written = fs.read(fs.join(root, "kuu-eval.md"))
+  if written then
+    here.eval.present = true
+    local fenced = false
+    for line in (written .. "\n"):gmatch("([^\n]*)\n") do
+      if line:match("^```") then fenced = not fenced
+      elseif not fenced then
+        local date = line:match("^## (%d%d%d%d%-%d%d%-%d%d)")
+        if date then
+          here.eval.entries = here.eval.entries + 1
+          here.eval.last = date
+        end
+      end
+    end
+  end
+
   local found = check.modules(root)
   here.files = found.files
   for _, module in ipairs(found.modules) do
@@ -147,6 +182,7 @@ if opts.json then
     result = {
       kuu = { version = rt.version, lua = rt.lua, exe = rt.exe,
         verbs = json.array(rt.verbs()), pages = json.array(pages) },
+      next = json.array(NEXT),
       modules = modules,
       errors = domains,
       sets = sets,
@@ -250,6 +286,14 @@ else
   else
     io.write(string.format("  %-" .. (LABEL - 2) .. "snothing has crossed the door yet; kuu run writes .kuu/ledger\n", "ledger"))
   end
+  if here.eval.entries > 0 then
+    io.write(string.format("  %-" .. (LABEL - 2) .. "skuu-eval.md holds %d entr%s, the last dated %s\n", "eval",
+      here.eval.entries, here.eval.entries == 1 and "y" or "ies", here.eval.last))
+  elseif here.eval.present then
+    io.write(string.format("  %-" .. (LABEL - 2) .. "skuu-eval.md is there but holds no entry headed ## YYYY-MM-DD; kuu docs agent shows the form\n", "eval"))
+  else
+    io.write(string.format("  %-" .. (LABEL - 2) .. "sno kuu-eval.md yet; kuu docs agent says what to write there\n", "eval"))
+  end
   io.write(string.format("  %-" .. (LABEL - 2) .. "s%d of the %d .lua files below the root bound their exports\n",
     "modules", #here.modules, here.files))
   local column = column_for(here.modules, 4, LABEL)
@@ -258,6 +302,7 @@ end
 
 io.write("\nWhatever a task installs under .tools and never declares is not listed: kuu\n",
   "keeps no manifest of it, and a guess would be worse than the silence.\n",
-  "Everything that runs in this project runs through kuu.exe; if something cannot\n",
+  "Everything that runs in a project runs through kuu.exe; if something cannot\n",
   "be done from here, build a tool for it and call it through the door (kuu docs tools).\n",
-  "Read kuu docs pitfalls first; it is where kuu differs from the Lua you know.\n")
+  "Read kuu docs agent first: what is expected of you here, and how to report back.\n",
+  "Then kuu docs pitfalls, once; it is where kuu differs from the Lua you know.\n")

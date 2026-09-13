@@ -7,6 +7,10 @@ and exact: this is how kuu behaves, not how Lua works. Lua 5.5 itself is
 assumed; the one page you need about the language here is
 [Pitfalls](pitfalls.md).
 
+If you are an agent working in a project that runs through kuu, [For the
+agent](agent.md) says what is expected of you and how to report back. Read
+it first, then Pitfalls once.
+
 kuu runs on Windows 11 version 23H2 and later, and Windows Server 2025 and
 later. The runtime uses native Windows process, console and filesystem APIs.
 Console shutdown adapts to the older 23H2 lifetime contract; the Lua API is
@@ -145,6 +149,9 @@ Failures kuu detects before the program runs are spelled
 
 ## Pages
 
+- [For the agent](agent.md): what is expected of an agent in a project that
+  runs through kuu, and the report it writes back in `kuu-eval.md`. Read
+  first.
 - [From PowerShell](powershell.md): each cmdlet an agent reaches for, and the
   kuu call that replaces it.
 - [Pitfalls](pitfalls.md): what differs from the Lua an agent already knows,

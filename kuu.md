@@ -45,12 +45,13 @@ Parts I and II explain *why*. **Part III is the complete manual**, every page
 inlined, so this one file answers both kinds of question and nothing needs to
 be fetched before reading. Coming to kuu cold, read in this order:
 
-1. **Pitfalls** — Part III's first module page, and the one an agent's existing
-   Lua knowledge most needs. It is the delta between the Lua you know and this
-   runtime, plus the Windows facts kuu refuses to hide. Read it once, before
-   writing anything.
-2. **Parts I and II**, for why the runtime is shaped as it is.
-3. **The rest of Part III**, as reference, when you need a signature.
+1. **For the agent** — `kuu docs agent`: what is expected of you in a project
+   that runs through kuu, and how to report back. Two minutes.
+2. **Pitfalls** — the one page an agent's existing Lua knowledge most needs. It
+   is the delta between the Lua you know and this runtime, plus the Windows
+   facts kuu refuses to hide. Read it once, before writing anything.
+3. **Parts I and II**, for why the runtime is shaped as it is.
+4. **The rest of Part III**, as reference, when you need a signature.
 
 If you would rather read everything in one pass than navigate, that is what
 this file is for: Part III is the whole manual in a deliberate order, beginning
@@ -61,6 +62,7 @@ binary in front of you:
 
 ```text
 kuu docs                       the page list
+kuu docs agent                 what is expected of you here
 kuu docs fs                    one page
 kuu docs search "junction"     find lines across all pages
 kuu --help                     the verbs
@@ -99,7 +101,8 @@ Building and verifying kuu itself, from the repository root:
 | `kuu.md` (this file) | why kuu is shaped this way, what was learned, where it is going |
 | `README.md` | the short introduction and the build |
 | `docs/` — every page, shipped inside the executable | the reference: one page per module, plus the pages below; the count is in the figures |
-| `docs/pitfalls.md` | what an agent's Lua priors get wrong here. Read once, first |
+| `docs/agent.md` | what is expected of an agent in a project that runs through kuu, and the report it writes back in `kuu-eval.md`. Read first |
+| `docs/pitfalls.md` | what an agent's Lua priors get wrong here. Read once, second |
 | `docs/capabilities.md` | `kuu capabilities`: the verbs, the palette, and this project's tasks and modules, in one command |
 | `docs/adopting.md` | how a repository comes to be driven by kuu: `manifest.lua`, prerequisites by URL and hash |
 | `docs/powershell.md` | each cmdlet you would reach for, and the kuu call that replaces it |
@@ -152,8 +155,8 @@ follows from it:
   tell the truth about the platform.
 
 <!-- figures -->
-By the numbers, 0.9.0 is 15,990 lines of authored host C, 4,912 lines of kuu's own
-Lua, a suite of 5,881 lines, and 6,101 lines of manual in 45 pages that ship
+By the numbers, 0.9.0 is 15,992 lines of authored host C, 4,957 lines of kuu's own
+Lua, a suite of 5,912 lines, and 6,246 lines of manual in 46 pages that ship
 inside the executable. The palette is 27 public modules and 172 functions,
 plus methods on handles. The suite's own count is what `make test` prints.
 These figures are produced by `tools/bundle_docs.lua` from the executable
@@ -172,6 +175,7 @@ usage: kuu FILE [arg ...]        run a Lua program file
        kuu check [--json] [PATH ...]   parse, global declarations, requires
        kuu capabilities [--json] the palette, the verbs, and this project
        kuu version | --version | --help
+kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.
 ```
 <!-- /figures -->
 
@@ -628,6 +632,10 @@ and exact: this is how kuu behaves, not how Lua works. Lua 5.5 itself is
 assumed; the one page you need about the language here is
 [Pitfalls](#pitfalls).
 
+If you are an agent working in a project that runs through kuu, [For the
+agent](#agent) says what is expected of you and how to report back. Read
+it first, then Pitfalls once.
+
 kuu runs on Windows 11 version 23H2 and later, and Windows Server 2025 and
 later. The runtime uses native Windows process, console and filesystem APIs.
 Console shutdown adapts to the older 23H2 lifetime contract; the Lua API is
@@ -766,6 +774,9 @@ Failures kuu detects before the program runs are spelled
 
 ### Pages
 
+- [For the agent](#agent): what is expected of an agent in a project that
+  runs through kuu, and the report it writes back in `kuu-eval.md`. Read
+  first.
 - [From PowerShell](#powershell): each cmdlet an agent reaches for, and the
   kuu call that replaces it.
 - [Pitfalls](#pitfalls): what differs from the Lua an agent already knows,
@@ -810,6 +821,128 @@ Failures kuu detects before the program runs are spelled
 - [Roadmap](#roadmap): decisions taken and milestones ahead.
 - [Inheritance](#inheritance): laws, traps, and contracts carried over from
   machteld, the z estate, and the archived projects.
+
+---
+
+## For the agent
+
+What is expected of you in a project that runs through kuu. Everything on
+this page is stated elsewhere in the manual as a fact about kuu; here it is
+stated once, as an instruction, in the order you meet it. Read it first,
+before [Pitfalls](#pitfalls).
+
+### Arriving
+
+1. Run `kuu capabilities`. It says what this executable can do, what this
+   project declares — tasks, tools, modules — what has crossed the door
+   lately, whether anyone has reported back, and what to read next. It is
+   the one command that answers what you would otherwise assemble from
+   three places, and `--json` gives the same as one envelope.
+2. Read `kuu docs pitfalls` once. It is the delta between the Lua you know
+   and this runtime, plus the Windows facts kuu refuses to hide. Nothing
+   else in the manual is about the language.
+3. Open `kuu docs index` for the map and `kuu docs PAGE` for a page. When
+   a result surprises you, read the module's page before guessing; when an
+   error does, run `kuu docs search CODE` — every error names its domain
+   and code, and the search lands where the code is explained.
+
+### Running
+
+- **Everything that runs in the project runs through `kuu.exe`.** A
+  crossing is a task run by `kuu run`, and each child that task starts
+  with `task.exec`; each gets a job, the limits and the timeout it was
+  given, and a record in [the ledger](#ledger). `kuu FILE` and `kuu -e`
+  are for trying something once: what they start is in a job with
+  whatever `timeout` and `limits` the call gives, and nothing is recorded.
+  Anything that will run again is a task in `manifest.lua`.
+- **Declare every program a task runs as a tool**, `task.tool "name" { exe
+  = ... }`, and call it with `task.exec { tool = "name", ... }`. `check`
+  then holds every call written with the literal `tool = "name"` to the
+  declaration — a name computed at run time is not judged, so write it in
+  the call — and `capabilities` lists the tool. A bare `task.exec {
+  "prog.exe" }` is a warning from `check` for that reason. A project
+  program started from a shell without `kuu.exe`, or with `proc.run` where
+  `task.exec { tool = ... }` was possible, is a bypass: it runs, and the
+  door does not see it. [Tools](#tools).
+- **Bound what you run.** `task.defaults { timeout = "10m" }` in the
+  manifest gives every child a timeout it does not set itself; without
+  it, and without a `timeout` on the call or the declaration, a child has
+  no time bound at all. `sched.deadline` bounds a sequence of waits in
+  your own code. [Tasks](#task), [sched](#sched).
+- **Run `kuu check` after every edit and before every `kuu run`.** It
+  reads without running: syntax, global declarations, requires, palette
+  names, option names, error codes, closed sets and version comparisons,
+  tool declarations and their calls. Errors fail it and warnings do not;
+  a warning is still something to read. [check](#check).
+- **If something cannot be done from here, build a tool for it**, in
+  whatever technology you write best — fetched by URL and hash into the
+  project's own `.tools/`, or built from the project's own source — and
+  either way declared with `task.tool` and called through the door. kuu is
+  never extended; a project is.
+
+### Writing
+
+- **Start every file with `global none`** and declare the standard names
+  you use. A misspelled name is then a load-time error, and `check` sees
+  it before anything runs.
+- **Follow the two laws kuu's own functions follow.** An expected outcome
+  is returned as `nil, err`; a caller's mistake is raised; and an option
+  name your function does not take is a raised `usage`, never ignored.
+  Mint your errors with `err.new("DOMAIN", "code", message)` in an
+  uppercase domain of your own — the codes are yours, and `check` does not
+  judge them — and return `nil, err` from a task for an expected failure,
+  so `kuu run --json` and the ledger carry your domain and code. Branch on
+  `err.is`, never on the message. [err](#err).
+- **Fetch nothing the manifest does not list by URL and hash**, and
+  install nothing on the machine: nothing goes on `PATH`, and nothing is
+  shared between repositories. [Adopting](#adopting).
+- **`.kuu/` is kuu's** — the notebook and the ledger. It sits in
+  `.gitignore` beside `kuu.exe`, `.tools/` and `build/`, and nothing in it
+  is yours to edit.
+
+### Reporting back
+
+kuu is built for you, and the only way it improves is being told where it
+helped and where it stood in the way. When you have worked in a project
+through kuu, append an entry to `kuu-eval.md` at the project root — a
+UTF-8 file the project commits, since `.kuu/` never travels and kuu sends
+nothing — and never rewrite an earlier entry. One entry per piece of work:
+
+```markdown
+## 2026-09-13 — kuu 0.10.0 — adding the release task
+
+### Worked
+- `kuu check` named the misspelt option and the fix before anything ran.
+
+### Difficult
+- `kuu run release` printed `kuu: release failed after 1.0s` and then
+  `kuu: TASK failed: C:/work/app/.tools/sdk/signtool.exe: timeout`; nothing
+  said which timeout, and I found `task.defaults` in kuu docs task.
+
+### Should change
+- The timeout message should name the bound and where it was set.
+```
+
+The heading is `## YYYY-MM-DD — kuu VERSION — what the work was`, on one
+line: `## `, the date in that form first, then the rest; a hyphen does as
+well as the dash. That is the line `kuu capabilities` counts, and a
+heading shaped any other way is not an entry. A difficulty carries the
+exact command and its output, so it can be reproduced; without that it is
+an opinion, and belongs under *Should change*. An entry may name the
+ledger record it is about, by its day file and its `at`. Keep entries
+short: kuu counts them, and people read them where the project keeps
+them. Run `kuu capabilities` when you have written; its `eval` line shows
+the count and the date of the last entry, and nothing fails without it.
+
+### The short form
+
+Run `kuu capabilities` first. Read pitfalls once. Everything that runs,
+runs through the door as a task with declared tools; try things with `kuu
+FILE`, keep them as tasks. Bound every child. `global none` at the top of
+every file. `check` after every edit and before every run. Return `nil,
+err` for what is expected, raise for a mistake. Nothing on `PATH`, nothing
+fetched without a hash, nothing of yours in `.kuu/`. Write `kuu-eval.md`
+before you leave.
 
 ---
 
@@ -1000,6 +1133,11 @@ Nothing is reported that kuu cannot know.
   same declarations from the text, and the suite holds the two equal.
 - **What a task installs under `.tools` is not reported at all.** kuu keeps no
   manifest of it, and a guess about a toolchain is worse than saying nothing.
+- **What agents wrote back is counted, not read.** `kuu-eval.md` at the root,
+  the report [For the agent](#agent) asks for, holds one entry per heading
+  shaped `## YYYY-MM-DD — kuu VERSION — what`; the descriptor says whether
+  the file is there, how many such headings it holds outside fenced code,
+  and the date of the last, and nothing else looks at the file.
 
 Without a `manifest.lua` at or above the current directory there is no project
 half. kuu does not walk whatever directory it was started in instead: that is
@@ -1009,7 +1147,7 @@ a different question, and an expensive one to answer by accident.
 kuu 0.9.0 (Lua 5.5.1) at C:\work\app\kuu.exe
 
   verbs      capabilities, check, list, run    kuu VERB --help
-  manual     45 pages                          kuu docs PAGE | search TEXT
+  manual     46 pages                          kuu docs PAGE | search TEXT
   modules    27, 181 names                     require "NAME"
   errors     27 domains, codes in --json       err.is(e, DOMAIN, code)
 
@@ -1030,15 +1168,17 @@ project C:/work/app
   ledger     child report exit, task weekly ok, verb run ok
              the last crossings, oldest first; .kuu/ledger holds ninety days of them
              312 records, each hashing the one before it; the chain is intact
+  eval       kuu-eval.md holds 3 entries, the last dated 2026-09-12
   modules    2 of the 4 .lua files below the root bound their exports
     lib.util      VERSION, slug, titlecase
     tools.report  render, write
 
 Whatever a task installs under .tools and never declares is not listed: kuu
 keeps no manifest of it, and a guess would be worse than the silence.
-Everything that runs in this project runs through kuu.exe; if something cannot
+Everything that runs in a project runs through kuu.exe; if something cannot
 be done from here, build a tool for it and call it through the door (kuu docs tools).
-Read kuu docs pitfalls first; it is where kuu differs from the Lua you know.
+Read kuu docs agent first: what is expected of you here, and how to report back.
+Then kuu docs pitfalls, once; it is where kuu differs from the Lua you know.
 ```
 
 Modules are listed in the order the manual's table introduces them, which is
@@ -1066,6 +1206,7 @@ type CapabilityReport = {
     }[];
     errors: { domain: string; codes: string[] }[]; // err.is(e, DOMAIN, code)
     sets: { name: string; values: string[] }[]; // the closed sets, in their own order
+    next: string[]; // what to read and do next, in order: the conduct page first
     project?: {
       root: string; // absolute path of the directory holding manifest.lua
       file: string; // "manifest.lua", or "tasks.lua" from a project that has not renamed yet
@@ -1077,6 +1218,7 @@ type CapabilityReport = {
       ledger: { last: { at: number; kind: string; name: string; status: string; seconds: number }[]; // the last five crossings, oldest first
                 records: number; intact: boolean; broken?: string; // the chain, walked every time: how many, whether each hashes the one before it, and where not
                 unaccounted: number }; // changes no crossing accounts for; zero until something watches
+      eval: { present: boolean; entries: number; last?: string }; // kuu-eval.md at the root: whether it is there, how many entries, and the last one's date
       modules: { name: string; path: string; names: string[] }[];
       files: number; // .lua files below the root, whether or not they are modules
     };
@@ -1306,10 +1448,15 @@ declares the [tools](#tools) the tasks call.
 
 ```lua
 -- manifest.lua
+global none
+global <const> require
 local task = require "task"
 local fs = require "fs"
 
 task.defaults { timeout = "10m" }
+
+task.tool "zig" { exe = ".tools/zig/zig.exe", args = { build = "flag", ["-Doptimize"] = "string" } }
+task.tool "app" { exe = "build/app.exe", args = { ["--self-test"] = "flag" } }
 
 task "gen" {
   desc = "write build/version.h",
@@ -1324,18 +1471,23 @@ task "build" {
   deps = { "gen" },
   args = { { "--release", type = "flag", help = "optimise" } },
   run = function(opts)
-    return task.exec { ".tools/zig/zig.exe", "build", opts.release and "-Doptimize=ReleaseFast" or "-Doptimize=Debug" }
+    return task.exec { tool = "zig", "build", opts.release and "-Doptimize=ReleaseFast" or "-Doptimize=Debug" }
   end,
 }
 
 task "test" {
   desc = "run the suite",
   deps = { "build" },
-  run = function() return task.exec { "build/app.exe", "--self-test" } end,
+  run = function() return task.exec { tool = "app", "--self-test" } end,
 }
 
 task.default "build"
 ```
+
+The programs a task runs are declared as [tools](#tools) beside the tasks,
+and called by name: `check` then holds each call to its declaration, and
+`capabilities` lists them. A `task.exec` of a bare program still runs, and
+`check` warns that nothing describes it.
 
 ```text
 kuu run                      the default task, after its dependencies
@@ -1406,7 +1558,7 @@ with nothing started.
 
 ```lua
 run = function(opts)
-  return task.exec { "gcc", "-O2", "main.c", "-o", "build/app.exe", timeout = "5m" }
+  return task.exec { tool = "gcc", "-O2", "main.c", "-o", "build/app.exe", timeout = "5m" }
 end
 ```
 

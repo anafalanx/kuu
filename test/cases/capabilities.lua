@@ -73,6 +73,11 @@ return function(T)
   check("the verbs and pages are the ones the runtime carries",
     table.concat(result.kuu.verbs, " ") == table.concat(rt.verbs(), " ")
       and #result.kuu.pages == #rt.pages(), json.encode(result.kuu.verbs))
+  check("it says what to read and do next, the conduct page first",
+    type(result.next) == "table" and #result.next >= 3 and contains(result.next[1], "kuu docs agent"), json.encode(result.next))
+  check("without a kuu-eval.md the project's eval says so, counts nothing and dates nothing",
+    result.project.eval ~= nil and result.project.eval.present == false and result.project.eval.entries == 0
+      and result.project.eval.last == nil, json.encode(result.project.eval))
   check("capabilities is itself among them",
     contains(table.concat(result.kuu.verbs, " "), "capabilities")
       and contains(table.concat(result.kuu.pages, " "), "capabilities"))
@@ -159,6 +164,26 @@ return function(T)
   check("nor is a program", by_name.main == nil, json.encode(here.modules))
   check("but every .lua file below the root is counted, and pruned ones are not",
     here.files == 5, tostring(here.files))
+
+  -- What agents wrote back is counted: one entry per `## YYYY-MM-DD` heading
+  -- outside fenced code, whatever the bytes after the date; a file that is
+  -- there with no such heading is told apart from no file.
+  fs.write(work .. "/kuu-eval.md", "# kuu-eval\n\nprose only\n")
+  r = T.kuu({ "capabilities" }, { cwd = work })
+  check("a kuu-eval.md with no entry is said to be there and empty",
+    contains(r.out, "kuu-eval.md is there but holds no entry headed ## YYYY-MM-DD"), r.out)
+  fs.write(work .. "/kuu-eval.md", "# kuu-eval\r\n\r\n## 2026-09-11 \u{2014} kuu 0.9.0 \u{2014} first look\r\n\r\n### Worked\r\n- check named the fix\r\n\r\n"
+    .. "```text\r\n## 2026-09-13 \u{2014} pasted output, not an entry\r\n```\r\n\r\n"
+    .. "## 2026-09-12 - kuu 0.10.0 - the release task, in cp1252 \x97 not UTF-8\r\n\r\n### Difficult\r\n- `kuu run release` said timeout\r\n"
+    .. "### 2026-09-14 not an entry either\r\n")
+  r = T.kuu({ "capabilities", "--json" }, { cwd = work })
+  local with = json.decode(r.out).result.project.eval
+  check("kuu-eval.md's entries are counted outside fenced code, whatever the bytes, and the last one dated",
+    with.present == true and with.entries == 2 and with.last == "2026-09-12", json.encode(with))
+  r = T.kuu({ "capabilities" }, { cwd = work })
+  check("the text form says so, and closes on the conduct page then pitfalls",
+    contains(r.out, "kuu-eval.md holds 2 entries, the last dated 2026-09-12")
+      and contains(r.out, "Read kuu docs agent first") and contains(r.out, "Then kuu docs pitfalls"), r.out)
 
   -- What it says when it cannot say much.
   fs.write(work .. "/manifest.lua", 'global none\nglobal <const> error\nerror("nope")\n')

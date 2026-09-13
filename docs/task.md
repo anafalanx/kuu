@@ -8,10 +8,15 @@ declares the [tools](tools.md) the tasks call.
 
 ```lua
 -- manifest.lua
+global none
+global <const> require
 local task = require "task"
 local fs = require "fs"
 
 task.defaults { timeout = "10m" }
+
+task.tool "zig" { exe = ".tools/zig/zig.exe", args = { build = "flag", ["-Doptimize"] = "string" } }
+task.tool "app" { exe = "build/app.exe", args = { ["--self-test"] = "flag" } }
 
 task "gen" {
   desc = "write build/version.h",
@@ -26,18 +31,23 @@ task "build" {
   deps = { "gen" },
   args = { { "--release", type = "flag", help = "optimise" } },
   run = function(opts)
-    return task.exec { ".tools/zig/zig.exe", "build", opts.release and "-Doptimize=ReleaseFast" or "-Doptimize=Debug" }
+    return task.exec { tool = "zig", "build", opts.release and "-Doptimize=ReleaseFast" or "-Doptimize=Debug" }
   end,
 }
 
 task "test" {
   desc = "run the suite",
   deps = { "build" },
-  run = function() return task.exec { "build/app.exe", "--self-test" } end,
+  run = function() return task.exec { tool = "app", "--self-test" } end,
 }
 
 task.default "build"
 ```
+
+The programs a task runs are declared as [tools](tools.md) beside the tasks,
+and called by name: `check` then holds each call to its declaration, and
+`capabilities` lists them. A `task.exec` of a bare program still runs, and
+`check` warns that nothing describes it.
 
 ```text
 kuu run                      the default task, after its dependencies
@@ -108,7 +118,7 @@ with nothing started.
 
 ```lua
 run = function(opts)
-  return task.exec { "gcc", "-O2", "main.c", "-o", "build/app.exe", timeout = "5m" }
+  return task.exec { tool = "gcc", "-O2", "main.c", "-o", "build/app.exe", timeout = "5m" }
 end
 ```
 

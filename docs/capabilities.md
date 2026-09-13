@@ -39,6 +39,11 @@ Nothing is reported that kuu cannot know.
   same declarations from the text, and the suite holds the two equal.
 - **What a task installs under `.tools` is not reported at all.** kuu keeps no
   manifest of it, and a guess about a toolchain is worse than saying nothing.
+- **What agents wrote back is counted, not read.** `kuu-eval.md` at the root,
+  the report [For the agent](agent.md) asks for, holds one entry per heading
+  shaped `## YYYY-MM-DD — kuu VERSION — what`; the descriptor says whether
+  the file is there, how many such headings it holds outside fenced code,
+  and the date of the last, and nothing else looks at the file.
 
 Without a `manifest.lua` at or above the current directory there is no project
 half. kuu does not walk whatever directory it was started in instead: that is
@@ -48,7 +53,7 @@ a different question, and an expensive one to answer by accident.
 kuu 0.9.0 (Lua 5.5.1) at C:\work\app\kuu.exe
 
   verbs      capabilities, check, list, run    kuu VERB --help
-  manual     45 pages                          kuu docs PAGE | search TEXT
+  manual     46 pages                          kuu docs PAGE | search TEXT
   modules    27, 181 names                     require "NAME"
   errors     27 domains, codes in --json       err.is(e, DOMAIN, code)
 
@@ -69,15 +74,17 @@ project C:/work/app
   ledger     child report exit, task weekly ok, verb run ok
              the last crossings, oldest first; .kuu/ledger holds ninety days of them
              312 records, each hashing the one before it; the chain is intact
+  eval       kuu-eval.md holds 3 entries, the last dated 2026-09-12
   modules    2 of the 4 .lua files below the root bound their exports
     lib.util      VERSION, slug, titlecase
     tools.report  render, write
 
 Whatever a task installs under .tools and never declares is not listed: kuu
 keeps no manifest of it, and a guess would be worse than the silence.
-Everything that runs in this project runs through kuu.exe; if something cannot
+Everything that runs in a project runs through kuu.exe; if something cannot
 be done from here, build a tool for it and call it through the door (kuu docs tools).
-Read kuu docs pitfalls first; it is where kuu differs from the Lua you know.
+Read kuu docs agent first: what is expected of you here, and how to report back.
+Then kuu docs pitfalls, once; it is where kuu differs from the Lua you know.
 ```
 
 Modules are listed in the order the manual's table introduces them, which is
@@ -105,6 +112,7 @@ type CapabilityReport = {
     }[];
     errors: { domain: string; codes: string[] }[]; // err.is(e, DOMAIN, code)
     sets: { name: string; values: string[] }[]; // the closed sets, in their own order
+    next: string[]; // what to read and do next, in order: the conduct page first
     project?: {
       root: string; // absolute path of the directory holding manifest.lua
       file: string; // "manifest.lua", or "tasks.lua" from a project that has not renamed yet
@@ -116,6 +124,7 @@ type CapabilityReport = {
       ledger: { last: { at: number; kind: string; name: string; status: string; seconds: number }[]; // the last five crossings, oldest first
                 records: number; intact: boolean; broken?: string; // the chain, walked every time: how many, whether each hashes the one before it, and where not
                 unaccounted: number }; // changes no crossing accounts for; zero until something watches
+      eval: { present: boolean; entries: number; last?: string }; // kuu-eval.md at the root: whether it is there, how many entries, and the last one's date
       modules: { name: string; path: string; names: string[] }[];
       files: number; // .lua files below the root, whether or not they are modules
     };
