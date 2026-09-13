@@ -49,8 +49,8 @@ established on 2026-09-12, against a runtime whose permission model is
 lexical, and it is a property of the model, not of the runtime.
 
 So a project grants a directory only after looking at what it contains, and
-the door supplies the look. `fs.dirs` reports every reparse point under a
-directory without entering it:
+the door supplies part of the look. `fs.dirs` reports directory reparse
+points without entering them; it does not inspect file symlinks:
 
 ```lua
 local fs = require "fs"
@@ -64,10 +64,13 @@ if #walk.links > 0 then
 end
 ```
 
-`walk.links` is empty when the directory holds no junction, symlink, or mount
-point, which is the only state in which a lexical grant means what it says.
-A directory that legitimately holds one is granted with that named, or not
-at all. The preflight is the project's to run, before the grant, every time:
+An empty `walk.links` means the directory walk found no directory reparse
+points. It does not establish that the tree is free of links: before granting
+it, the project must also list the files in each returned directory and
+inspect them with `fs.link`, rejecting file symlinks and any inspection failure.
+The walk's own `errors` must also be checked. A directory that legitimately
+holds a link is granted with that named, or not at all. The complete preflight
+is the project's to run, before the grant, every time:
 a junction can be made after the check as easily as before it, which is one
 more reason `reach` is a declaration and not a promise.
 

@@ -52,7 +52,10 @@ static void usage(FILE *to)
           "       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running\n"
           "       kuu capabilities [--json] what a program can reach from here, and what to read\n"
           "       kuu version | --version | --help\n"
-          "kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.\n",
+          "\nTry a query now: all modules are available with -e; no file or manifest is needed.\n"
+          "  kuu -e \"print(require('json').encode(require('sys').info()))\"\n"
+          "Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing\n"
+          "kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.\n",
           to);
 }
 

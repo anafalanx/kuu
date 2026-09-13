@@ -115,6 +115,9 @@ task.default "build"
   check("--dry-run still checks the arguments", r.code == 2 and contains(r.err, "unknown option '--bogus'"), T.describe(r))
   r = T.kuu({ "run", "uses_needy" }, { cwd = project })
   check("a dependency that needs an argument is refused before anything runs", r.code == 2 and contains(r.err, "missing required argument <target>") and order() == "", T.describe(r) .. order())
+  r = T.kuu({ "run", "uses_needy", "--help" }, { cwd = project })
+  check("the selected task's help precedes dependency argument validation",
+    r.code == 0 and contains(r.out, "usage: kuu run uses_needy") and r.err == "" and order() == "", T.describe(r))
   r = T.kuu({ "run", "talk" }, { cwd = project })
   check("without --json a task's print and io.write reach standard output", r.code == 0 and contains(r.out, "spoken") and contains(r.out, "written"), T.describe(r))
   r = T.kuu({ "run", "--json", "talk" }, { cwd = project })
@@ -129,6 +132,31 @@ task.default "build"
   local big = envelope_of(r.out)
   check("under --json a child's output beyond maxout is relayed whole, nothing dropped", r.code == 0 and big and big.ok == true
     and select(2, r.err:gsub("x", "")) == 200000, T.describe(r):sub(1, 400))
+  -- Output reporting must not change what a child can read. In particular
+  -- an unused streaming stdin pipe must not hold EOF open indefinitely.
+  local input = fs.absolute(T.work .. "/project-input")
+  fs.remove(input, { recursive = true })
+  fs.mkdir(input)
+  fs.write(input .. "/.gitignore", ".kuu/\n")
+  fs.write(input .. "/manifest.lua", [[
+local task = require "task"
+task "read" { run = function()
+  return task.exec { require("rt").exe, "-e", "local s=io.read('a'); io.write('input<',s,'>')", timeout = "5s" }
+end }
+task "explicit" { run = function()
+  return task.exec { require("rt").exe, "-e", "local s=io.read('a'); io.write('input<',s,'>')", timeout = "5s", inherit_stdin = true }
+end }
+]])
+  for _, input_case in ipairs { {"read", ""}, {"read", "first line\nsecond line\n"}, {"explicit", "explicit input\n"} } do
+    local name, bytes = input_case[1], input_case[2]
+    local plain = T.kuu({ "run", name }, { cwd = input, stdin = bytes, timeout = "10s" })
+    local report = T.kuu({ "run", "--json", name }, { cwd = input, stdin = bytes, timeout = "10s" })
+    local done = envelope_of(report.out)
+    check("JSON task relay preserves inherited input and EOF: " .. name .. ", " .. #bytes .. " bytes",
+      plain.code == 0 and plain.out == "input<" .. bytes .. ">" and report.code == 0
+        and done and done.ok == true and contains(report.err, plain.out), T.describe(report))
+  end
+  fs.remove(input, { recursive = true })
   r = T.kuu({ "run", "gen", "extra" }, { cwd = project })
   check("arguments to a task without a spec exit 2", r.code == 2 and contains(r.err, "takes no arguments"), T.describe(r))
   r = T.kuu({ "run", "fail" }, { cwd = project })
@@ -260,6 +288,30 @@ task.default "build"
   fs.write(bare .. "/manifest.lua", "this is not lua\n")
   r = T.kuu({ "list" }, { cwd = bare })
   check("a syntax error in manifest.lua exits 2 with its location", r.code == 2 and contains(r.err, "manifest.lua:1:"), T.describe(r))
+  fs.write(bare .. "/manifest.lua", 'error("bad \\233")\n')
+  r = T.kuu({ "list", "--json" }, { cwd = bare })
+  local invalid_error = json.decode(r.out)
+  check("list JSON preserves its error envelope when the manifest raises invalid UTF-8",
+    r.code == 2 and invalid_error and invalid_error.ok == false and contains(invalid_error.error.message, "bad \u{FFFD}")
+      and not contains(r.err, "traceback"), T.describe(r))
+  fs.write(bare .. "/manifest.lua", 'local task = require "task"\ntask "text" { desc="caf\\233", run=function() end }\n')
+  r = T.kuu({ "list", "--json" }, { cwd = bare })
+  local invalid_desc = json.decode(r.out)
+  check("list JSON also repairs invalid UTF-8 in successful task descriptions",
+    r.code == 0 and invalid_desc and invalid_desc.result.tasks[1].desc == "caf\u{FFFD}", T.describe(r))
+
+  -- A malformed dependency shape is refused while loading the manifest,
+  -- before any dependent task can run without its missing prerequisites.
+  for _, deps in ipairs { '{prepare=true}', '{[2]="prepare"}', '{[1]="prepare",[3]="prepare"}', '{"prepare",extra="prepare"}' } do
+    fs.write(bare .. "/manifest.lua", 'local task = require "task"\n'
+      .. 'task "prepare" {run=function() error("prerequisite reached") end}\n'
+      .. 'task "build" {deps=' .. deps .. ',run=function() require("fs").write("ran.txt","bad") end}\n')
+    r = T.kuu({ "run", "--json", "build" }, { cwd = bare })
+    local refused = envelope_of(r.out)
+    check("malformed deps cannot silently omit prerequisites: " .. deps,
+      r.code == 2 and refused and refused.ok == false and refused.error.code == "badvalue"
+        and contains(refused.error.message, "deps") and fs.exists(bare .. "/ran.txt") == false, T.describe(r))
+  end
 
   -- Through 0.9 the file was tasks.lua. 0.10 still finds one where no
   -- manifest.lua is, and says so on stderr every time; a directory holding
@@ -317,6 +369,11 @@ task.default "build"
   check("empty dependency-only tasks are refused", not ok and err.is(raised, "TASK", "badvalue"))
   ok, raised = pcall(task, "badrun", {deps={"x"}, run=false})
   check("aggregate tasks still reject a non-function run", not ok and err.is(raised, "TASK", "badvalue"))
+  for i, deps in ipairs { {prepare=true}, {[0]="prepare"}, {[2]="prepare"}, {"prepare",extra="prepare"}, {"prepare",false} } do
+    ok, raised = pcall(task, "malformed-deps-" .. i, {deps=deps, run=function() end})
+    check("task declarations require a dense string dependency array: " .. i,
+      not ok and err.is(raised, "TASK", "badvalue") and task.get("malformed-deps-" .. i) == nil, tostring(raised))
+  end
 
   -- Default child timeouts are validated once, copied, and overridable.
   local defaults = { timeout = "0s 80ms" }
@@ -444,4 +501,10 @@ task.default "build"
   r = T.kuu({ "list" }, { cwd = bare })
   check("bad defaults fail while declaring tasks, before any task runs",
     r.code == 2 and contains(r.err, "TASK badvalue") and contains(r.err, "timeout must be"), T.describe(r))
+  fs.write(bare .. "/manifest.lua", 'local task = require "task"\ntask "bytes" { desc="bad\\255", run=function() end }\n')
+  r = T.kuu({ "run", "--dry-run", "--json", "bytes" }, { cwd = bare })
+  local clean_dry = json.decode(r.out)
+  check("dry-run JSON sanitizes manifest descriptions and still returns one envelope",
+    r.code == 0 and clean_dry and clean_dry.ok and #events_of(r.out) == 1
+      and clean_dry.result.plan[1].desc == "bad\u{FFFD}", T.describe(r))
 end

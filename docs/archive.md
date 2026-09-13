@@ -26,8 +26,18 @@ The format follows the archive's extension: `.zip`, `.tar`, `.tar.gz` or
 `.tgz`, `.tar.xz`, `.tar.zst`, `.tar.bz2`. `unpack` creates the directory
 when needed and overwrites what is there; `strip` drops that many leading
 path components, so an archive whose single top-level directory carries the
-version lands where you say. `pack` replaces an existing archive; entries are
-names inside the directory, never absolute and never climbing out. Windows'
+version lands where you say. `pack` creates a temporary archive beside the
+destination and replaces the existing archive only after packing succeeds.
+Invalid arguments, failed packing, and timeouts preserve the previous archive.
+When the output lies inside the input directory, that exact output and its
+temporary file are excluded from the archive; other files with the same name
+at different paths are kept.
+Entries must be a dense array of names inside the directory, never absolute
+and never climbing out; holes, map keys, and non-table lists raise
+`ARCHIVE badvalue` before staging the output. Names beginning with `@` or
+`--` are literal filenames, including when entries are discovered by packing
+a whole directory. A leading `./` may appear in their archived names.
+Windows'
 bsdtar refuses archive entries that would climb out of the target directory,
 so an unpack stays under the directory you name.
 
@@ -35,7 +45,7 @@ so an unpack stays under the directory you name.
 |---|---|
 | `ARCHIVE notfound` | no archive, or no directory, at that path |
 | `ARCHIVE failed` | an invalid archive, unsupported format, or rejected entry; pack/unpack retain tar's diagnostic |
-| `ARCHIVE badvalue` | raised: wrong paths, a negative `strip`, or entries that leave the directory; returned for an empty directory to pack |
+| `ARCHIVE badvalue` | raised: wrong paths, a negative `strip`, an invalid entry array, or entries that leave the directory; returned for an empty directory to pack |
 | `ARCHIVE usage` | raised: an unknown option |
 | `ARCHIVE timeout` | the archive operation did not finish within `timeout` (default 30m) |
 | `ARCHIVE encoding` | an entry has no valid Unicode filename |

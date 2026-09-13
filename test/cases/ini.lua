@@ -1,6 +1,6 @@
 -- ini.lua -- Windows INI: decode, encode, and edits that leave the rest alone.
 global none
-global <const> require, tostring, pcall, table
+global <const> require, tostring, pcall, table, ipairs
 
 return function(T)
   local check = T.check
@@ -29,6 +29,25 @@ return function(T)
   check("encode and decode round-trip", ini.decode(out).One.s == " lead" and ini.decode(out)[""].z == "1")
   local okb, eb = pcall(ini.encode, { S = { ["a=b"] = "1" } })
   check("a key with = is INI badvalue", not okb and err.is(eb, "INI", "badvalue"), tostring(eb))
+  for _, key in ipairs { "#disabled", ";disabled", "[section]", " padded", "", "a=b" } do
+    local set_ok, set_error = pcall(ini.set, "x=1\n", "", key, "yes")
+    local encode_ok, encode_error = pcall(ini.encode, { [""] = { [key] = "yes" } })
+    check("set and encode refuse an unrepresentable key: " .. key, not set_ok and err.is(set_error, "INI", "badvalue")
+      and not encode_ok and err.is(encode_error, "INI", "badvalue"))
+  end
+  for _, section in ipairs { "S]\nx=elsewhere\n[Other", "carriage\rreturn", "windows\r\nline", false, 42 } do
+    local set_ok, set_error = pcall(ini.set, "[S]\nx=original\n", section, "key", "value")
+    local encode_ok, encode_error = pcall(ini.encode, { [section] = { key = "value" } })
+    check("set and encode refuse an unrepresentable section name",
+      not set_ok and err.is(set_error, "INI", "badvalue")
+      and not encode_ok and err.is(encode_error, "INI", "badvalue"), tostring(set_error))
+  end
+  for _, section in ipairs { "", " padded ", "bracket]inside", "[bracketed]", "漢字" } do
+    check("representable section names still round-trip through encode and set: " .. section,
+      ini.decode(ini.encode { [section] = { key = "value" } })[section].key == "value"
+      and ini.decode(ini.set("", section, "key", "value"))[section].key == "value")
+  end
+  check("a nil section in set still denotes top-level keys", ini.set("", nil, "key", "value") == "key=value\n")
 
   local edited = ini.set(text, "server", "PORT", "9090")
   check("set replaces a value in place, keeping the key's spelling, the comments, and the rest",

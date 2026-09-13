@@ -25,8 +25,15 @@ A repository declares its tasks once in `manifest.lua` and runs them with
 `archive`. The manual rides inside the executable: `kuu docs`. kuu runs on
 Windows 11 23H2 and later, and Windows Server 2025 and later, only.
 
-Version 0.10.0 is the front-door release: everything that runs in a project
-runs through `kuu.exe`. `manifest.lua` declares the tasks and the tools they
+Version 0.11 uses two natural-number components (`N.N`), corrects the
+front-door release, and makes its first steps
+clearer: help demonstrates an inline query, and documentation search names
+the command to read each result's context. It includes fixes for process
+streams, file and HTTP operations, checker and ledger reporting, helper
+validation, and reproducible payload builds. See
+[upgrading to 0.11](docs/upgrading-0.11.md) for version, behavior, and schema changes.
+
+A project runs through `kuu.exe`. `manifest.lua` declares the tasks and the tools they
 call, every crossing is recorded in a ledger under `.kuu/`, `kuu run --json`
 is a stream, and the executable explains itself — `kuu docs agent` states
 what is expected of an agent and asks it to report back, `kuu docs` serves
@@ -46,7 +53,11 @@ usage: kuu FILE [arg ...]        run a Lua program file
        kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
        kuu capabilities [--json] what a program can reach from here, and what to read
        kuu version | --version | --help
-kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.
+
+Try a query now: all modules are available with -e; no file or manifest is needed.
+  kuu -e "print(require('json').encode(require('sys').info()))"
+Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing
+kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.
 ```
 <!-- /usage -->
 
@@ -74,7 +85,7 @@ real repository adoption, with evidence and workarounds.
 The [cookbook](docs/cookbook.md) holds fourteen complete programs, the last
 four shaped by the front door, and the [stability statement](docs/stability.md)
 the future compatibility promise; the upgrading pages, from
-[0.10](docs/upgrading-0.10.md) back to [0.6](docs/upgrading-0.6.md), say what
+[0.11](docs/upgrading-0.11.md) back to [0.6](docs/upgrading-0.6.md), say what
 each release changed and what a project must do.
 
 ## Building
@@ -93,9 +104,9 @@ there. Nothing in the repository runs kuu to build kuu.
 
 The build produces `build/kuu.exe`; the tests are Lua, run by the built kuu,
 which spawns itself as a child and compares bytes.
-`make gate` combines the suite, GCC analysis, deterministic parser fuzzing,
-and the soak test. `make asan` builds and tests with Clang's AddressSanitizer;
-it is a separate release check. [Toolchain](docs/toolchain.md#verification)
+`make gate` combines the suite, Clang's AddressSanitizer build and tests,
+GCC analysis, deterministic parser fuzzing, and the soak test. `make asan`
+runs the sanitizer stage independently. [Toolchain](docs/toolchain.md#verification)
 documents the targets, pinned compiler packages, and replaying a seed.
 
 ## Layout

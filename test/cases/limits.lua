@@ -7,9 +7,12 @@ return function(T)
   local fixture = fs.join(T.root, 'build/test/limits_fixture.exe')
   for _, kind in ipairs { 'memory', 'cpu' } do
     local limits = kind == 'memory' and { memory = '64M' } or { cpu = '1s' }
-    local r = proc.run { fixture, kind, limits = limits, timeout = '8s' }
+    -- Windows checks job CPU usage periodically. A one-second CPU quota
+    -- took about seven wall seconds in isolated replays; the watchdog must
+    -- leave room for that cadence while still bounding a broken limit.
+    local r = proc.run { fixture, kind, limits = limits, timeout = kind == 'cpu' and '30s' or '8s' }
     T.check(kind .. ' limit is a named outcome', r and r.status == 'limit' and r.limit == kind,
-      r and (r.status .. ' ' .. tostring(r.limit) .. ' ' .. r.err))
+      r and (r.status .. ' ' .. tostring(r.limit) .. ' elapsed=' .. tostring(r.elapsed) .. ' ' .. r.err))
     T.check(kind .. ' limited child has no survivor', r and not proc.alive(r.pid))
   end
   local batch = fs.join(T.work, 'limit-processes.cmd')

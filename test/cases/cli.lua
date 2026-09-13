@@ -1,6 +1,6 @@
 -- cli.lua -- argument parsing from a declared spec.
 global none
-global <const> require, tostring, pcall, table, math
+global <const> require, tostring, pcall, table, math, string, ipairs
 
 return function(T)
   local check, contains, starts = T.check, T.contains, T.starts
@@ -71,11 +71,39 @@ return function(T)
   check("a default that fails its own type raises", not ok and err.is(e2, "CLI", "badvalue"), tostring(e2))
   ok, e2 = pcall(cli.parse, {}, { { "--help" } })
   check("redeclaring --help raises", not ok and err.is(e2, "CLI", "badvalue"), tostring(e2))
+  for _, args in ipairs { {}, { "yes" }, { "--help" } } do
+    ok, e2 = pcall(cli.parse, args, { { "help", default = "yes" }, { "--must", required = true } })
+    check("the positional help key is refused before it can waive required options",
+      not ok and err.is(e2, "CLI", "badvalue") and contains(tostring(e2), "help"), tostring(e2))
+  end
+  for _, bounds in ipairs {
+    { min = "zero" }, { max = false }, { min = {} }, { max = math.huge }, { min = -math.huge }, { min = 0/0 },
+  } do
+    for _, kind in ipairs { "int", "number", "duration", "size" } do
+      local entry = { "--n", type = kind, min = bounds.min, max = bounds.max }
+      local parse_ok, parse_error = pcall(cli.parse, {}, { entry })
+      local usage_ok, usage_error = pcall(cli.usage, { entry })
+      check("invalid numeric bounds are refused immediately by parsing and usage for " .. kind,
+        not parse_ok and err.is(parse_error, "CLI", "badvalue")
+        and not usage_ok and err.is(usage_error, "CLI", "badvalue"), tostring(parse_error))
+    end
+  end
   ok, e2 = pcall(cli.parse, {}, { { "rest", rest = true }, { "after" } })
   check("a positional after the rest entry raises", not ok and err.is(e2, "CLI", "badvalue"), tostring(e2))
 
   check("cli.duration and cli.size convert", cli.duration("1.5s") == 1.5 and cli.duration("2h") == 7200 and cli.duration("x") == nil
     and cli.size("2K") == 2048 and cli.size("1MB") == 1048576 and cli.size("10") == 10 and cli.size("x") == nil)
+  do
+    local required = { { "files", rest = true, required = true } }
+    local empty, missing = cli.parse({}, required)
+    check("a required rest argument needs at least one value", empty == nil and err.is(missing, "CLI", "usage"), tostring(missing))
+    local help = cli.parse({ "--help" }, required)
+    check("help still waives a required rest argument", help and help.help)
+    local supplied = cli.parse({ "one", "two" }, required)
+    check("a required rest argument collects its values", supplied and #supplied.files == 2 and supplied.files[2] == "two")
+    local size, overflow = cli.size(string.rep("9", 400) .. "G")
+    check("overflowing sizes are refused instead of becoming infinity", size == nil and err.is(overflow, "CLI", "badvalue"))
+  end
   do
     -- What a user typed is theirs to get wrong: the failure is returned, with
     -- a reason, where time.duration on a literal in the program raises.

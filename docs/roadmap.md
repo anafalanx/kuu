@@ -18,7 +18,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | compiler | gcc 16.2.0-3 from MSYS2 UCRT64, unpacked into `.tools` from 18 archives pinned by SHA-256 and retained | the estate's proven recipe; gcc and GNU make are the chosen production build, with Clang only for sanitizer tests. Pinned on 2026-09-13, when the 16.1 tree that built everything before turned out to be a copy of a live install whose packages the mirror no longer served; the record is the table in [toolchain](toolchain.md), the check is `certutil`, and no tool in the repository fetches or verifies it |
 | build | GNU make from the same `.tools`, recipes under `cmd.exe` | no PowerShell in the repository, and kuu never builds kuu: the build is make and gcc, the tests are Lua run by the built kuu |
 | self-hosting | none, by owner decision | kuu is not required to bootstrap or build itself; a person with `.tools` populated runs `make` |
-| versions | `Major.Minor.Patch`, all natural numbers, since 0.9.0 | 0.1 through 0.8 had no patch component; a frozen 1.x needs a way to ship one correction without claiming new capability, and the component is cheaper to add before the freeze than after it. `rt.version_at_least` compares them so no project parses the text |
+| versions | `N.N`, two nonnegative integers, from 0.11 | the owner chose release numbers without semantic-version compatibility categories; compare components numerically, so 0.11 follows 0.10. `rt.version_at_least` compares them without parsing text. The earlier 0.9.0 and 0.10.0 names remain historical; contract changes and explicit interface commitments live in the upgrading and stability pages |
 | dependency pinning | none: a project fetches what it needs by url and hash with `http` and `archive`; kuu's own compiler is obtained by hand from archives pinned by hash and retained, never fetched by kuu | the lock built in 0.3 was removed in 0.4 as formalism; kuu does not bootstrap itself |
 | the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has only stock Lua's `io` and `os`, and a static check can list what else a file asks for. It gates a program that does not reach around it: `_ENV` is an upvalue, needs no declaration, and reaches `load` and the whole palette from a file `check` reports with `"requires":[]` and a clean bill ([shortcomings](shortcomings.md)) |
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
@@ -27,7 +27,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | projects share nothing | every project carries its own `kuu.exe`, copied in by hand, directly in its root since 0.6 (0.4 and 0.5 put it in `.tools`); nothing on `PATH`, no machine changes, no bootstrap scripts | the owner ended estate-wide management; a small executable is copied, not fetched by glue |
 | what a project may fetch | upstream downloads only, into its own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger fetches from the same public sources. kuu itself fetches nothing, ever; `.kuu/` holds only kuu's own state, the notebook and the ledger |
 | a project's tools | whatever a project builds or fetches into its own root, in any technology, declared in its manifest with the arguments it takes and the shape it emits, and called through the door | there are exactly two kinds of thing a program can reach: the palette, kuu's, described by `_palette` and gated by `require`; and the project's tools, the project's, declared in `manifest.lua`. There is no third kind; a tool that wants to read like a module is wrapped by an ordinary project module |
-| the project's declaration file | `manifest.lua` at the root: prerequisites by hash, tasks, and `tool` declarations, in one file; `tasks.lua` still found for one release, with a warning | decided 2026-09-13; one authored file, read two ways from one source — executed by `run`, `list` and `capabilities`, read as literals by `check`, held equal by the suite |
+| the project's declaration file | `manifest.lua` at the root: prerequisites by hash, tasks, and `tool` declarations, in one file; `tasks.lua` remains a deprecated fallback with a warning and no scheduled removal | decided 2026-09-13; one authored file, read two ways from one source — executed by `run`, `list` and `capabilities`, read as literals by `check`, held equal by the suite. The earlier planned removal in 0.11 was withdrawn |
 | kuu's own repository | free of kuu: build and release are make, gcc, and cmd recipes; no `manifest.lua` there | self-reference is unwelcome, for release steps too |
 | releases | anafalanx/kuu public; GitHub Releases carry `kuu.exe` and its `.sha256`; signed with the owner's existing Certum certificate through the Windows SDK's signtool | the estate already signs this way, and public releases need no credentials to fetch |
 | the second project | `C:\dev\kuu-test-project`, local, no remote, tailored to test kuu features | a project built to exercise the runtime, before any existing one is converted |
@@ -83,7 +83,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `kuu capabilities [--json]`: the verbs, the public modules and their names, the error domains and closed sets, and this project's tasks and modules; `rt.verbs`, `rt.pages` | 0.10.0 |
 | `text.trim`, native, replacing a helper hand-rolled six times; the unanchored `$` out of every hot path in `lua/` and `tools/`; `check` lexes by byte | 0.10.0 |
 | `kuu.md`: what kuu is, what its predecessors taught, and the whole manual inlined by `tools/bundle_docs.lua`, held to `docs/` by the suite | 0.10.0 |
-| `manifest.lua` as the declaration file, `tasks.lua` found for one release; tools declared beside tasks with `task.tool` and called with `task.exec { tool = }`, read by `check` as literals and held to; the ledger under `.kuu/ledger`, chained, with the tree delta and the repository's head; `kuu run --json` as a stream | 0.10.0 |
+| `manifest.lua` as the declaration file, with a warned `tasks.lua` fallback that remains supported; tools declared beside tasks with `task.tool` and called with `task.exec { tool = }`, read by `check` as literals and held to; the ledger under `.kuu/ledger`, chained, with the tree delta and the repository's head; `kuu run --json` as a stream | 0.10.0 |
 | `kuu docs agent`, what is expected of an agent and the `kuu-eval.md` report back, named by every entry point and counted by `capabilities`; `docs` a verb like the others with sections, descriptions, search and `--json`; `rt.page` | 0.10.0 |
 | every verb points onward: a manifest that declares nothing, a misspelt verb, an unknown task with the nearest name, no project, a first `.kuu/` not ignored, the 0.8 version guard found by `check`; `notes` on the JSON envelopes; `kuu run TASK --help` exits 0; `TASK failed` carries `status` and `limit` | 0.10.0 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
@@ -395,7 +395,23 @@ add to it is a tool the project builds, called through the door.
      `capabilities` is provisional and outside the planned freeze until a
      project has driven it, by the rule [stability](stability.md) already
      applies to `pty`, `svc`, `evt` and `sys.signature`.
-11. **1.0.** Criteria for the owner to set. Proposed: three projects driven
+11. **0.11, corrections and the first encounter.** Published versions return
+   to two nonnegative integers, compared numerically, without semantic-version
+   compatibility categories. Existing three-argument minimum-version guards
+   remain accepted, with the running release compared as `(0, 11, 0)`.
+   The deprecated `tasks.lua` fallback remains supported without a removal
+   date. Two reviews of 0.10.0
+   corrected process and HTTP allocation ownership, bounded streaming reads,
+   archive replacement, ledger failure reporting, checker inference, helper
+   validation, and payload generation. Whole-output and unfinished-line reads
+   now return recoverable `PROC toobig` at the unread buffer bound; incomplete
+   module inventories and unreadable history are explicit in the descriptor.
+   Entry help and the agent guide demonstrate immediate work through `kuu -e`,
+   and documentation search points to commands that retrieve the relevant
+   section. [Upgrading to 0.11](upgrading-0.11.md) records the version, behavior and
+   schema changes. The next evidence comes from agents doing ordinary work in
+   prepared projects, with kuu as the execution entry point.
+12. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
    verdict. Two amendments agreed on 2026-09-11: a **clean soak gate on every
@@ -403,7 +419,7 @@ add to it is a tool the project builds, called through the door.
    promise on a signal nobody trusts; and **at least one cold adopter**,
    because every adoption finding on record comes from Time Actual, which
    co-evolved with the runtime and therefore routes around contract mistakes
-   instead of reporting them. Between 0.10.0 and 1.0: the freeze, the month of
+   instead of reporting them. Between 0.11 and 1.0: the freeze, the month of
    use, and corrections driven by what that use finds.
 
 ## The 0.5 review: fixes implemented

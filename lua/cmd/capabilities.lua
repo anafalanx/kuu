@@ -19,6 +19,7 @@ local rt = require "rt"
 local cli = require "cli"
 local fs = require "fs"
 local json = require "json"
+local clean = require "_jsonsafe"
 local project = require "project"
 local task = require "task"
 local check = require "check"
@@ -137,13 +138,21 @@ if root then
   -- which is zero until something watches.
   local ledger = require "_ledger"
   here.ledger = { last = json.array {}, records = 0, intact = true, unaccounted = 0 }
-  for _, record in ipairs(ledger.tail(root, 5)) do
+  local recent, tail_error = ledger.tail(root, 5)
+  for _, record in ipairs(recent or {}) do
     here.ledger.last[#here.ledger.last + 1] = { at = record.at, kind = record.kind, name = record.name,
       status = record.status, seconds = record.seconds }
   end
   local sound, detail = ledger.verify(root)
   if sound then here.ledger.records = detail
-  else here.ledger.intact, here.ledger.broken = false, detail.message end
+  else
+    here.ledger.intact, here.ledger.records = false, nil
+    if detail.domain == "LEDGER" then here.ledger.broken = detail.message
+    else here.ledger.unreadable = tostring(detail) end
+  end
+  if tail_error then
+    here.ledger.intact, here.ledger.unreadable = false, tostring(tail_error)
+  end
 
   -- What agents wrote back: kuu-eval.md at the root, one `## DATE ...`
   -- heading per entry, appended and never rewritten (kuu docs agent).
@@ -171,6 +180,7 @@ if root then
 
   local found = check.modules(root)
   here.files = found.files
+  here.modules_complete, here.module_errors = found.complete, json.array(found.errors)
   for _, module in ipairs(found.modules) do
     here.modules[#here.modules + 1] = { name = module.name,
       path = module.path:sub(#found.root + 2), names = json.array(module.exports) }
@@ -180,7 +190,7 @@ end
 -- ---- saying it -----------------------------------------------------------
 
 if opts.json then
-  io.write(json.encode {
+  io.write(json.encode(clean {
     ok = true,
     result = {
       kuu = { version = rt.version, lua = rt.lua, exe = rt.exe,
@@ -191,7 +201,7 @@ if opts.json then
       sets = sets,
       project = here,
     },
-  }, "\n")
+  }), "\n")
   os.exit(0)
 end
 
@@ -289,11 +299,19 @@ else
     io.write(string.rep(" ", LABEL), "the last crossings, oldest first; .kuu/ledger holds ninety days of them\n")
     if here.ledger.intact then
       io.write(string.rep(" ", LABEL), string.format("%d records, each hashing the one before it; the chain is intact\n", here.ledger.records))
-    else
+    end
+  elseif here.ledger.intact then
+    io.write(string.format("  %-" .. (LABEL - 2) .. "snothing has crossed the door yet; kuu run writes .kuu/ledger\n", "ledger"))
+  else
+    io.write(string.format("  %-" .. (LABEL - 2) .. "sno readable recent crossings\n", "ledger"))
+  end
+  if not here.ledger.intact then
+    if here.ledger.unreadable then
+      io.write(string.rep(" ", LABEL), "the ledger could not be completely read: ", here.ledger.unreadable, "\n")
+    end
+    if here.ledger.broken then
       io.write(string.rep(" ", LABEL), "the chain is broken: ", here.ledger.broken, "\n")
     end
-  else
-    io.write(string.format("  %-" .. (LABEL - 2) .. "snothing has crossed the door yet; kuu run writes .kuu/ledger\n", "ledger"))
   end
   if here.eval.entries > 0 then
     io.write(string.format("  %-" .. (LABEL - 2) .. "skuu-eval.md holds %d entr%s, the last dated %s\n", "eval",
@@ -307,6 +325,10 @@ else
     "modules", #here.modules, here.files))
   local column = column_for(here.modules, 4, LABEL)
   for _, module in ipairs(here.modules) do listing(column, 4, module.name, module.names) end
+  if not here.modules_complete then
+    io.write("    module inventory incomplete:\n")
+    for _, e in ipairs(here.module_errors) do io.write("      ", e.path, ": ", e.message, "\n") end
+  end
 end
 
 io.write("\nWhatever a task installs under .tools and never declares is not listed: kuu\n",

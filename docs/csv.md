@@ -61,5 +61,10 @@ separator, a quote, a line end, or leading or trailing whitespace.
 
 ## Errors
 
+Header mode rejects duplicate column names with `CSV parse`, so one field
+cannot silently replace another. Array mode preserves the original cells.
+Encoding records likewise requires distinct string column names and raises
+`CSV badvalue` for duplicates.
+
 Domain `CSV`: `parse` (returned), `badvalue` (raised), and `usage` (raised for
 an unknown option).

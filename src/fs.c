@@ -296,6 +296,50 @@ int ku_fs_replace(const wchar_t *temp, const wchar_t *target, DWORD *error)
     return retry_sharing(do_move, &op, error) ? 0 : -1;
 }
 
+HANDLE ku_fs_sibling_temp(const wchar_t *target, wchar_t **path, DWORD *error)
+{
+    *path = NULL;
+    const wchar_t *last = wcsrchr(target, L'\\');
+    if (last == NULL) {
+        *error = ERROR_INVALID_NAME;
+        return INVALID_HANDLE_VALUE;
+    }
+    size_t parent = (size_t)(last - target) + 1;
+    /* A filename near the component limit still has room for a compact
+     * sibling. Do not extend the destination's own basename. */
+    wchar_t *temp = (wchar_t *)malloc((parent + 42) * sizeof(wchar_t));
+    if (temp == NULL) {
+        *error = ERROR_NOT_ENOUGH_MEMORY;
+        return INVALID_HANDLE_VALUE;
+    }
+    memcpy(temp, target, parent * sizeof(wchar_t));
+    memcpy(temp + parent, L".kuu-", 5 * sizeof(wchar_t));
+    static const wchar_t hex[] = L"0123456789abcdef";
+    for (int attempt = 0; attempt < 32; attempt++) {
+        unsigned char nonce[16];
+        if (BCryptGenRandom(NULL, nonce, sizeof nonce, BCRYPT_USE_SYSTEM_PREFERRED_RNG) < 0) {
+            *error = ERROR_GEN_FAILURE;
+            break;
+        }
+        for (size_t i = 0; i < sizeof nonce; i++) {
+            temp[parent + 5 + i * 2] = hex[nonce[i] >> 4];
+            temp[parent + 6 + i * 2] = hex[nonce[i] & 15];
+        }
+        memcpy(temp + parent + 37, L".tmp", 5 * sizeof(wchar_t));
+        HANDLE file = CreateFileW(temp, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (file != INVALID_HANDLE_VALUE) {
+            *path = temp;
+            return file;
+        }
+        *error = GetLastError();
+        if (*error != ERROR_FILE_EXISTS && *error != ERROR_ALREADY_EXISTS) {
+            break;
+        }
+    }
+    free(temp);
+    return INVALID_HANDLE_VALUE;
+}
+
 /* fs.write(path, data [, { atomic = true, append = false }]) */
 static int l_fs_write(lua_State *L)
 {
@@ -335,20 +379,9 @@ static int l_fs_write(lua_State *L)
     }
     /* Atomic: write a sibling temporary file, then rename it over the target,
      * so the destination holds either the old bytes or all of the new ones. */
-    wchar_t suffix[48];
-    _snwprintf(suffix, sizeof suffix / sizeof suffix[0], L".kuu-%lu-%llu.tmp", (unsigned long)GetCurrentProcessId(),
-               (unsigned long long)GetTickCount64());
-    size_t temp_length = path.length + wcslen(suffix);
-    wchar_t *temp = (wchar_t *)malloc((temp_length + 1) * sizeof(wchar_t));
-    if (temp == NULL) {
-        ku_wpath_free(&path);
-        return ku_err_raise(L, "FS", "oserror", "out of memory");
-    }
-    wcscpy(temp, path.text);
-    wcscat(temp, suffix);
-    HANDLE h = CreateFileW(temp, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    wchar_t *temp = NULL;
+    HANDLE h = ku_fs_sibling_temp(path.text, &temp, &error);
     if (h == INVALID_HANDLE_VALUE) {
-        error = GetLastError();
         free(temp);
         ku_wpath_free(&path);
         return fail_win(L, error, "create a temporary file beside", shown);

@@ -36,11 +36,23 @@ local check = {}
 
 check.PRUNE = { ".git", ".tools", "build", "node_modules" }
 
+-- Match state.c's module_relative: dots separate nonempty components; a
+-- component may contain Unicode or spaces, but no path separator or drive
+-- colon. Filesystem validation then rejects names Windows cannot represent.
+local function module_path(root, name)
+  if name == "" or name:find("[/\\:%z]") or name:sub(1, 1) == "."
+    or name:sub(-1) == "." or name:find("..", 1, true) then return nil end
+  local rel = root .. "/" .. name:gsub("%.", "/")
+  for _, tail in ipairs { ".lua", "/init.lua" } do
+    local path = rel .. tail
+    local ok, kind = pcall(fs.exists, path)
+    if ok and kind == "file" then return path end
+  end
+  return nil
+end
+
 local function resolves(root, name)
-  if package.preload[name] ~= nil or rt.source(name) ~= nil then return true end
-  if not name:match("^[%w_%-]+$") and not name:match("^[%w_%-]+%.[%w_%.%-]+$") then return false end
-  local rel = name:gsub("%.", "/")
-  return fs.exists(root .. "/" .. rel .. ".lua") == "file" or fs.exists(root .. "/" .. rel .. "/init.lua") == "file"
+  return package.preload[name] ~= nil or rt.source(name) ~= nil or module_path(root, name) ~= nil
 end
 
 -- One lexer serves require discovery and name checking. Strings and comments
@@ -147,15 +159,6 @@ local function exports_of(name)
   return exports
 end
 
--- Where a `require` name resolves under the project root, or nil.
-local function module_path(root, name)
-  if not name:match("^[%w_%-]+$") and not name:match("^[%w_%-]+%.[%w_%.%-]+$") then return nil end
-  local rel = root .. "/" .. name:gsub("%.", "/")
-  if fs.exists(rel .. ".lua") == "file" then return rel .. ".lua" end
-  if fs.exists(rel .. "/init.lua") == "file" then return rel .. "/init.lua" end
-  return nil
-end
-
 -- The exports of a project module, read from its text rather than by running
 -- it -- project code is never executed, and that rule is not relaxed here.
 --
@@ -166,8 +169,8 @@ end
 -- a metatable, a return that is not a plain local, or a local that was not
 -- freshly built as a table.
 local function project_exports(path)
-  local text = fs.read(path, { encoding = "utf-8" })
-  if text == nil then return nil end
+  local text, e = fs.read(path, { encoding = "utf-8" })
+  if text == nil then return nil, e end
   if load(text, "@check", "t") == nil then return nil end
   local tokens = tokens_of(text)
 
@@ -184,12 +187,17 @@ local function project_exports(path)
   if returned == nil then return nil end
 
   -- and it has to have been built here, not received from somewhere else.
-  local opened
+  local opened, declarations = nil, 0
   for i = 1, #tokens - 3 do
-    if tokens[i].text == "local" and tokens[i + 1].text == returned
-      and tokens[i + 2].text == "=" and tokens[i + 3].text == "{" then opened = i + 3 break end
+    if tokens[i].text == "local" and tokens[i + 1].text == returned then
+      declarations = declarations + 1
+      if tokens[i + 2].text == "=" and tokens[i + 3].text == "{" then opened = i + 3 end
+    end
   end
-  if opened == nil then return nil end
+  -- Resolving arbitrary same-spelled locals requires full lexical binding
+  -- inference. Leave a redeclared table unchecked rather than use the wrong
+  -- constructor's export set.
+  if opened == nil or declarations ~= 1 then return nil end
 
   local exports = {}
 
@@ -214,18 +222,13 @@ local function project_exports(path)
     end
   end
 
-  -- A metatable or a raw set can put names on the table that its text does
-  -- not show, but only through a reference to the table.  So the file's
-  -- mention of `setmetatable` or `rawset` puts the set out of reach only
-  -- when the table also escapes: is passed, aliased, or used as `self`,
-  -- anywhere other than its own `local M = {`, its `M.name` accesses, and
-  -- the final `return M`.  A module that declares the name and never uses
-  -- it, or builds its own objects with it, stays bounded: the generated
-  -- corpus found every such module going unchecked.
-  local reaches, escapes = false, false
+  -- Any escaped reference can add exports, including ordinary alias.field
+  -- assignments. A metatable or rawset elsewhere is neither necessary nor
+  -- sufficient. Keep ordinary M.name accesses and the final return bounded;
+  -- passing, aliasing, replacing or using the table as self is uncertain.
+  local escapes = false
   for i = 1, #tokens do
     local t = tokens[i]
-    if t.text == "setmetatable" or t.text == "rawset" then reaches = true end
     if t.text == returned then
       local before, next1, next2, next3 = tokens[i - 1], tokens[i + 1], tokens[i + 2], tokens[i + 3]
       if next1 ~= nil and next1.text == "[" then return nil end
@@ -239,7 +242,7 @@ local function project_exports(path)
       end
     end
   end
-  if reaches and escapes then return nil end
+  if escapes then return nil end
   if next(exports) == nil then return nil end
   return exports
 end
@@ -310,20 +313,19 @@ local function contract_findings(contracts, report)
           end
         end
 
-      -- The version matched by a pattern: the guard published through 0.8,
-      -- `rt.version:match("^(%d+)%.(%d+)$")`, refuses every release from
-      -- 0.9.0 on, whatever minimum it asks for, and a manifest carrying it
-      -- fails with a message that names neither the cause nor the fix.
+      -- Public versions have two numeric components from 0.11 onward.
+      -- A guard requiring the former three-component spelling cannot match
+      -- one, regardless of the minimum it is trying to require.
       elseif entry.kind == "pattern" and spec and spec.field == "Version" and type(entry.pattern) == "string" then
-        -- Only the guard's own shape is judged -- two numeric components
-        -- matched to the end of the text -- since a pattern that reads
-        -- three, or one, or rewrites the dots, matches 0.9.0 as it should.
-        local _, components = entry.pattern:gsub("%%d%+", "")
-        if components == 2 and entry.pattern:match("%$$") then
+        -- Only three numeric components matched to the end are judged;
+        -- two-component guards and partial or rewriting patterns are left
+        -- alone. Numeric comparisons remain the recommended version gate.
+        local shape = entry.pattern:gsub("[()]", "")
+        if shape == "^%d+%.%d+%.%d+$" or shape == "%d+%.%d+%.%d+$" then
           report.errors[#report.errors + 1] = { kind = "value", line = entry.line,
-            message = entry.alias .. "." .. entry.member .. " is Major.Minor.Patch, and this pattern matches two components"
-              .. " to its end: the guard published through 0.8, which refuses every release from 0.9.0 on; use "
-              .. entry.alias .. ".version_at_least(...) (kuu docs upgrading-0.9)",
+            message = entry.alias .. "." .. entry.member .. " is N.N (two natural numbers), and this pattern requires three components"
+              .. " to its end, so it cannot match releases from 0.11 onward; use "
+              .. entry.alias .. ".version_at_least(...) (kuu docs upgrading-0.11)",
             module = entry.module, name = entry.pattern }
         end
 
@@ -332,10 +334,10 @@ local function contract_findings(contracts, report)
       elseif entry.kind == "compare" and spec and spec.field then
         if spec.field == "Version" then
           report.errors[#report.errors + 1] = { kind = "value", line = entry.line,
-            message = entry.alias .. "." .. entry.member .. " is Major.Minor.Patch and is never compared by text; use "
+            message = entry.alias .. "." .. entry.member .. " is N.N (two natural numbers) and is never compared by text; use "
               .. entry.alias .. ".version_at_least(...)",
             module = entry.module, name = entry.literal }
-        else
+        elseif entry.operator == "==" or entry.operator == "~=" then
           local values = palette.enums[spec.field]
           if values and not set_of(values)[entry.literal] then
             local suggestion = nearest(entry.literal, set_of(values))
@@ -382,6 +384,41 @@ end
 -- is a warning: the door still runs it, but nothing describes it.
 local TOOL_ATTRIBUTES = { exe = true, args = true, output = true, emits = true, timeout = true, reach = true }
 
+-- Literal does not mean well formed. Only describe declarations whose
+-- fields have the shapes the wire format promises; malformed literals get
+-- a finding instead of reaching json.array with a string or mixed table.
+local function tool_shape(decl)
+  local function strings(value)
+    if type(value) ~= "table" then return false end
+    local count = 0
+    for k, v in pairs(value) do
+      if type(k) ~= "number" or k % 1 ~= 0 or k < 1 or type(v) ~= "string" then return false end
+      count = count + 1
+    end
+    for i = 1, count do if value[i] == nil then return false end end
+    return true
+  end
+  if type(decl.exe) ~= "string" or decl.exe == "" then return "exe must be a non-empty string" end
+  if decl.args ~= nil then
+    if type(decl.args) ~= "table" then return "args must be a table of argument name = type" end
+    local kinds = { flag = true, string = true, path = true, int = true, number = true, duration = true, size = true }
+    for name, kind in pairs(decl.args) do
+      if type(name) ~= "string" or not kinds[kind] then return "args must map string names to supported argument types" end
+    end
+  end
+  if decl.emits ~= nil and not strings(decl.emits) then return "emits must be an array of strings" end
+  if decl.reach ~= nil then
+    if type(decl.reach) ~= "table" then return "reach must be a table of read, write and net lists" end
+    for name, list in pairs(decl.reach) do
+      if name ~= "read" and name ~= "write" and name ~= "net" then return "reach only accepts read, write and net" end
+      if not strings(list) then return "reach." .. name .. " must be an array of strings" end
+    end
+  end
+  local outputs = { none = true, json = true, ndjson = true, lines = true }
+  if decl.output ~= nil and not outputs[decl.output] then return "output must be none, json, ndjson or lines" end
+  if decl.timeout ~= nil and require("cli").duration(decl.timeout) == nil then return "timeout must be a duration" end
+end
+
 local function tool_findings(contracts, declared, context, report)
   -- A file's own declarations serve its own calls, wherever it is; the
   -- manifest's serve every file under the root. Only the manifest is told
@@ -407,6 +444,7 @@ local function tool_findings(contracts, declared, context, report)
       end
     end
     local decl = literal_of(t.node)
+    local invalid = decl ~= nil and tool_shape(decl) or nil
     if known[t.name] ~= nil then
       -- Declared more than once -- one arm of an `if` each, say -- the text
       -- cannot tell which one runs, so neither is held to.
@@ -424,6 +462,10 @@ local function tool_findings(contracts, declared, context, report)
           message = "tool '" .. t.name .. "' has a part that is not a literal, so its arguments are not checked" }
       end
       known[t.name] = false
+    elseif invalid then
+      known[t.name] = false
+      report.errors[#report.errors + 1] = { kind = "value", line = t.line,
+        module = "task.tool", name = t.name, message = "tool '" .. t.name .. "': " .. invalid }
     else
       known[t.name] = decl
       if context.is_manifest then
@@ -487,13 +529,17 @@ local function tool_findings(contracts, declared, context, report)
           module = "manifest", name = tool.name, suggestion = suggestion }
       elseif known[tool.name] and type(known[tool.name].args) == "table" then
         local args = known[tool.name].args
-        local expects_value = false
+        local expects_value, options = false, true
         for _, item in ipairs(given.items) do
           local text = item.literal
-          if type(text) ~= "string" then
+          if not options then
+            -- Everything following the end-of-options delimiter is positional.
+          elseif type(text) ~= "string" then
             expects_value = false
           elseif expects_value then
             expects_value = false -- the value of the option before it
+          elseif text == "--" then
+            options = false
           elseif args[text] ~= nil then
             expects_value = args[text] ~= "flag" -- a declared name, `sign` say, that takes a value
           else
@@ -505,7 +551,7 @@ local function tool_findings(contracts, declared, context, report)
               report.errors[#report.errors + 1] = { kind = "option", line = entry.line, message = message,
                 module = tool.name, name = name, suggestion = suggestion }
             elseif name ~= nil then
-              expects_value = args[name] ~= "flag"
+              expects_value = args[name] ~= "flag" and not text:find("=", 1, true)
             end
           end
         end
@@ -534,7 +580,7 @@ local function inspect(tokens, report, root, context)
     return false
   end
   local function expect(s)
-    if not consume(s) then error("check parser expected " .. s .. ", got " .. token().text) end
+    if not consume(s) then error("check parser at line " .. token().line .. " expected " .. s .. ", got " .. token().text) end
   end
   local function lookup(name)
     for i = #scopes, 1, -1 do if scopes[i][name] ~= nil then return scopes[i][name] end end
@@ -638,7 +684,7 @@ local function inspect(tokens, report, root, context)
       elseif consume("[") then expression(0) expect("]") result = {}
       elseif consume(":") then
         -- `rt.version:match(...)`: a module field matched by pattern is
-        -- recorded with the pattern, so the version guard of 0.8 is found
+        -- recorded with the pattern, so an incompatible version guard is found
         -- before it runs.
         local method, target = token().text, result
         result = field(result)
@@ -680,13 +726,13 @@ local function inspect(tokens, report, root, context)
           -- arguments is the same declaration.
           if original.module == "task" and original.member == "tool" and args[1] and type(args[1].literal) == "string" then
             if args[2] and args[2].keys then
-              tools[#tools + 1] = { name = args[1].literal, line = original.line, node = args[2], direct = true }
+              tools[#tools + 1] = { name = args[1].literal, line = original.line, node = args[2], direct = true, binding = original.binding }
             else
-              result.declaring = { name = args[1].literal, line = original.line }
+              result.declaring = { name = args[1].literal, line = original.line, binding = original.binding }
             end
           end
         elseif original.declaring and args[1] and args[1].keys then
-          tools[#tools + 1] = { name = original.declaring.name, line = original.declaring.line, node = args[1] }
+          tools[#tools + 1] = { name = original.declaring.name, line = original.declaring.line, node = args[1], binding = original.declaring.binding }
         end
       else break end
     end
@@ -705,15 +751,15 @@ local function inspect(tokens, report, root, context)
       if priority == nil or priority <= minimum then break end
       take()
       local right = expression((op == "^" or op == "..") and priority - 1 or priority)
-      -- A closed set compared with a literal outside it never matches, and
-      -- nothing says so at run time: the branch is simply dead.
-      if op == "==" or op == "~=" then
+      -- A closed set compared for equality with a literal outside it never
+      -- matches. Version ordering by text is wrong as well: "0.11" < "0.9".
+      if op == "==" or op == "~=" or op == "<" or op == ">" or op == "<=" or op == ">=" then
         local member, value = result, right
         if member.module == nil then member, value = right, result end
         if member.module and type(value.literal) == "string" then
           contracts[#contracts + 1] = { kind = "compare", binding = member.binding,
             module = member.module, member = member.member, alias = member.alias,
-            line = member.line, literal = value.literal }
+            line = member.line, literal = value.literal, operator = op }
         end
       end
       result = {}
@@ -727,7 +773,10 @@ local function inspect(tokens, report, root, context)
     if not is(")") then
       repeat
         local name = take().text
-        if name ~= "..." then bind(name) end
+        if name == "..." then
+          if token().kind == "name" then bind(take().text) end
+          break
+        else bind(name) end
       until not consume(",")
     end
     expect(")")
@@ -832,7 +881,11 @@ local function inspect(tokens, report, root, context)
       end
     end
     if palette then contract_findings(contracts, report) end
-    tool_findings(contracts, tools, context, report)
+    local certain_tools = {}
+    for _, t in ipairs(tools) do
+      if t.binding and not t.binding.changed then certain_tools[#certain_tools + 1] = t end
+    end
+    tool_findings(contracts, certain_tools, context, report)
   end
   return declares
 end
@@ -846,11 +899,10 @@ local function manifest_path(root)
 end
 
 -- The tools the manifest under `root` declares, read from its text once per
--- root: name -> the declaration as a literal, or false where the text does
+-- check operation: name -> the declaration as a literal, or false where the text does
 -- not bound it. The manifest's own check reads its own declarations and
 -- never comes here, so there is no circle.
-local tool_cache = {}
-local function project_tools(root)
+local function project_tools(root, tool_cache)
   if tool_cache[root] == nil then
     local known, readable = {}, true
     local path = manifest_path(root)
@@ -859,7 +911,8 @@ local function project_tools(root)
       -- A manifest that does not parse declares nothing anyone can read;
       -- the syntax error is the finding, and no call is judged against it.
       for _, e in ipairs(report.errors) do
-        if e.kind == "read" or e.kind == "syntax" then readable = false end
+        if e.kind == "read" or e.kind == "syntax" or e.kind == "analysis" then readable = false end
+        if e.module == "task.tool" then known[e.name] = false end
       end
       for _, t in ipairs(report.tools or {}) do known[t.name] = t end
       for _, w in ipairs(report.warnings) do
@@ -884,12 +937,12 @@ function check.tools(root)
 end
 
 -- check.file(path [, root]) -> { path, errors, warnings, requires, tools }
-function check.file(path, root)
+function check.file(path, root, tool_cache)
   -- The root is spelled as fs.absolute spells it, however the caller wrote
   -- it: paths under it are compared as text, and the manifest must be
   -- recognised as itself whichever way its root was given.
   root = fs.absolute(root or ".")
-  local report = { path = fs.absolute(path), errors = {}, warnings = {}, requires = {} }
+  local report = { path = fs.absolute(path), errors = {}, warnings = {}, requires = {}, tools = {} }
   local text, e = fs.read(path, { encoding = "utf-8" })
   if not text then
     report.errors[1] = { kind = "read", line = 0, message = tostring(e) }
@@ -904,9 +957,16 @@ function check.file(path, root)
   local tokens, declares = tokens_of(text), false
   local is_manifest = report.path:lower() == (manifest_path(root) or ""):lower()
   if chunk ~= nil then
-    local context = is_manifest and { tools = {}, has_manifest = true, readable = true } or project_tools(root)
+    local context = is_manifest and { tools = {}, has_manifest = true, readable = true } or project_tools(root, tool_cache or {})
     context = { tools = context.tools, has_manifest = context.has_manifest, readable = context.readable, is_manifest = is_manifest }
-    declares = inspect(tokens, report, root, context)
+    local inspected, result = pcall(inspect, tokens, report, root, context)
+    if inspected then declares = result
+    else
+      report.errors[#report.errors + 1] = { kind = "analysis",
+        line = tonumber(tostring(result):match("check parser at line (%d+)")) or 0,
+        message = "could not inspect this valid Lua chunk: " .. tostring(result) }
+      for _, t in ipairs(tokens) do if t.text == "global" then declares = true break end end
+    end
   else
     for _, t in ipairs(tokens) do if t.text == "global" then declares = true break end end
   end
@@ -918,36 +978,62 @@ function check.file(path, root)
   return report
 end
 
--- check.tree(dir [, root]) -> { root, reports }: every *.lua below dir, in
--- path order, skipping check.PRUNE directories; requires resolve against root.
-function check.tree(dir, root)
-  dir = fs.absolute(dir)
-  root = root and fs.absolute(root) or dir
-  local reports = {}
+-- Collect readable Lua paths and every incomplete enumeration. A partial
+-- walk is useful, but cannot be reported as a complete successful check.
+local function lua_files(dir)
+  local paths, errors, failed = {}, {}, {}
+  local function failure(path, why, win32)
+    if failed[path] then return end
+    failed[path] = true
+    errors[#errors + 1] = { path = path, message = tostring(why), win32 = win32 }
+  end
   local skip = {}
   for _, name in ipairs(check.PRUNE) do skip[name:lower()] = true end
-  -- the walker lists a pruned directory and only refuses to enter it; its
-  -- own files are skipped here, the root's never
-  local walk = fs.dirs(dir, { prune = check.PRUNE })
+  local walk, why = fs.dirs(dir, { prune = check.PRUNE })
+  if not walk then failure(dir, why) return paths, errors end
+  for _, e in ipairs(walk.errors) do
+    failure(e.path, "FS oserror: " .. e.reason .. " (win32 " .. tostring(e.win32) .. ")", e.win32)
+  end
   for _, sub in ipairs(walk.paths) do
     -- `^.*/(.*)$` rather than `([^/]+)$`: only `^` anchors a Lua pattern, so
     -- the second is retried at every position while the first is tried once
     -- and lets the greedy `.*` fall back to the last separator. See pitfalls.
     local base = sub:match("^.*/(.*)$") or sub
-    local listing = (sub == dir or not skip[base:lower()]) and fs.list(sub) or nil
-    if listing then
-      for _, entry in ipairs(listing.entries) do
-        if entry.kind == "file" and entry.name:sub(-4) == ".lua" then
-          reports[#reports + 1] = check.file(sub .. "/" .. entry.name, root)
+    if not failed[sub] and (sub == dir or not skip[base:lower()]) then
+      local listing, e = fs.list(sub)
+      if not listing then failure(sub, e)
+      else
+        for _, message in ipairs(listing.errors) do failure(sub, "FS oserror: " .. message) end
+        for _, entry in ipairs(listing.entries) do
+          if entry.kind == "file" and entry.name:sub(-4) == ".lua" then
+            paths[#paths + 1] = fs.join(sub, entry.name)
+          end
         end
       end
     end
+  end
+  table.sort(paths)
+  table.sort(errors, function(a, b) return a.path < b.path end)
+  return paths, errors
+end
+
+-- check.tree(dir [, root]) -> { root, reports }: every *.lua below dir, in
+-- path order, skipping check.PRUNE directories; requires resolve against root.
+function check.tree(dir, root)
+  dir = fs.absolute(dir)
+  root = root and fs.absolute(root) or dir
+  local reports, tool_cache = {}, {}
+  local paths, errors = lua_files(dir)
+  for _, path in ipairs(paths) do reports[#reports + 1] = check.file(path, root, tool_cache) end
+  for _, e in ipairs(errors) do
+    reports[#reports + 1] = { path = e.path, enumeration = true, warnings = {}, requires = {}, tools = {},
+      errors = { { kind = "read", line = 0, message = e.message, win32 = e.win32 } } }
   end
   table.sort(reports, function(a, b) return a.path < b.path end)
   return { root = root, reports = reports }
 end
 
--- check.modules(root) -> { root, files, modules }: the project's own modules
+-- check.modules(root) -> { root, files, modules, complete, errors }: the project's own modules
 -- and what each one exports, `{ name, path, exports }` in name order.
 --
 -- Every *.lua below the root is read and the ones whose exports the text
@@ -956,37 +1042,26 @@ end
 -- cannot be bounded, so naming either would be a guess. Nothing is executed.
 function check.modules(root)
   root = fs.absolute(root)
-  local skip = {}
-  for _, name in ipairs(check.PRUNE) do skip[name:lower()] = true end
-  local walk = fs.dirs(root, { prune = check.PRUNE })
-  local files, candidates = 0, {}
-  for _, sub in ipairs(walk.paths) do
-    local base = sub:match("^.*/(.*)$") or sub
-    local listing = (sub == root or not skip[base:lower()]) and fs.list(sub) or nil
-    if listing then
-      for _, entry in ipairs(listing.entries) do
-        if entry.kind == "file" and entry.name:sub(-4) == ".lua" then
-          files = files + 1
-          local path = sub .. "/" .. entry.name
-          local stem = path:sub(#root + 2, -5)
-          -- `a/b.lua` is a.b, and so is `a/b/init.lua`; require tries the
-          -- first of the two, so where both exist that is the one described.
-          local init = stem:sub(-5) == "/init"
-          local dotted = (init and stem:sub(1, -6) or stem):gsub("/", ".")
-          local plain = true
-          for part in dotted:gmatch("[^%.]+") do
-            if not part:match("^[%w_%-]+$") then plain = false break end
-          end
-          if plain and dotted ~= "" and (candidates[dotted] == nil or not init) then
-            candidates[dotted] = path
-          end
-        end
-      end
+  local paths, errors = lua_files(root)
+  local candidates = {}
+  local prefix = root:gsub("/$", "")
+  for _, path in ipairs(paths) do
+    local stem = path:sub(#prefix + 2, -5)
+    -- A literal dot in a filename is not a module separator. Confirm that
+    -- converting the candidate to a require name resolves back to this file,
+    -- with the loader's ordinary-file and bundled-module precedence.
+    local init = stem:sub(-5) == "/init"
+    local dotted = (init and stem:sub(1, -6) or stem):gsub("/", ".")
+    local resolved = module_path(root, dotted)
+    if resolved and fs.absolute(resolved):lower() == path:lower()
+        and package.preload[dotted] == nil and rt.source(dotted) == nil then
+      candidates[dotted] = path
     end
   end
   local modules = {}
   for name, path in pairs(candidates) do
-    local exports = project_exports(path)
+    local exports, e = project_exports(path)
+    if e then errors[#errors + 1] = { path = path, message = tostring(e) } end
     if exports ~= nil then
       local names = {}
       for export in pairs(exports) do names[#names + 1] = export end
@@ -995,7 +1070,8 @@ function check.modules(root)
     end
   end
   table.sort(modules, function(a, b) return a.name < b.name end)
-  return { root = root, files = files, modules = modules }
+  table.sort(errors, function(a, b) return a.path < b.path end)
+  return { root = root, files = #paths, modules = modules, complete = #errors == 0, errors = errors }
 end
 
 return check

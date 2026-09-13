@@ -20,13 +20,16 @@ fields sorted by key, quoted where a space or quote would make them ambiguous:
 Field values may be strings, numbers, booleans, error objects (rendered as
 `DOMAIN code: message`), or tables (rendered as JSON). Each call returns true
 when the line was emitted and false when it was filtered or dropped.
+Field keys are rendered with `tostring`; text output keeps each original
+key's value, including numeric keys. Keys with the same displayed spelling
+appear as separate text fields.
 
 ## Configuration
 
 ```lua
 log.configure { level = "debug" }            -- debug, info, warn, error, off; default info
 log.configure { file = "build/log.txt" }     -- append to a file; false returns to stderr
-log.configure { json = true }                -- one JSON object per line: ts, level, msg, fields
+log.configure { json = true }                -- one JSON object per line: ts, level, msg, then your fields
 log.configure { sink = function(line) end }  -- your own destination; false removes it
 log.configure()                              -- { level, file, json, sink, dropped }
 ```
@@ -40,7 +43,14 @@ previous configuration intact; a file that cannot be opened raises
 `LOG oserror` at configure time rather than being discovered by silently
 counting drops. Writing never raises: a sink that fails increments `dropped`,
 which `configure()` reports, because a diagnostic must not terminate the work
-it describes. The default sink is standard error, resolved at write time, so a
+it describes. An unrenderable message or field is also counted as a drop.
+JSON mode always emits JSON; invalid UTF-8 strings, cyclic tables, or other
+values that JSON cannot encode cause the entire record to be dropped, with
+no line sent to the sink. User fields are top-level JSON properties; the
+logger's `ts`, `level`, and `msg` properties take precedence. A custom
+sink may report failure by raising, returning `false`, or returning `nil, err`;
+returning nothing means success. Failed file writes and flushes count as drops.
+The default sink is standard error, resolved at write time, so a
 program that never logs opens nothing.
 
 | LOG code | when |

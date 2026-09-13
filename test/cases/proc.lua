@@ -8,6 +8,7 @@ return function(T)
   local proc = require "proc"
   local sched = require "sched"
   local err = require "err"
+  local fs = require "fs"
   local exe = T.exe
 
   local function wait_until(predicate, seconds)
@@ -84,6 +85,32 @@ return function(T)
   r = kuu({ "-e", "io.write('never read stdin')" }, { stdin = string.rep("x", 1024 * 1024) })
   check("a child that never reads stdin still completes", r.status == "exit" and r.out == "never read stdin", describe(r))
 
+  do
+    local owned = proc.run { T.root .. "/build/test/proc_stdin_fixture.exe", timeout = "5s" }
+    check("pending stdin owns stable bytes and a steady backlog reuses queue storage",
+      owned and owned.code == 0 and contains(owned.out, "stdin ownership and bounded retention"), owned and describe(owned))
+    check("a notified stream reader retains its reservation and close counts its wake once",
+      owned and owned.code == 0 and contains(owned.out, "notified reader reservation"), owned and describe(owned))
+    local c <close> = proc.start { exe, "-e", [[
+      for i = 1, 96 do
+        local expected = i <= 32 and 'a' or string.char(65 + (i - 33) % 26)
+        assert(io.read(65536) == string.rep(expected, 65536), 'stdin chunk ' .. i)
+        io.write('ack\n'); io.flush()
+      end
+    ]], stream = true, timeout = "10s" }
+    c:write(string.rep("a", 2 * 1024 * 1024))
+    local good = true
+    for i = 1, 64 do
+      if c:read("line", "5s") ~= "ack" then good = false break end
+      if not c:write(string.rep(string.char(65 + (i - 1) % 26), 65536)) then good = false break end
+    end
+    c:close_stdin()
+    local remaining = c:read("all", "5s")
+    local result = c:wait("5s")
+    check("concurrent appends preserve every stdin chunk while older writes complete",
+      good and remaining == string.rep("ack\n", 32) and result and result.code == 0, result and describe(result))
+  end
+
   -- output bounds ------------------------------------------------------------------
   r = kuu { "-e", "local c = string.rep('x', 1 << 20); for i = 1, 20 do io.write(c) end" }
   check("20 MiB of output is captured in full", r.status == "exit" and #r.out == 20 * 1024 * 1024 and r.truncated == false, tostring(#r.out))
@@ -154,6 +181,40 @@ return function(T)
   none, e = proc.run { "cmd.exe", "/c", "cd", cwd = T.work .. "/no-such-directory" }
   check("a missing cwd is nil, PROC error", none == nil and err.is(e, "PROC"), tostring(e))
 
+  do
+    local root = fs.absolute(T.work .. "/long-executable")
+    local directory = root
+    for _ = 1, 6 do directory = directory .. "/" .. string.rep("p", 90) end
+    local name = "kuu_path_probe_6dbb"
+    local destination = directory .. "/" .. name .. ".exe"
+    local made, problem = fs.mkdir(directory)
+    local copied = made and fs.copy(T.root .. "/build/test/proc_waiter_fixture.exe", destination, { replace = true })
+    local result, launch_error
+    if copied then result, launch_error = proc.run { destination, timeout = "5s" } end
+    check("an explicit executable path beyond the old 520-character lookup buffer launches",
+      #destination > 520 and result and result.code == 0 and contains(result.out, "aggregate waiter ownership"),
+      tostring(problem) .. " " .. tostring(launch_error) .. (result and describe(result) or ""))
+    local env = require "env"
+    local original_path = env.get("PATH")
+    fs.copy(T.root .. "/build/test/proc_stdin_fixture.exe", root .. "/" .. name .. ".exe", { replace = true })
+    env.set("PATH", '"' .. directory .. '/";"' .. root .. '";' .. (original_path or ""))
+    result, launch_error = proc.run { name, timeout = "5s" }
+    check("a quoted long PATH directory with a trailing slash wins over a later short directory",
+      result and result.code == 0 and contains(result.out, "aggregate waiter ownership"), tostring(launch_error))
+    fs.rename(destination, directory .. "/" .. name .. ".com", { replace = true })
+    result, launch_error = proc.run { name, timeout = "5s" }
+    env.set("PATH", original_path)
+    check("executable extension priority is preserved across PATH entries",
+      result and result.code == 0 and contains(result.out, "stdin ownership and bounded retention"), tostring(launch_error))
+    result = kuu({ "-e", [[
+      local result, problem = require('proc').run { 'kuu_path_probe_6dbb' }
+      assert(result == nil and require('err').is(problem, 'PROC', 'notfound'), tostring(problem))
+      io.write('not on PATH')
+    ]] }, { cwd = root, env = { PATH = ";;;" .. (original_path or "") } })
+    check("empty PATH entries do not search the current directory", result.code == 0 and result.out == "not on PATH", describe(result))
+    fs.remove(root, { recursive = true })
+  end
+
   -- batch files -----------------------------------------------------------------------
   r = proc.run { T.fixtures .. "/echo_arg.cmd", "a&b" }
   check("a batch argument with & is passed literally", r and r.status == "exit" and contains(r.out, "a&b") and not contains(r.out, "not recognized"), r and describe(r))
@@ -195,6 +256,48 @@ return function(T)
   check("run works inside a non-yieldable callback", via_gsub == "inner\r\n", via_gsub)
 
   -- streams ------------------------------------------------------------------------------------
+  do
+    local c <close> = proc.start { exe, "-e", "io.write('abc'); io.flush(); io.read('a')", stream = true, timeout = "5s" }
+    local part, e = c:read(4096, "2s")
+    check("a numeric stream read returns available bytes without waiting for its full count", part == "abc", tostring(e))
+    c:close_stdin()
+  end
+
+  for _, mode in ipairs { "all", "line" } do
+    local c <close> = proc.start { exe, "-e", "io.write(string.rep('x', 200000)); io.flush()", stream = true, maxout = "64K", timeout = "10s" }
+    local value, problem = c:read(mode, "5s")
+    check("a full stream window reports toobig for " .. mode, value == nil and err.is(problem, "PROC", "toobig"), tostring(problem))
+    value, problem = c:read(mode, "5s")
+    check("repeating an oversized " .. mode .. " read leaves its bytes buffered", value == nil and err.is(problem, "PROC", "toobig"), tostring(problem))
+    local total, good = 0, true
+    while true do
+      local piece, e = c:read("some", "5s")
+      if piece == nil then good = good and e == nil break end
+      total = total + #piece
+      good = good and piece == string.rep("x", #piece)
+    end
+    local result = c:wait("5s")
+    check("streaming after oversized " .. mode .. " recovers all output and lets the child exit",
+      good and total == 200000 and result and result.code == 0, tostring(total))
+  end
+
+  do
+    local c <close> = proc.start { exe, "-e", "io.stderr:write(string.rep('y', 10000)); io.stderr:flush()", stream = true, maxout = "4K", timeout = "5s" }
+    local ok, problem = pcall(function() for _ in c:err_lines() do end end)
+    check("line iteration raises an oversized stderr line instead of silently ending", not ok and err.is(problem, "PROC", "toobig"), tostring(problem))
+    local total = 0
+    while true do local part = c:read_err(8192, "5s") if not part then break end total = total + #part end
+    check("numeric reads recover the bytes after a failed line iterator", total == 10000, tostring(total))
+  end
+
+  do
+    local c <close> = proc.start { exe, "-e", "io.write('abc\\n'); io.flush(); io.read('a')", stream = true, maxout = 4, timeout = "5s" }
+    check("a line ending at maxout still returns its complete line", c:read("line", "2s") == "abc")
+    c:close_stdin()
+    local ok, problem = pcall(proc.start, { exe, stream = true, maxout = 0 })
+    check("stream mode refuses a zero-sized window that cannot make progress", not ok and err.is(problem, "PROC", "badvalue"), tostring(problem))
+  end
+
   -- an echo child: uppercases each stdin line, reports on stderr, exits when stdin ends
   local echo = { exe, "-e", "for line in io.lines() do io.write('> ', line:upper(), '\\n') io.stdout:flush() io.stderr:write('got ', #line, '\\n') io.stderr:flush() end io.write('bye\\n')" }
   do
@@ -260,12 +363,28 @@ return function(T)
   check("stream and stdin cannot be combined", not ok3 and err.is(e3b, "PROC", "usage"), tostring(e3b))
   ok3, e3b = pcall(proc.start, { exe, stream = true, inherit = true })
   check("stream and inherit cannot be combined", not ok3 and err.is(e3b, "PROC", "usage"), tostring(e3b))
+  for _, spec in ipairs({
+    { exe, stream = true, inherit_stdin = true, stdin = "x" },
+    { exe, inherit = true, inherit_stdin = true },
+  }) do
+    ok3, e3b = pcall(proc.start, spec)
+    check("selective stdin inheritance refuses conflicting input modes", not ok3 and err.is(e3b, "PROC", "usage"), tostring(e3b))
+  end
+  ok3, e3b = pcall(proc.detach, { exe, inherit_stdin = true })
+  check("detach refuses selective stdin inheritance", not ok3 and err.is(e3b, "PROC", "usage"), tostring(e3b))
+  ok3, e3b = pcall(proc.start, { exe, inherit_stdin = "yes" })
+  check("inherit_stdin requires a boolean", not ok3 and err.is(e3b, "PROC", "badvalue"), tostring(e3b))
 
   -- inherit: the child shares kuu's console; nothing is captured
   local inherited = proc.run { "cmd.exe", "/c", "exit 5", inherit = true }
   check("inherit runs with kuu's own handles and reports the code", inherited and inherited.status == "exit" and inherited.code == 5 and inherited.out == "", inherited and describe(inherited))
 
   -- wait_any / wait_all --------------------------------------------------------------------------
+  do
+    local owned = proc.run { T.root .. "/build/test/proc_waiter_fixture.exe" }
+    check("aggregate completion and cleanup free every native subscription exactly once",
+      owned and owned.code == 0 and contains(owned.out, "aggregate waiter ownership"), owned and describe(owned))
+  end
   do
     local fast <close> = proc.start { exe, "-e", "require('sched').sleep('100ms') io.write('fast')" }
     local slow <close> = proc.start { exe, "-e", "require('sched').sleep('1500ms') io.write('slow')" }
@@ -281,6 +400,18 @@ return function(T)
   end
   local ok4, e4b = pcall(proc.wait_any, {})
   check("wait_any refuses an empty list", not ok4 and err.is(e4b, "PROC", "usage"), tostring(e4b))
+  do
+    -- Several aggregate waits can subscribe to the same child. Completed
+    -- subscriptions remain owned until their aggregate resumes and cleans up.
+    local child <close> = proc.start { exe, "-e", "require('sched').sleep('100ms') io.write('shared')" }
+    local all = sched.spawn(function() return proc.wait_all({ child, child, child }, "5s") end)
+    local any = sched.spawn(function() return proc.wait_any({ child, child }, "5s") end)
+    local results = all:join("5s")
+    local winner, result = any:join("5s")
+    check("overlapping aggregates keep repeated subscriptions alive through completion",
+      results and #results == 3 and results[1].out == "shared" and results[3].out == "shared"
+      and winner == child and result and result.out == "shared")
+  end
   -- list, find, tree --------------------------------------------------------------------------
   do
     local sys = require "sys"

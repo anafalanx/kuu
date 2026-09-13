@@ -54,7 +54,9 @@ local function parse_size(text)
   if unit:byte(-1) == 0x42 then unit = unit:sub(1, -2) end   -- a trailing "B"
   local scale = ({ [""] = 1, K = 1024, M = 1024 * 1024, G = 1024 * 1024 * 1024 })[unit]
   if scale == nil then return nil end
-  return math.floor(tonumber(number) * scale + 0.5)
+  local bytes = tonumber(number) * scale
+  if bytes == math.huge or bytes ~= bytes then return nil end
+  return math.floor(bytes + 0.5)
 end
 
 -- cli.duration(text) -> seconds | nil, err;  cli.size(text) -> bytes | nil, err
@@ -134,9 +136,10 @@ local function normalise(spec)
     entry.type = entry.type or "string"
     if not TYPES[entry.type] then bad("unknown type '" .. tostring(entry.type) .. "' for '" .. entry.name .. "'") end
     entry.is_option = entry.name:sub(1, 2) == "--"
-    if entry.name == "--help" then bad("--help is provided by the parser") end
     if entry.name == "--" or entry.name == "" then bad("'" .. entry.name .. "' is not a name") end
+    if entry.name == "--help" then bad("--help is provided by the parser") end
     entry.key = entry.is_option and entry.name:sub(3) or entry.name
+    if entry.key == "help" then bad("the help key is reserved for the parser's --help option") end
     if norm.keys[entry.key] then bad("'" .. entry.name .. "' collides with another entry on the key '" .. entry.key .. "'") end
     norm.keys[entry.key] = true
     if not entry.is_option and entry.type == "flag" then bad("'" .. entry.name .. "' is positional and cannot be a flag") end
@@ -145,6 +148,12 @@ local function normalise(spec)
     if (entry.min ~= nil or entry.max ~= nil) and entry.type ~= "int" and entry.type ~= "number"
         and entry.type ~= "duration" and entry.type ~= "size" then
       bad("min and max for '" .. entry.name .. "' need a numeric type")
+    end
+    for _, name in ipairs { "min", "max" } do
+      local bound = entry[name]
+      if bound ~= nil and (type(bound) ~= "number" or bound ~= bound or bound == math.huge or bound == -math.huge) then
+        bad(name .. " for '" .. entry.name .. "' must be a finite number")
+      end
     end
     if entry.min ~= nil and entry.max ~= nil and entry.min > entry.max then bad("min exceeds max for '" .. entry.name .. "'") end
     if entry.choices ~= nil then
@@ -284,6 +293,9 @@ function cli.parse(args, spec, name)
       end
       opts[entry.key] = collected
       supplied[entry.key] = #collected > 0
+      if entry.required and #collected == 0 and not opts.help then
+        return usage("missing required argument <" .. entry.name .. " ...>")
+      end
     elseif index <= #rest then
       local value, message = convert(entry, rest[index])
       if value == nil then return usage(message) end

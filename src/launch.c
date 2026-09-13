@@ -1,6 +1,7 @@
 /* launch.c -- born-in-job process launch; see launch.h. */
 #include "launch.h"
 #include "cmdline.h"
+#include "fspath.h"
 #include "wintext.h"
 
 #include <stdio.h>
@@ -32,6 +33,81 @@ static int has_extension(const char *program)
         }
     }
     return strchr(base, '.') != NULL;
+}
+
+/* SearchPathW itself rejects long unprefixed explicit paths, even when its
+ * output buffer is large enough. Resolve these through the same normalized,
+ * extended-length paths used by fs, then retain the prefix for long launches. */
+static int resolve_explicit(const char *program, const wchar_t *extension, char **exe)
+{
+    size_t length = strlen(program), suffix = extension != NULL ? wcslen(extension) : 0;
+    char *candidate = (char *)malloc(length + suffix + 1);
+    if (candidate == NULL) return 1;
+    memcpy(candidate, program, length);
+    for (size_t i = 0; i < suffix; i++) candidate[length + i] = (char)extension[i];
+    candidate[length + suffix] = '\0';
+    ku_wpath path;
+    ku_fail fail;
+    int made = ku_wpath_make(candidate, &path, &fail);
+    free(candidate);
+    if (made != 0) return 1;
+    DWORD attributes = GetFileAttributesW(path.text);
+    int status = 1;
+    if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        if (path.length >= MAX_PATH) {
+            *exe = ku_wide_to_utf8(path.text, -1);
+        } else {
+            *exe = ku_wpath_show(path.text, path.unc);
+            /* Preserve the native spelling expected by batch launch quoting. */
+            for (char *p = *exe; p != NULL && *p != '\0'; p++) if (*p == '/') *p = '\\';
+        }
+        status = *exe != NULL ? 0 : 2;
+    }
+    ku_wpath_free(&path);
+    return status;
+}
+
+/* Search one PATH entry at a time, so a long directory cannot be skipped in
+ * favour of a later short one. Empty entries do not add an implicit cwd.
+ * Quotes can protect a semicolon inside a directory name. */
+static int resolve_on_path(const wchar_t *path, const char *program, const wchar_t *extension, char **exe)
+{
+    for (const wchar_t *entry = path; *entry != L'\0';) {
+        const wchar_t *end = entry;
+        int quoted = 0;
+        while (*end != L'\0') {
+            if (*end == L'"') quoted = !quoted;
+            if (*end == L';' && !quoted) break;
+            end++;
+        }
+        const wchar_t *first = entry, *last = end;
+        if (last - first >= 2 && *first == L'"' && last[-1] == L'"') {
+            first++;
+            last--;
+        }
+        if (last > first) {
+            char *directory = ku_wide_to_utf8(first, (int)(last - first));
+            if (directory != NULL) {
+                size_t length = strlen(directory), name_length = strlen(program);
+                char *candidate = (char *)malloc(length + name_length + 2);
+                if (candidate != NULL) {
+                    memcpy(candidate, directory, length);
+                    if (length > 0 && directory[length - 1] != '\\' && directory[length - 1] != '/') {
+                        candidate[length++] = '\\';
+                    }
+                    memcpy(candidate + length, program, name_length + 1);
+                    int status = resolve_explicit(candidate, extension, exe);
+                    free(candidate);
+                    free(directory);
+                    if (status != 1) return status;
+                } else {
+                    free(directory);
+                }
+            }
+        }
+        entry = *end == L';' ? end + 1 : end;
+    }
+    return 1;
 }
 
 int ku_resolve_exe(const char *program, char **exe)
@@ -71,20 +147,11 @@ int ku_resolve_exe(const char *program, char **exe)
         extensions[count++] = L".bat";
         extensions[count++] = L".cmd";
     }
-    wchar_t found[MAX_PATH * 2];
     int status = 1;
     for (int i = 0; i < count; i++) {
-        wchar_t *file_part = NULL;
-        DWORD n = SearchPathW(bare ? path_env : NULL, wide, extensions[i],
-                              (DWORD)(sizeof found / sizeof found[0]), found, &file_part);
-        if (n > 0 && n < sizeof found / sizeof found[0]) {
-            DWORD attributes = GetFileAttributesW(found);
-            if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                *exe = ku_wide_to_utf8(found, -1);
-                status = *exe != NULL ? 0 : 2;
-                break;
-            }
-        }
+        status = bare ? resolve_on_path(path_env, program, extensions[i], exe)
+                      : resolve_explicit(program, extensions[i], exe);
+        if (status != 1) break;
     }
     free(path_env);
     free(wide);

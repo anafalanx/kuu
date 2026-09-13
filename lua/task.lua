@@ -44,6 +44,26 @@ local function unknown(message)
   error(err.new("TASK", "usage", message), 3)
 end
 
+-- Counting keys alone is insufficient: a sparse sequence plus a hash key
+-- can have the same key count as its length, and ipairs stops at a hole.
+local function list_of(value, where, what)
+  if type(value) ~= "table" then bad(where .. ": " .. what .. " must be an array of strings") end
+  local count, length = 0, #value
+  for k in pairs(value) do
+    if type(k) ~= "number" or k % 1 ~= 0 or k < 1 or k > length then
+      bad(where .. ": " .. what .. " must be a contiguous array of strings")
+    end
+    count = count + 1
+  end
+  if count ~= length then bad(where .. ": " .. what .. " must be a contiguous array of strings") end
+  local out = {}
+  for i, item in ipairs(value) do
+    if type(item) ~= "string" then bad(where .. ": " .. what .. " must be strings") end
+    out[i] = item
+  end
+  return out
+end
+
 local function declare(name, spec)
   if type(name) ~= "string" or not name:match("^[%w][%w%._%-]*$") then
     bad("a task name must be a plain word, got " .. tostring(name))
@@ -55,13 +75,8 @@ local function declare(name, spec)
   end
   if spec.run ~= nil and type(spec.run) ~= "function" then bad(where .. ": run must be a function") end
   if spec.desc ~= nil and type(spec.desc) ~= "string" then bad(where .. ": desc must be a string") end
-  if spec.deps ~= nil then
-    if type(spec.deps) ~= "table" then bad(where .. ": deps must be an array of task names") end
-    for _, dep in ipairs(spec.deps) do
-      if type(dep) ~= "string" then bad(where .. ": deps must be task names") end
-    end
-  end
-  if spec.run == nil and (spec.deps == nil or #spec.deps == 0) then
+  local deps = spec.deps ~= nil and list_of(spec.deps, where, "deps") or {}
+  if spec.run == nil and #deps == 0 then
     bad(where .. " needs a run function or non-empty deps")
   end
   if spec.hidden ~= nil and type(spec.hidden) ~= "boolean" then bad(where .. ": hidden must be a boolean") end
@@ -74,7 +89,7 @@ local function declare(name, spec)
   local entry = {
     name = name,
     desc = spec.desc or "",
-    deps = spec.deps or {},
+    deps = deps,
     args = spec.args,
     run = spec.run,
     hidden = spec.hidden == true,
@@ -107,18 +122,6 @@ local function declare_tool(name, spec)
   -- from fs: a path the resolver will not take is a mistake in the manifest.
   local resolvable, why = pcall(fs.absolute, fs.join(rt.root(), spec.exe))
   if not resolvable then bad(where .. ": exe " .. (err.is(why) and why.message or tostring(why))) end
-  local function list_of(value, what)
-    if type(value) ~= "table" then bad(where .. ": " .. what .. " must be an array of strings") end
-    local count = 0
-    for _ in pairs(value) do count = count + 1 end
-    if count ~= #value then bad(where .. ": " .. what .. " must be an array, not a table of names") end
-    local out = {}
-    for i, item in ipairs(value) do
-      if type(item) ~= "string" then bad(where .. ": " .. what .. " must be strings") end
-      out[i] = item
-    end
-    return out
-  end
   -- `args` absent: the arguments are not described and check does not judge
   -- them; `args = {}`: the tool takes none.
   local args = spec.args ~= nil and {} or nil
@@ -134,7 +137,7 @@ local function declare_tool(name, spec)
   end
   local output = spec.output == nil and "none" or spec.output
   if not OUTPUTS[output] then bad(where .. ": output is ndjson, json, lines, or none, not " .. tostring(spec.output)) end
-  local emits = spec.emits ~= nil and list_of(spec.emits, "emits") or {}
+  local emits = spec.emits ~= nil and list_of(spec.emits, where, "emits") or {}
   if spec.timeout ~= nil and require("cli").duration(spec.timeout) == nil then
     bad(where .. ": timeout must be a duration such as 5m, or seconds")
   end
@@ -143,7 +146,7 @@ local function declare_tool(name, spec)
     if type(spec.reach) ~= "table" then bad(where .. ": reach must be a table of read, write and net lists") end
     for k, list in pairs(spec.reach) do
       if not REACH[k] then unknown(where .. ": reach: unknown option '" .. tostring(k) .. "'") end
-      reach[k] = list_of(list, "reach." .. tostring(k))
+      reach[k] = list_of(list, where, "reach." .. tostring(k))
     end
   end
   if registry.tools.byname[name] ~= nil then bad(where .. " is declared twice") end
@@ -276,7 +279,8 @@ end
 -- task.relay: nil, or a file such as io.stderr.  When set, task.exec runs its
 -- child with piped streams and copies whatever arrives to the relay as it
 -- arrives, whatever `inherit` the caller asked for.  `kuu run --json` sets it
--- so standard output carries only the envelope.
+-- so standard output carries only the envelope. The child's input remains
+-- kuu's own standard input, just as on the ordinary console path.
 task.relay = nil
 
 -- task.observer: nil, or a function given one record per crossing the door
@@ -299,6 +303,7 @@ end
 local function relay_exec(spec, relay, tool)
   spec.inherit = nil
   spec.stream = true
+  spec.inherit_stdin = true
   local began = sched.clock()
   local c <close>, e = proc.start(spec)
   if not c then return nil, e end
@@ -371,6 +376,7 @@ function task.exec(spec)
     -- On the console the child has kuu's own streams, so there is nothing to
     -- count; the crossing is still observed when it ends.
     spec.inherit = true
+    spec.inherit_stdin = nil -- full inheritance already includes stdin
     local began = sched.clock()
     r, e = proc.run(spec)
     if r then

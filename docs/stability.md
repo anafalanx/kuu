@@ -5,6 +5,12 @@ real repositories shows a mistake. Each such change belongs in that release's
 upgrading page, with the old form beside the replacement. Projects carry a
 specific `kuu.exe` in their own repository; updating that copy is deliberate.
 
+Published versions from 0.11 have the form `N.N`, two nonnegative integers
+compared numerically: 0.11 follows 0.10. The components identify and order
+releases; they do not encode semantic-version compatibility categories.
+Compatibility follows the explicit promises below and each release's
+upgrading notes, not an inference from which number changed.
+
 ## The 1.0 boundary
 
 At 1.0, the documented public interfaces of these modules will be frozen:
@@ -17,7 +23,9 @@ The same promise covers running a file, stdin, or an inline program; the
 `docs`, `run`, `list`, and `check` verbs; their documented options and exit
 codes; and their documented JSON reports. It includes the supported Windows
 baseline and the documented Lua language version. The freeze is a promise
-for 1.x, not a claim that the 0.10.0 interface can no longer improve.
+for the named 1.x release family, not a claim that the current interface can
+no longer improve. It is an explicit commitment, independent of the release
+numbering convention.
 
 `pty`, `svc`, `evt`, and `sys.signature` are provisional, and so is the
 `capabilities` verb with its JSON report. Their APIs may change before or
@@ -61,40 +69,45 @@ It may not remove or rename a public entry, change an accepted argument's
 meaning, change defaults for existing calls, change duration or size units,
 change the type or meaning of an existing result field, change a documented
 exit code or error domain/code, or weaken a documented lifetime or atomicity
-guarantee. Such changes require a new major version and a migration note.
+guarantee. Such a change cannot be made under this promise: it would require
+an explicitly announced replacement compatibility policy and a migration
+note. Changing a version number alone does not authorize it.
 
 ## A minimum-version guard
 
 A `manifest.lua` should ask for the oldest release whose features it uses,
-rather than compare the runtime version for equality. Since 0.9.0 a version
-has three natural-number components, Major.Minor.Patch, and
-`rt.version_at_least` compares them, so a project never parses the version
-text:
+rather than compare the runtime version for equality. `rt.version_at_least`
+compares the release's numeric components, so a project never parses the
+version text:
 
 ```lua
 global none
 global <const> require, assert
 local rt = require "rt"
-assert(rt.version_at_least(0, 10),
-  "this project requires kuu 0.10.0 or later; found " .. rt.version)
+assert(rt.version_at_least(0, 11),
+  "this project requires kuu 0.11 or later; found " .. rt.version)
 ```
 
-`rt.version_at_least(major [, minor [, patch]])` answers whether the running
-kuu is that version or newer. An omitted component is zero, and a component
-that is not a natural number raises `RT badvalue`. It compares numbers, so
-0.10 comes after 0.9, and 1.0 after both.
+`rt.version_at_least(first [, second])` answers whether the running kuu is
+that version or newer. An omitted component is zero; negative or noninteger
+components raise `RT badvalue`. It compares numbers, so 0.11
+comes after 0.10, and 1.0 after both.
 
-A guard written before 0.9.0 matched the version text with
-`rt.version:match("^(%d+)%.(%d+)$")`. That pattern does not match `0.9.0`, so
-such a guard refuses every release from 0.9.0 onward whatever minimum it asks
-for. Replace it with the call above; see
-[Upgrading to 0.9](upgrading-0.9.md).
+A third argument remains accepted for compatibility with guards written when
+releases had three components. The running 0.11 compares as `(0, 11, 0)` for
+those calls; no third component appears in its published version. Use two
+arguments in new guards.
+
+Version text changed from two components to three at 0.9.0 and returns to two
+at 0.11. A three-component pattern no longer matches `rt.version`; replace
+it with the call above. [Upgrading to 0.11](upgrading-0.11.md) gives the
+current migration; [upgrading to 0.9](upgrading-0.9.md) records the earlier
+change as history.
 
 Place this before declarations that use newer capabilities. The guard tests
 the minimum capability level, while the checked-in release hash and the
 project's tests decide which executable the project adopts. Run those tests
-when updating, and read the upgrading notes for every intervening 0.x
-release or a future major release.
+when updating, and read the upgrading notes for every intervening release.
 
 For the changes introduced with this statement, see
 [Upgrading to 0.7](upgrading-0.7.md). For a complete `manifest.lua`, see

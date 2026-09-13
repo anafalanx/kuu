@@ -235,6 +235,11 @@ return function(T)
       table.concat(pruned.skipped, ","))
     check("dirs still counts exactly the paths", pruned.dirs == #pruned.paths,
       tostring(pruned.dirs) .. " vs " .. tostring(#pruned.paths))
+    local boundary = fs.dirs(root, { depth = 1, prune = { "ORDER", "hid*" } })
+    check("pruning still excludes directories at the depth boundary",
+      boundary.pruned == 2 and #boundary.skipped == 2 and not names_one(boundary.paths, "/order$")
+      and not names_one(boundary.paths, "/hidden$") and boundary.dirs == #boundary.paths,
+      table.concat(boundary.paths, ","))
     check("a walk with nothing pruned has an empty skipped",
       #fs.dirs(root).skipped == 0)
     -- The depth cap is a frontier the caller asked to stop at, not a name it
@@ -351,4 +356,34 @@ return function(T)
   w2:close()
   local r1, r2 = reader:join()
   check("a parked reader wakes when the watch is closed", r1 == nil and err.is(r2, "FS", "closed"), tostring(r2))
+
+  do
+    local directory = root .. "/watch-readers"
+    fs.mkdir(directory)
+    local w <close> = fs.watch(directory)
+    local completed = {}
+    local first = sched.spawn(function()
+      local events, problem = w:read("5s")
+      completed[#completed + 1] = 1
+      return events, problem
+    end)
+    sched.sleep("10ms")
+    local second = sched.spawn(function()
+      local events, problem = w:read("5s")
+      completed[#completed + 1] = 2
+      return events, problem
+    end)
+    sched.sleep("10ms")
+    fs.mkdir(directory .. "/one") -- one notification, without file-write batches
+    local events, problem = first:join()
+    check("the oldest watch reader receives the first batch",
+      events and events[1] and events[1].path == "one" and problem == nil and completed[1] == 1, tostring(problem))
+    sched.sleep("20ms")
+    check("another watch reader stays parked after a competing reader consumes the batch", #completed == 1, tostring(#completed))
+    fs.mkdir(directory .. "/two")
+    events, problem = second:join()
+    check("the next watch reader receives a later batch without a fabricated OS error",
+      events and events[1] and events[1].path == "two" and problem == nil and completed[2] == 2, tostring(problem))
+    check("the watch remains armed after competing reads", w:info().armed)
+  end
 end

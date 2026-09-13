@@ -75,11 +75,12 @@ unknown` with the nearest declared name suggested, and `kuu list` named; a
 `task.default` naming a task the manifest does not declare is the same
 code, saying it is the manifest's own mistake.
 
-Through 0.9 the file was `tasks.lua`. 0.10 still finds a `tasks.lua` where no
+Through 0.9 the file was `tasks.lua`. kuu still finds a `tasks.lua` where no
 `manifest.lua` is, reads it as the manifest, and says so on standard error
 each time; a directory holding both is read from `manifest.lua` and told
-nothing. 0.11 will not look for the old name. Rename the file — nothing
-inside it changes.
+nothing. This fallback is deprecated but remains supported in 0.11, with no
+scheduled removal. Rename the file — nothing inside it changes. The earlier
+removal date was withdrawn; see [upgrading to 0.11](upgrading-0.11.md).
 
 ## Declaring
 
@@ -90,7 +91,7 @@ declaring a name twice.
 | attribute | meaning |
 |---|---|
 | `desc` | one line for `kuu list` |
-| `deps` | names to run first, each once, in dependency order; a cycle is `TASK cycle` naming the chain, an unknown name is `TASK unknown` saying who needed it |
+| `deps` | a contiguous array of task-name strings to run first, each once, in dependency order; sparse arrays and keyed tables are `TASK badvalue`; a cycle is `TASK cycle` naming the chain, an unknown name is `TASK unknown` saying who needed it |
 | `args` | a [cli](cli.md) spec for the arguments after the task name; checked when declared, so a broken spec fails `kuu list` too |
 | `run` | `function(opts)`; `opts` is the parsed arguments, or an empty table; optional when `deps` is non-empty |
 | `hidden` | left out of `kuu list`; still runs by name |
@@ -124,7 +125,9 @@ task runs. Every argument is checked before anything runs: the named task's
 against its spec, and each dependency's spec against no arguments. So a
 wrong argument, or a dependency that requires an argument, exits 2 with
 nothing started, and `--help` after the task name prints that task's usage
-on standard output and exits 0, as every `--help` does.
+on standard output and exits 0, as every `--help` does. The selected task's
+arguments are handled first, so a dependency that requires an argument does
+not prevent requesting that help.
 
 ```lua
 run = function(opts)
@@ -147,7 +150,9 @@ This bounds each child, not the whole task or its dependency plan; use
 `sched.deadline` for a scope containing several waits.
 
 `task.exec` runs a child on kuu's own console, so its output streams through
-as it happens; under `--json` it streams to standard error instead. It takes
+as it happens; under `--json` it streams to standard error instead. Both
+modes give the child kuu's own standard input, including piped input and
+EOF. It takes
 the same table as `proc.run` (`cwd`, `env`, `timeout`, `maxout`, `limits`)
 and returns `true`, or `nil, err` with `TASK exit` and the child's code in
 `err.exit`, which `kuu run` then uses as its own exit code. A child that timed
@@ -180,6 +185,12 @@ output of a `task.exec` child is streamed to standard error as it arrives,
 whatever `inherit` the task asked for, with no cap on its size. Only a direct
 `io.stdout:write` bypasses this, and then the task itself has broken the
 contract.
+
+JSON reports replace invalid UTF-8 bytes in messages and descriptions with
+U+FFFD, including errors raised while loading the manifest. `list --json`
+and `capabilities --json` use the same conversion. Invalid bytes in map keys
+are repaired too; if names then coincide, numbered suffixes preserve every
+entry in the report.
 
 The lines are events — the run once its plan is checked, each task as it
 starts and finishes, each child a task runs through the door — and the last

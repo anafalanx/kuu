@@ -17,7 +17,7 @@
  *   object  <-> table with string keys
  * An unmarked table encodes as an array when its keys are exactly 1..n with
  * n > 0, and as an object otherwise; `{}` is an object, `json.array{}` is `[]`.
- * Duplicate object keys are refused on decode (last-wins is a silent lie), and
+ * Duplicate object keys are refused in either direction (last-wins loses data), and
  * nesting is capped at 512 so a hostile document cannot exhaust the stack.
  */
 #include "err.h"
@@ -271,7 +271,7 @@ static int l_json_decode(lua_State *L)
 
 /* ---- encode ------------------------------------------------------------------ */
 
-/* Is the table at idx a sequence 1..n (n > 0) with no other keys? */
+/* Is the table at idx a sequence 1..n (possibly empty) with no other keys? */
 static int is_sequence(lua_State *L, int idx, lua_Integer *length)
 {
     idx = lua_absindex(L, idx);
@@ -292,7 +292,7 @@ static int is_sequence(lua_State *L, int idx, lua_Integer *length)
         seen++;
     }
     *length = n;
-    return seen == n && n > 0;
+    return seen == n;
 }
 
 static yyjson_mut_val *build(lua_State *L, yyjson_mut_doc *doc, int idx, int depth)
@@ -326,18 +326,23 @@ static yyjson_mut_val *build(lua_State *L, yyjson_mut_doc *doc, int idx, int dep
     }
     case LUA_TTABLE: {
         lua_Integer n = 0;
-        luaL_checkstack(L, 4, "json");
+        luaL_checkstack(L, 6, "json");
         /* An ordered object: an array of { key, value } pairs emitted in the
          * order given.  A Lua table has no key order, so a document that is
          * compared byte for byte -- a manifest, a lockfile, a golden fixture --
          * cannot be built from one.  Checked before the array tests, because
          * the pair list is itself a sequence. */
         if (is_marked_object(L, idx)) {
+            if (!is_sequence(L, idx, &n)) {
+                ku_err_raise(L, "JSON", "badvalue", "json.object must be a contiguous array of pairs without other keys");
+            }
             yyjson_mut_val *ordered = yyjson_mut_obj(doc);
-            n = (lua_Integer)lua_rawlen(L, idx);
+            lua_newtable(L);
+            int seen = lua_gettop(L);
             for (lua_Integer i = 1; i <= n; i++) {
                 lua_rawgeti(L, idx, i);
-                if (lua_type(L, -1) != LUA_TTABLE || lua_rawlen(L, -1) != 2) {
+                lua_Integer pair_length = 0;
+                if (lua_type(L, -1) != LUA_TTABLE || !is_sequence(L, -1, &pair_length) || pair_length != 2) {
                     ku_err_raise(L, "JSON", "badvalue",
                                  "json.object entry %d must be a { key, value } pair", (int)i);
                 }
@@ -352,6 +357,16 @@ static yyjson_mut_val *build(lua_State *L, yyjson_mut_doc *doc, int idx, int dep
                 if (!ku_utf8_valid((const unsigned char *)k, klen)) {
                     ku_err_raise(L, "JSON", "encoding", "an object key is not valid UTF-8");
                 }
+                lua_pushvalue(L, -1);
+                lua_rawget(L, seen);
+                int duplicate = !lua_isnil(L, -1);
+                lua_pop(L, 1);
+                if (duplicate) {
+                    ku_err_raise(L, "JSON", "duplicate", "json.object key %d repeats an earlier key", (int)i);
+                }
+                lua_pushvalue(L, -1);
+                lua_pushboolean(L, 1);
+                lua_rawset(L, seen);
                 yyjson_mut_val *key = yyjson_mut_strn(doc, k, klen);
                 lua_pop(L, 1);
                 lua_rawgeti(L, -1, 2);
@@ -359,9 +374,15 @@ static yyjson_mut_val *build(lua_State *L, yyjson_mut_doc *doc, int idx, int dep
                 lua_pop(L, 2);
                 yyjson_mut_obj_add(ordered, key, value);
             }
+            lua_pop(L, 1); /* seen keys */
             return ordered;
         }
-        if (is_marked_array(L, idx) || is_sequence(L, idx, &n)) {
+        int sequence = is_sequence(L, idx, &n);
+        int marked_array = is_marked_array(L, idx);
+        if (marked_array && !sequence) {
+            ku_err_raise(L, "JSON", "badvalue", "json.array must be a contiguous array without other keys");
+        }
+        if (marked_array || (sequence && n > 0)) {
             yyjson_mut_val *arr = yyjson_mut_arr(doc);
             n = (lua_Integer)lua_rawlen(L, idx);
             for (lua_Integer i = 1; i <= n; i++) {

@@ -31,7 +31,7 @@ local ORDER = {
   "mem", "sync", "sys", "reg", "env", "svc", "evt", "pty",
   "powershell", "cookbook",
   "inheritance", "roadmap", "shortcomings", "stability", "toolchain",
-  "upgrading-0.10", "upgrading-0.9", "upgrading-0.8", "upgrading-0.7", "upgrading-0.6",
+  "upgrading-0.11", "upgrading-0.10", "upgrading-0.9", "upgrading-0.8", "upgrading-0.7", "upgrading-0.6",
 }
 
 local function root()
@@ -144,27 +144,51 @@ local function with_usage(text, path)
   return text:sub(1, open_at - 1) .. usage_block() .. text:sub(close_at + #USAGE_CLOSE)
 end
 
--- GitHub's anchor for a heading: lower case, dots dropped, spaces to dashes.
+-- Explicit page anchors remain stable when titles change. Section anchors
+-- carry the page name, so repeated headings across pages cannot collide.
 local function anchor(name)
-  return (name:lower():gsub("%.", ""))
+  return "kuu-page-" .. (name:lower():gsub("%.", ""))
+end
+
+local function section_slug(heading)
+  return (heading:lower():gsub("%p", function(p)
+    return (p == "-" or p == "_") and p or ""
+  end):gsub("%s", "-"))
 end
 
 -- Demote every heading one level so the pages nest under Part III, rewrite
 -- cross-page links to anchors inside this document, and lift relative links
 -- by the one directory level the page itself moves up.  Headings inside
 -- fenced code blocks are left alone.
-local function transform(text)
-  local out, fenced = {}, false
+local function transform(text, page_name)
+  local out, fenced, headings = {}, nil, {}
   for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
     local line = raw
-    if line:match("^```") then fenced = not fenced end
+    local fence = line:match("^%s*(```+)") or line:match("^%s*(~~~+)")
+    if fence then
+      if not fenced then fenced = fence
+      elseif fence:sub(1, 1) == fenced:sub(1, 1) and #fence >= #fenced then fenced = nil end
+    end
     if not fenced then
-      if line:match("^#") then line = "#" .. line end
-      line = line:gsub("%]%((%w[%w%-%.]-)%.md#[%w%-]+%)", function(page)
-        return "](#" .. anchor(page) .. ")"
+      local heading = line:match("^#+%s+(.+)$")
+      if heading then
+        local slug = section_slug(heading)
+        local occurrence = headings[slug] or 0
+        headings[slug] = occurrence + 1
+        if occurrence > 0 then slug = slug .. "-" .. occurrence end
+        out[#out + 1] = '<a id="' .. anchor(page_name) .. "-" .. slug .. '"></a>'
+        out[#out + 1] = ""
+        line = "#" .. line
+      end
+      line = line:gsub("%]%((%w[%w%-%.]-)%.md#([%w_%-]+)%)", function(page, section)
+        return "](#" .. anchor(page) .. "-" .. section .. ")"
       end)
       line = line:gsub("%]%((%w[%w%-%.]-)%.md%)", function(page)
         return "](#" .. anchor(page) .. ")"
+      end)
+      line = line:gsub("%]%((#[%w_%-]+)%)", function(target)
+        if target:find("#kuu-page-", 1, true) == 1 then return "](" .. target .. ")" end
+        return "](#" .. anchor(page_name) .. "-" .. target:sub(2) .. ")"
       end)
 
       -- A page moves up one level when it is inlined: from docs/ into kuu.md
@@ -197,7 +221,9 @@ local function build(docs)
       if not text then error("no such page: " .. path) end
       parts[#parts + 1] = "---"
       parts[#parts + 1] = ""
-      parts[#parts + 1] = rtrim(transform(text))
+      parts[#parts + 1] = '<a id="' .. anchor(name) .. '"></a>'
+      parts[#parts + 1] = ""
+      parts[#parts + 1] = rtrim(transform(text, name))
       parts[#parts + 1] = ""
     end
   end

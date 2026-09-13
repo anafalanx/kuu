@@ -12,14 +12,13 @@
 
 #include <stddef.h>
 
-/* Major.Minor.Patch since 0.9.0.  A frozen 1.x needs a way to ship a single
- * correction without claiming new capability, and the component is far cheaper
- * to add before the freeze than after it.  The literal string stays the one
- * source the Makefile and the version resource read; rt.version_at_least parses it
- * rather than keeping numbers beside it that could drift. */
+/* N.N: two nonnegative integer components, compared numerically. Release
+ * numbers do not encode semantic-version compatibility categories. The literal
+ * is the source the Makefile and Windows version resource read, and the numeric
+ * minimum-version guard parses it rather than keeping a second copy. */
 #define KUU_NAME "kuu"
-#define KUU_VERSION "0.10.0"
-#define KUU_VERSION_W L"0.10.0"
+#define KUU_VERSION "0.11"
+#define KUU_VERSION_W L"0.11"
 
 /* Exit codes.  2 means kuu never started the program (usage, entry, state);
  * 1 means the program itself failed; anything else is the program's own

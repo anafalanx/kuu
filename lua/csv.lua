@@ -131,6 +131,11 @@ function csv.decode(text, opts)
   end
   local columns = rows[1]
   if columns == nil then return nil, err.new("CSV", "parse", "no header row") end
+  local seen = {}
+  for _, name in ipairs(columns) do
+    if seen[name] then return nil, err.new("CSV", "parse", "duplicate header '" .. name .. "'") end
+    seen[name] = true
+  end
   local records = { columns = columns }
   for i = 2, #rows do
     local r = rows[i]
@@ -195,6 +200,13 @@ function csv.encode(rows, opts)
   local newline = option(opts, "newline", "\r\n")
   local out = {}
   if columns ~= nil then
+    local seen = {}
+    for _, name in ipairs(columns) do
+      if type(name) ~= "string" or seen[name] then
+        error(err.new("CSV", "badvalue", "columns must be distinct string names"), 2)
+      end
+      seen[name] = true
+    end
     if header then
       local cells = {}
       for i, name in ipairs(columns) do cells[i] = field_text(name, sep) end

@@ -446,8 +446,6 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
     while (n > 0) {
         walk_item it = stack[--n];
         luaL_checkstack(L, 8, "fs.dirs");
-        /* Emission precedes every policy decision: pop, list, count, then
-         * decide about descending.  Every skip is a descent skip. */
         /* Decide before emitting.  A pruned directory was excluded by name, so
          * it belongs in `skipped`, never in `paths`: listing it there made the
          * obvious walk -- list the files of every path -- read exactly the
@@ -455,7 +453,7 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
          * surrogate still emit into `paths`, because those directories are the
          * frontier the caller asked to stop at rather than names it excluded. */
         int depth_stop = (w->depthcap >= 0 && it.depth >= w->depthcap);
-        int prune_stop = (!depth_stop && it.pruned);
+        int prune_stop = it.pruned;
 
         char *shown = ku_wpath_show(it.path, w->unc);
         if (shown != NULL) {
@@ -475,7 +473,7 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
         const char *action = "descended";
         int stop = 0;
         HANDLE h = INVALID_HANDLE_VALUE;
-        if (depth_stop) {
+        if (depth_stop && !prune_stop) {
             w->depthlimited++;
             action = "depthlimited";
             stop = 1;

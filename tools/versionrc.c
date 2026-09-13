@@ -13,15 +13,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static int version_parts(const char *text, unsigned parts[2])
+{
+    for (int i = 0; i < 2; ++i) {
+        if (*text < '0' || *text > '9') return 0;
+        unsigned value = 0;
+        while (*text >= '0' && *text <= '9') {
+            value = value * 10 + (unsigned)(*text++ - '0');
+            if (value > 65535) return 0; /* each VERSIONINFO component is a WORD */
+        }
+        parts[i] = value;
+        if (i == 0 && *text++ != '.') return 0;
+    }
+    return *text == '\0';
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
         fprintf(stderr, "usage: versionrc OUTPUT.rc\n");
         return 2;
     }
-    unsigned major = 0, minor = 0;
-    if (sscanf(KUU_VERSION, "%u.%u", &major, &minor) != 2) {
-        fprintf(stderr, "versionrc: KUU_VERSION \"%s\" is not Major.Minor\n", KUU_VERSION);
+    unsigned parts[2];
+    if (!version_parts(KUU_VERSION, parts)) {
+        fprintf(stderr, "versionrc: KUU_VERSION \"%s\" is not N.N with components in 0..65535\n", KUU_VERSION);
         return 1;
     }
     FILE *out = fopen(argv[1], "wb");
@@ -59,7 +74,7 @@ int main(int argc, char **argv)
             "    VALUE \"Translation\", 0x409, 1200\n"
             "  END\n"
             "END\n",
-            major, minor, major, minor, KUU_VERSION, KUU_VERSION);
+            parts[0], parts[1], parts[0], parts[1], KUU_VERSION, KUU_VERSION);
     fclose(out);
     return 0;
 }

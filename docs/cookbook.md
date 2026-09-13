@@ -306,7 +306,8 @@ task.default "report"
 `tools/report.lua` in the project, required as `require "tools.report"`:
 the tool is run for its output through `task.command`, so the declared exe
 and timeout apply, and each line of standard output is one record. A line
-that does not decode is the tool's fault, and says which line. This is the
+that does not decode is the tool's fault, and says which line. Truncated
+capture is refused before parsing, so a valid prefix is never a complete result. This is the
 program's own `proc.run`, not a crossing; a task that wants the record
 calls `task.exec` instead.
 
@@ -322,6 +323,7 @@ function M.rows(since)
   if not r then return nil, e end
   if r.status ~= "exit" then return nil, err.new("REPORT", "failed", "report: " .. r.status) end
   if r.code ~= 0 then return nil, err.new("REPORT", "exit", "report exited with code " .. r.code, { exit = r.code }) end
+  if r.truncated then return nil, err.new("REPORT", "toobig", "report output exceeded the capture limit") end
   local rows, number = {}, 0
   for line in r.out:gmatch("[^\r\n]+") do
     number = number + 1

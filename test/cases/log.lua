@@ -1,6 +1,6 @@
 -- log.lua -- the logger: format, levels, sinks, never raising.
 global none
-global <const> require, tostring, type, pcall, error, select
+global <const> require, tostring, type, pcall, error, select, io, ipairs
 
 return function(T)
   local check, contains, starts = T.check, T.contains, T.starts
@@ -50,6 +50,27 @@ return function(T)
   local record = json.decode(captured[1])
   check("json mode writes one object per line", record and record.level == "info" and record.msg == "as json" and record.count == 2
     and record.name == "kuu" and record.flag == false and type(record.ts) == "string", captured[1])
+  do
+    local cyclic = {}; cyclic.self = cyclic
+    for index, input in ipairs {
+      { "bad\255", {} }, { "invalid field", { value = "bad\255" } }, { "cyclic field", { value = cyclic } },
+    } do
+      local before, count = log.configure().dropped, #captured
+      local safe, emitted = pcall(log.info, input[1], input[2])
+      check("an unencodable JSON record is dropped without emitting plain text: case " .. index,
+        safe and emitted == false and #captured == count and log.configure().dropped == before + 1)
+    end
+    check("a dropped JSON record leaves the selected format usable", log.info("after failure", { count = 3 }) == true
+      and json.decode(captured[#captured]).count == 3)
+    log.configure { json = false }
+    log.info("numeric keys", { [1] = "alpha", ["1"] = "beta", [2] = "two words" })
+    check("text fields keep the values of numeric and string keys with the same spelling",
+      contains(captured[#captured], 'numeric keys 1=alpha 1=beta 2="two words"'), captured[#captured])
+    local before, count = log.configure().dropped, #captured
+    local safe, emitted = pcall(log.info, "cyclic text field", { value = cyclic })
+    check("a failed text-field render also drops the complete record without raising",
+      safe and emitted == false and #captured == count and log.configure().dropped == before + 1)
+  end
   log.configure { json = false, sink = false }
 
   local ok, e = pcall(log.configure, { level = "loud" })
@@ -60,4 +81,31 @@ return function(T)
   check("a non-table is LOG badvalue, a wrong value rather than a wrong option", not ok and err.is(e, "LOG", "badvalue"), tostring(e))
   ok, e = pcall(log.configure, { file = T.work .. "/no-such-dir/x.log", level = "debug" })
   check("a file that cannot be opened is refused and nothing changes", not ok and err.is(e, "LOG", "oserror") and log.configure().level == "info", tostring(e))
+  do
+    local cyclic = {}; cyclic.self = cyclic
+    local before = log.configure().dropped
+    local safe, emitted = pcall(log.info, cyclic)
+    check("a cyclic message never raises and counts its drop", safe and emitted == false and log.configure().dropped == before + 1)
+    local original = io.stderr
+    io.stderr = { write = function() return nil, "simulated write failure", 28 end }
+    before = log.configure().dropped
+    safe, emitted = pcall(log.info, "cannot write")
+    io.stderr = original
+    check("a returned I/O failure counts as a dropped log record", safe and emitted == false and log.configure().dropped == before + 1)
+    log.configure { sink = function() return nil, "sink failed" end }
+    check("a sink may return a failure instead of raising", log.info("x") == false)
+    log.configure { sink = false }
+    local open = io.open
+    io.open = function()
+      return { write = function(self) return self end,
+        flush = function() return nil, "simulated flush failure" end, close = function() return true end }
+    end
+    local configured, problem = pcall(log.configure, { file = path })
+    io.open = open
+    before = log.configure().dropped
+    safe, emitted = pcall(log.info, "cannot flush")
+    log.configure { file = false }
+    check("a returned flush failure counts as a dropped log record", configured and safe and emitted == false
+      and log.configure().dropped == before + 1, tostring(problem))
+  end
 end

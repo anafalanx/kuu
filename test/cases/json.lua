@@ -62,6 +62,22 @@ return function(T)
     check("a non-string key is JSON badvalue", not ok2 and err.is(e2, "JSON", "badvalue"), tostring(e2))
     local ok3, e3 = pcall(json.object, "not a table")
     check("json.object refuses a non-table", not ok3, tostring(e3))
+    for _, malformed in ipairs({
+      json.array { 1, extra = 2 },
+      json.array { [1] = 1, [3] = 3 },
+      json.object { { "x", 1 }, extra = { "y", 2 } },
+      json.object { [1] = { "x", 1 }, [3] = { "y", 2 } },
+      json.object { { "x", 1, extra = 2 } },
+    }) do
+      local encoded, problem = pcall(json.encode, malformed)
+      check("marked JSON containers refuse holes and extra keys", not encoded and err.is(problem, "JSON", "badvalue"), tostring(problem))
+    end
+    for _, key in ipairs({ "x", "a\0b" }) do
+      local encoded, problem = pcall(json.encode, json.object { { key, 1 }, { key, 2 } })
+      check("ordered objects refuse duplicate keys, including NUL bytes", not encoded and err.is(problem, "JSON", "duplicate"), tostring(problem))
+    end
+    local distinct = json.decode(json.encode(json.object { { "a\0b", 1 }, { "a\0c", 2 } }))
+    check("ordered object keys are compared using their full length", distinct["a\0b"] == 1 and distinct["a\0c"] == 2)
   end
   check("integral floats keep a decimal point", json.encode(2.0) == "2.0")
   check("pretty output has newlines and two-space indents", contains(json.encode({ a = { 1 } }, { pretty = true }), '{\n  "a": [\n    1\n  ]\n}'))

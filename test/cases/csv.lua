@@ -31,6 +31,14 @@ return function(T)
   local recs = csv.decode("name,age\r\nann,41\r\nbob,7\r\n", { header = true })
   check("header mode yields records and remembers the columns",
     #recs == 2 and recs[1].name == "ann" and recs[2].age == "7" and recs.columns[2] == "age")
+  do
+    local duplicate, why = csv.decode("name,name\nfirst,last\n", { header = true })
+    check("duplicate headers are refused before records lose a field", duplicate == nil and err.is(why, "CSV", "parse"), tostring(why))
+    local raw = csv.decode("name,name\nfirst,last\n")
+    check("array mode retains duplicate header text and both values", raw and raw[2][1] == "first" and raw[2][2] == "last")
+    local ok, raised = pcall(csv.encode, { { name = "value" } }, { columns = { "name", "name" } })
+    check("record encoding refuses duplicate column names", not ok and err.is(raised, "CSV", "badvalue"), tostring(raised))
+  end
   local none, e = csv.decode('a,b\n1,"open\n')
   check("an unterminated quote is CSV parse with the line",
     none == nil and err.is(e, "CSV", "parse") and e.message:find("line 2", 1, true) ~= nil, tostring(e))

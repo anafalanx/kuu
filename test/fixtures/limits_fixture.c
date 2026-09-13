@@ -21,7 +21,7 @@ int main(int argc, char **argv)
     }
     if (strcmp(argv[1], "cpu") == 0) {
         volatile unsigned long long counter = 0;
-        ULONGLONG end = GetTickCount64() + 10000;
+        ULONGLONG end = GetTickCount64() + 45000; /* beyond the test's 30s watchdog */
         while (GetTickCount64() < end) {
             for (unsigned i = 0; i < 100000; i++) {
                 counter++;

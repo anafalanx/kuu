@@ -30,7 +30,9 @@ Nothing is reported that kuu cannot know.
   extraction is the one [check](check.md) uses, so the two agree; it
   over-approximates, and a module whose exports the text does not bound is
   counted rather than named. A program is not a module, and from the text
-  alone the two do not differ.
+  alone the two do not differ. Failed directory listings and unreadable
+  candidate modules make the inventory explicitly incomplete, with their
+  paths and diagnostics; they never become a successful empty inventory.
 - **Tasks and tools are declared by running `manifest.lua`**, which is project
   code. `kuu run` and `kuu list` already do that, and this does no more. A
   `manifest.lua` that does not load costs the task and tool lists and nothing
@@ -50,10 +52,10 @@ half. kuu does not walk whatever directory it was started in instead: that is
 a different question, and an expensive one to answer by accident.
 
 ```text
-kuu 0.10.0 (Lua 5.5.1) at C:\work\app\kuu.exe
+kuu 0.11 (Lua 5.5.1) at C:\work\app\kuu.exe
 
   verbs      capabilities, check, docs, list, run  kuu VERB --help
-  manual     46 pages                              kuu docs PAGE | search TEXT
+  manual     47 pages                              kuu docs PAGE | search TEXT
   modules    27, 182 names                         require "NAME"
   errors     27 domains, codes in --json           err.is(e, DOMAIN, code)
 
@@ -104,7 +106,7 @@ type CapabilityReport = {
   ok: true; // this command has no failure of its own
   result: {
     kuu: {
-      version: string; // Major.Minor.Patch
+      version: string; // N.N: two natural-number components
       lua: string; // the Lua release, "Lua 5.5.1"
       exe: string; // this executable
       verbs: string[]; // the verbs carried as programs, sorted; see below
@@ -128,11 +130,13 @@ type CapabilityReport = {
       note?: string; // why the manifest did not load, naming the file read; tasks is then empty
       notes: string[]; // what the text form says beside the inventory: a tasks.lua read as the manifest
       ledger: { last: { at: number; kind: string; name: string; status: string; seconds: number }[]; // the last five crossings, oldest first
-                records: number; intact: boolean; broken?: string; // the chain, walked every time: how many, whether each hashes the one before it, and where not
+                records?: number; intact: boolean; broken?: string; unreadable?: string; // count only after successful verification; broken locates corruption, unreadable describes a read failure
                 unaccounted: number }; // changes no crossing accounts for; zero until something watches
       eval: { present: boolean; entries: number; last?: string }; // kuu-eval.md at the root: whether it is there, how many entries, and the last one's date
       modules: { name: string; path: string; names: string[] }[];
-      files: number; // .lua files below the root, whether or not they are modules
+      modules_complete: boolean; // false if enumeration or reading a candidate module failed
+      module_errors: { path: string; message: string; win32?: number }[];
+      files: number; // discovered .lua files below the root, whether or not they are modules
     };
   };
 };

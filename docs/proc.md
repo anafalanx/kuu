@@ -33,8 +33,10 @@ local r = proc.run("cmd.exe", "/c", "echo hi")   -- plain arguments, no options
 
 The array part is the command: the executable and its arguments, each a
 string. A bare name such as `git` resolves from `PATH` only, never from the
-current directory; a name with a separator is used as given; names without an
-extension try `.exe`, `.com`, `.bat`, `.cmd`. Arguments are quoted for the
+current directory, and empty `PATH` entries are ignored; a name with a separator
+is used as given. Names without an extension try `.exe`, `.com`, `.bat`, `.cmd`
+in that order, searching `PATH` entries in their listed order for each extension.
+Long paths work both explicitly and through `PATH`. Arguments are quoted for the
 child exactly by the rules the child's C runtime parses them with, so what you
 pass is what it receives: spaces, quotes, and backslashes need no escaping.
 
@@ -65,8 +67,8 @@ the child could not be started, with these codes:
 Unknown option names raise rather than pass silently, so a typo cannot
 become a run with the wrong settings.
 
-`run` accepts `cwd`, `env`, `timeout`, `stdin`, `maxout`, `inherit`, and
-`limits`; `start` additionally accepts `stream`. An omitted `timeout` has
+`run` accepts `cwd`, `env`, `timeout`, `stdin`, `maxout`, `inherit`,
+`inherit_stdin`, and `limits`; `start` additionally accepts `stream`. An omitted `timeout` has
 no time limit; zero requests an immediate timeout. `inherit` and `stream`
 default to false. Environment names are compared ignoring case: duplicates,
 empty names, `=`, and NUL are refused, as are NUL bytes in text values.
@@ -88,7 +90,10 @@ no output.
 
 Windows refuses allocations and child creation that exceed memory and process
 limits; kuu terminates the job when the corresponding notification arrives.
-The kernel terminates a job that exhausts its CPU time. The result has
+The kernel checks accumulated CPU time periodically and terminates a job
+found over its quota; enforcement can overshoot the requested CPU time.
+This is [Windows' job-time contract](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information).
+The result has
 `status = "limit"` and names the bound in `limit`. `timeout` is independently
 elapsed wall-clock time; keep it when a child can wait without using CPU.
 An intentional breakaway still follows the rules described under `detach`.
@@ -122,7 +127,7 @@ c:close_stdin()                  -- EOF for the child once the queue has drained
 c:read("line", "5s")             -- the next stdout line without its ending; nil at EOF
 c:read(4096)                     -- up to that many bytes, once at least one is there
 c:read("some")                   -- whatever has arrived, once anything has
-c:read("all")                    -- everything to EOF
+c:read("all")                    -- everything to EOF, within the buffer bound below
 c:read_err("line")               -- the same for stderr
 for line in c:lines() do ... end -- stdout lines to EOF; c:err_lines() likewise
 ```
@@ -131,15 +136,33 @@ In stream mode the program reads the pipes itself, so `wait` reports the exit
 with empty `out` and `err`. Reads that must wait park the calling task and
 accept a timeout, returning `nil, err` with `PROC timeout` while the data stays
 buffered. One task at a time may read a given stream; a second raises
-`PROC busy`. `maxout` becomes the backpressure point: when that much is unread,
+`PROC busy`. In stream mode `maxout` must be positive and becomes the
+backpressure point: when that much is unread,
 kuu stops reading and the child blocks on its write until the program catches
-up, so nothing is ever truncated. Closing the child wakes a parked reader with
+up, so nothing is ever truncated. A `read("all")` whose buffer fills before
+EOF, or a `read("line")` whose buffer fills before its line ending, returns
+`nil, PROC toobig` instead of waiting on its own backpressure. This includes
+an unterminated final line or output exactly `maxout` bytes long when EOF has
+not yet been observed. No bytes are consumed by that error: continue with
+`read("some")` or numeric reads to drain the stream, or choose a larger
+`maxout` when starting the child. `lines()` and `err_lines()` raise read
+errors, including `PROC toobig`, so iteration cannot mistake them for EOF.
+Closing the child wakes a parked reader with
 `PROC closed`. A child that does not read its stdin is not an error; a child
 that never gets its stdin closed may never exit, so `close_stdin` when you are
 done.
 
 The stdin queue has its own fixed 64 MiB bound, independent of `maxout`.
 `write` returns `nil, PROC toobig` when a write cannot be queued within it.
+Pending writes hold their own stable chunk; consumed queue storage is reused
+as input progresses, so a continuing backlog does not retain all earlier input.
+
+To capture or stream output while keeping interactive or piped input, set
+`inherit_stdin = true`. The child reads kuu's own standard input directly;
+there is no input queue to write or close. Missing or closed standard input
+is EOF. This works with `run` and `start`, including `stream = true`, and
+cannot be combined with `stdin` or `inherit = true`. It is not an option for
+`detach` or PTY sessions.
 
 ## The console
 
@@ -240,7 +263,7 @@ children.
 | `timeout` | a child wait, stream read, `wait_any`, or `wait_all` outlasted its wait duration |
 | `closed` | raised for a closed handle; returned when stdin is closed or a pending read's handle closes |
 | `busy` | raised: another task is already reading that stream |
-| `toobig` | stdin could not queue the write within its 64 MiB bound |
+| `toobig` | stdin could not queue the write within its 64 MiB bound, or an `all`/unfinished-line read filled `maxout` before completion; buffered output remains readable with numeric/`some` reads; line iterators raise this error |
 | `oserror` | Windows, snapshot, or allocation failure |
 
 Waiting can also propagate the scheduler's `SCHED` errors, including

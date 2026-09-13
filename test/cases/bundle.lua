@@ -2,7 +2,7 @@
 -- docs/.  A copy of forty pages drifts from its originals, and the copy is the
 -- one people read, so the suite regenerates it and compares.
 global none
-global <const> require, ipairs, tostring, string
+global <const> require, ipairs, tostring, string, table
 
 return function(T)
   local check = T.check
@@ -23,6 +23,20 @@ return function(T)
 
   if r and r.code == 0 then
     local fresh = r.out:gsub("\r\n", "\n"):gsub("%s+$", "")
+    local anchors, missing, duplicate = {}, {}, nil
+    for id in fresh:gmatch('<a id="([^"]+)"></a>') do
+      if anchors[id] then duplicate = id end
+      anchors[id] = true
+    end
+    for target in fresh:gmatch('%]%((#kuu%-page%-[^%)]+)%)') do
+      if not anchors[target:sub(2)] then missing[#missing + 1] = target end
+    end
+    check("every generated manual link has an explicit destination", #missing == 0, table.concat(missing, ", "))
+    check("manual destinations are unique across pages", duplicate == nil, duplicate)
+    check("page links point to stable destinations despite different titles",
+      fresh:find("](#kuu-page-agent)", 1, true) and anchors["kuu-page-agent"])
+    check("cross-page section links keep their destination",
+      fresh:find("](#kuu-page-sys-syssignature)", 1, true) and anchors["kuu-page-sys-syssignature"])
     local current = (fs.read(document) or ""):gsub("\r\n", "\n")
     local marker = "# Part III — the complete manual"
     local at = current:find(marker, 1, true)

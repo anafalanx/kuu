@@ -7,18 +7,46 @@ before [Pitfalls](pitfalls.md).
 
 ## Arriving
 
-1. Run `kuu capabilities`. It says what this executable can do, what this
-   project declares — tasks, tools, modules — what has crossed the door
-   lately, whether anyone has reported back, and what to read next. It is
-   the one command that answers what you would otherwise assemble from
-   three places, and `--json` gives the same as one envelope.
-2. Read `kuu docs pitfalls` once. It is the delta between the Lua you know
-   and this runtime, plus the Windows facts kuu refuses to hide. Nothing
-   else in the manual is about the language.
-3. Open `kuu docs index` for the map and `kuu docs PAGE` for a page. When
-   a result surprises you, read the module's page before guessing; when an
-   error does, run `kuu docs search CODE` — every error names its domain
-   and code, and the search lands where the code is explained.
+Run `kuu capabilities` to discover the runtime and the project's tasks and
+tools. The manual is inside the executable; no network or source checkout
+is needed. With the project's copy in the current directory:
+
+```powershell
+.\kuu.exe docs                         # list pages and their descriptions
+.\kuu.exe docs fs                      # read a module's page
+.\kuu.exe docs search fs.read          # find an API and a command to read its context
+.\kuu.exe docs fs reading-and-writing  # retrieve only the relevant section
+.\kuu.exe docs fs errors               # look up the module's error codes
+```
+
+Sections are named by their heading or anchor, so copy the `Read:` command
+from a search result. `kuu docs --json` also works for lists, pages, sections,
+and searches. Read `kuu docs pitfalls` once for the Lua and Windows differences;
+`kuu docs index` is the full map. When an error surprises you, search for its
+code or read the module's `errors` section.
+
+## Try an inline command
+
+Use `kuu -e` for immediate queries and small operations. Every kuu module is
+available, with no script file or manifest required. Print the answer explicitly;
+use `json.encode` for structured results. These examples run from PowerShell:
+
+```powershell
+.\kuu.exe -e "print(require('json').encode(require('sys').info()))"
+.\kuu.exe -e "print(require('json').encode(assert(require('fs').list('.'))))"
+.\kuu.exe -e "print(assert(require('hash').file('sha256', ...)))" README.md
+```
+
+The first describes the machine, the second lists the current directory as
+JSON, and the third hashes a file; replace `README.md` with the path you need.
+Arguments after the script arrive as `...` and `require('rt').args`, which
+keeps paths out of the Lua source. `assert` makes a failed operation visible
+as an error and a nonzero exit. A returned value alone is not printed.
+
+For a longer experiment, use `kuu FILE` or send Lua on standard input to
+`kuu -`. Turn repeated project operations into tasks in `manifest.lua`.
+Inline commands and scripts do not write the task ledger; set timeouts on
+any children or network operations they start.
 
 ## Running
 
@@ -83,7 +111,7 @@ UTF-8 file the project commits, since `.kuu/` never travels and kuu sends
 nothing — and never rewrite an earlier entry. One entry per piece of work:
 
 ```markdown
-## 2026-09-13 — kuu 0.10.0 — adding the release task
+## 2026-09-13 — kuu 0.11 — adding the release task
 
 ### Worked
 - `kuu check` named the misspelt option and the fix before anything ran.
@@ -111,8 +139,9 @@ the count and the date of the last entry, and nothing fails without it.
 ## The short form
 
 Run `kuu capabilities` first. Read pitfalls once. Everything that runs,
-runs through the door as a task with declared tools; try things with `kuu
-FILE`, keep them as tasks. Bound every child. `global none` at the top of
+runs through the door as a task with declared tools; try things with `kuu -e`
+or `kuu FILE`, keep them as tasks. Find APIs with `kuu docs search`, then copy
+the command to read their section. Bound every child. `global none` at the top of
 every file. `check` after every edit and before every run. Return `nil,
 err` for what is expected, raise for a mistake. Nothing on `PATH`, nothing
 fetched without a hash, nothing of yours in `.kuu/`. Write `kuu-eval.md`

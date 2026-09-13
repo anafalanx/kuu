@@ -11,9 +11,9 @@ refuses to hide. Read it once.
   followed by a name, `none`, `*`, `function`, or an attribute is a global
   declaration. Elsewhere it is an ordinary name (kuu keeps Lua's default
   compatibility setting), so `local global = 1` still works. Avoid the name.
-- **Any global declaration switches the chunk to declared-only mode**, and
-  then every free name must be declared, `print` included. `global none` is
-  the declaration that adds nothing and exists only to switch. kuu recommends
+- **In a declared-only scope, every free name must be declared**, `print`
+  included. `global none` starts such a scope without declaring any names;
+  `global *` permits undeclared globals again. kuu recommends
   starting every file with it and declaring the standard names you use:
 
   ```lua

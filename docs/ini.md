@@ -27,10 +27,16 @@ file with `fs.read`, edit, write it back with `fs.write`.
 ## Rules
 
 - Keys before any section header live under the empty section name, `""`.
+- Section names must be strings. `encode` and `set` reject names containing
+  CR or LF because they would write additional lines instead of the requested
+  section. Spaces and brackets within a section name are preserved.
 - Keys and values are trimmed. A value in surrounding double quotes has
   them removed and the inside kept, as the Windows profile functions do;
   encode and set quote a value that would not otherwise survive.
 - A line without `=` is a key with an empty value.
+- `encode` and `set` reject empty or padded keys, keys containing `=` or a
+  line end, and keys beginning with a comment or section marker (`;`, `#`, `[`),
+  because those spellings cannot preserve the requested key when read back.
 - There are no inline comments: everything after `=` is the value, a `;`
   included, which is what Windows does too.
 - Duplicate keys: the last wins. Duplicate sections merge, ignoring case
@@ -58,6 +64,6 @@ to CRLF if any CRLF is present, otherwise LF.
 
 ## Errors
 
-Domain `INI`, all raised: `badvalue` for a key holding `=`, a value that
-spans lines, or a table that is not sections of keys; `usage` for an unknown
-option.
+Domain `INI`, all raised: `badvalue` for an unrepresentable key or section
+name, a value that spans lines, or a table that is not sections of keys;
+`usage` for an unknown option.

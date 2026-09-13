@@ -77,6 +77,11 @@ double ku_fs_time_seconds(LONGLONG filetime);
  * error in `error`. */
 int ku_fs_replace(const wchar_t *temp, const wchar_t *target, DWORD *error);
 
+/* Create a unique compact temporary basename in target's directory. The
+ * returned handle has exclusive write access; *path is malloc'd on success.
+ * INVALID_HANDLE_VALUE on failure, with a Win32 error and no owned path. */
+HANDLE ku_fs_sibling_temp(const wchar_t *target, wchar_t **path, DWORD *error);
+
 /* The module's functions implemented in the other files. */
 int ku_fs_dirs(lua_State *L);
 int ku_fs_watch(lua_State *L);

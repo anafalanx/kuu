@@ -30,6 +30,32 @@ local WIDTH = 79
 local STANDARD = {}
 for name in pairs(_G) do STANDARD[name] = true end
 
+-- Find the first code byte, not merely the first line that does not begin
+-- with `--`. Long license comments can span arbitrary text, including lines
+-- that look like declarations, and can use any number of equals signs.
+local function first_code(lines)
+  local text, pos = table.concat(lines, "\n"), 1
+  if text:sub(1, 1) == "#" then pos = text:find("\n", 1, true) or #text + 1 end
+  while pos <= #text do
+    local _, last = text:find("^%s+", pos)
+    if last then pos = last + 1
+    elseif text:sub(pos, pos + 1) == "--" then
+      local equals = text:match("^%-%-%[(=*)%[", pos)
+      if equals ~= nil then
+        local closing = "]" .. equals .. "]"
+        local stop = text:find(closing, pos + #equals + 4, true)
+        if not stop then return nil, nil, "unfinished leading long comment" end
+        pos = stop + #closing
+      else pos = text:find("\n", pos, true) or #text + 1 end
+    else break end
+  end
+  local line, start = 1, 1
+  for i = 1, pos - 1 do
+    if text:byte(i) == 10 then line, start = line + 1, i + 1 end
+  end
+  return line, pos - start + 1
+end
+
 -- The contiguous run of top-level `global` statements, and the names it
 -- declares in the order it declares them.  Order is preserved so that fixing
 -- a file does not reshuffle a list somebody arranged.
@@ -38,12 +64,14 @@ local function declaration(lines)
   -- manual tells you to put it and where every file in the corpus does. Only
   -- looking there is also what keeps a `global` at the start of a line inside
   -- an embedded fixture string from being mistaken for one of the file's own.
-  local at = 1
-  while lines[at] and (lines[at]:match("^%s*%-%-") or lines[at]:match("^%s*$")) do
-    at = at + 1
-  end
-  if not (lines[at] and (lines[at]:match("^global%s") or lines[at] == "global")) then
+  local at, column, why = first_code(lines)
+  if why then return nil, why end
+  local code = lines[at] and lines[at]:sub(column) or ""
+  if not (code:match("^global%s") or code == "global") then
     return nil, nil
+  end
+  if not lines[at]:sub(1, column - 1):match("^%s*$") then
+    return nil, "put the global declaration on its own line before fixing it"
   end
 
   local first, last = at, at
@@ -51,7 +79,7 @@ local function declaration(lines)
   local attribute = true
   local i = first
   while lines[i] do
-    local line = lines[i]
+    local line = trim(lines[i])
     local starts = line:match("^global%s") or line == "global"
     -- A declaration wraps when its line ends in a comma, and this tool wraps
     -- long ones itself, so it has to read back what it writes.
@@ -68,15 +96,43 @@ local function declaration(lines)
         local list = line:match("^global%s+<const>%s+(.*)$")
         attribute = list ~= nil
         rest = list or line:match("^global%s+(.*)$")
+        if rest == nil then return nil, "put the global name list on the declaration's first line before fixing it" end
       end
     else
       rest = line
     end
-    for name in (rest or ""):gmatch("[A-Za-z_][A-Za-z0-9_]*") do
-      order[#order + 1] = name
-      if attribute then const[name] = true else mutable[name] = true end
+    -- Only bare name lists (optionally one leading <const>) are rewritten.
+    -- Initializers, comments, per-name attributes, semicolons and other
+    -- statements carry semantics this renderer cannot preserve. Refuse the
+    -- entire block instead of extracting names from arbitrary source text.
+    if rest ~= nil then
+      local remaining = trim(rest)
+      repeat
+        local name, tail = remaining:match("^([A-Za-z_][A-Za-z0-9_]*)(.*)$")
+        if not name or const[name] or mutable[name] then
+          return nil, "only plain, distinct global names can be fixed"
+        end
+        order[#order + 1] = name
+        if attribute then const[name] = true else mutable[name] = true end
+        tail = trim(tail)
+        if tail ~= "" and tail:sub(1, 1) ~= "," then
+          return nil, "only plain global name lists can be fixed; initializers and other declaration forms are left unchanged"
+        end
+        remaining = trim(tail:sub(2))
+      until remaining == ""
     end
     i = i + 1
+  end
+
+  -- Lua declarations can continue with their initializer after a newline or
+  -- comments even when the name list ended without a comma.
+  local following = {}
+  for j = i, #lines do following[#following + 1] = lines[j] end
+  local next_line, next_column, next_error = first_code(following)
+  if next_error then return nil, next_error end
+  local continuation = following[next_line] and following[next_line]:sub(next_column, next_column)
+  if continuation == "=" or continuation == "<" or continuation == "," then
+    return nil, "global initializers and unsupported continuations are left unchanged, including those on a following line"
   end
 
   return { first = first, last = last, order = order, const = const,
@@ -87,7 +143,9 @@ end
 -- the width the rest of the source keeps to.
 local function render(order, const, none)
   local out = {}
-  if none then out[#out + 1] = "global none" end
+  -- Removing the final name must never switch a trial or the result back to
+  -- permissive globals. Otherwise a used name looks removable by compiling.
+  if none or #order == 0 then out[#out + 1] = "global none" end
   for _, attribute in ipairs { true, false } do
     local names = {}
     for _, name in ipairs(order) do
@@ -138,6 +196,7 @@ local function solve(lines, block)
 
   for _ = 1, 300 do
     local source = assemble(lines, block, render(order, const, block.none))
+    if source:sub(1, 1) == "#" then source = source:gsub("^[^\n]*", "", 1) end
     local chunk, e = load(source, "@fix", "t")
     if chunk then return order, const end
     local missing = e and e:match("variable '([A-Za-z_][A-Za-z0-9_]*)'[^\n]-not declared")
@@ -167,6 +226,7 @@ local function prune(lines, block, order, const)
     local trial = {}
     for _, other in ipairs(order) do if kept[other] then trial[#trial + 1] = other end end
     local source = assemble(lines, block, render(trial, const, block.none))
+    if source:sub(1, 1) == "#" then source = source:gsub("^[^\n]*", "", 1) end
     if not load(source, "@fix", "t") then kept[name] = true end
   end
   local final = {}
@@ -196,8 +256,14 @@ local function fix(path, adopt)
     adopted = true
     -- Adopting a stock-mode file: put the declaration after any leading
     -- comments, which is where every file in the corpus keeps it.
-    local at = 1
-    while lines[at] and (lines[at]:match("^%s*%-%-") or lines[at]:match("^%s*$")) do at = at + 1 end
+    local at, column, why2 = first_code(lines)
+    if why2 then return nil, why2 end
+    if lines[at] and not lines[at]:sub(1, column - 1):match("^%s*$") then
+      local suffix = lines[at]:sub(column)
+      lines[at] = lines[at]:sub(1, column - 1)
+      at = at + 1
+      table.insert(lines, at, suffix)
+    end
     table.insert(lines, at, "global none")
     block = { first = at, last = at, order = {}, const = {}, mutable = {}, none = true }
   end

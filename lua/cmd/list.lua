@@ -7,6 +7,7 @@ local cli = require "cli"
 local project = require "project"
 local task = require "task"
 local json = require "json"
+local clean = require "_jsonsafe"
 
 local spec = { { "--json", type = "flag", help = "machine-readable listing" } }
 local opts, e = cli.parse(rt.args, spec, "kuu list")
@@ -15,7 +16,7 @@ if opts.help then io.write(cli.usage(spec, "kuu list")) os.exit(0) end
 
 local function fail(e2)
   if opts.json then
-    io.write(json.encode { ok = false, error = { domain = e2.domain, code = e2.code, message = e2.message } }, "\n")
+    io.write(json.encode(clean { ok = false, error = { domain = e2.domain, code = e2.code, message = e2.message } }), "\n")
   else
     io.stderr:write("kuu: ", tostring(e2), "\n")
   end
@@ -44,7 +45,7 @@ for _, t in ipairs(task.all()) do
 end
 
 if opts.json then
-  io.write(json.encode { ok = true, result = { root = root, default = task.default_task(), tasks = tasks, notes = notes } }, "\n")
+  io.write(json.encode(clean { ok = true, result = { root = root, default = task.default_task(), tasks = tasks, notes = notes } }), "\n")
 else
   io.write("tasks in ", root, ":\n")
   local shown = 0

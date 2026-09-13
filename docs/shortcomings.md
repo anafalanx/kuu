@@ -424,7 +424,7 @@ host on which that has been true.
   always and needs no declaration. Under `global none` with nothing declared,
   `_ENV.load("return 2 + 3")()` compiles and runs code, and
   `_ENV.require("proc")` reaches the whole palette.
-- **Impact:** [`check`](#check) says its require listing "is how an agent sees
+- **Impact:** [`check`](check.md) says its require listing "is how an agent sees
   what else a file asks for before running it", and for such a file it does
   not. The file below draws `"requires":[]`, `"errors":0`, `"warnings":0`,
   `"ok":true` from `kuu check --json`, and then starts a child:

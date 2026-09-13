@@ -16,7 +16,7 @@ later. The runtime uses native Windows process, console and filesystem APIs.
 Console shutdown adapts to the older 23H2 lifetime contract; the Lua API is
 the same on every supported version.
 
-This is version 0.10.0: the runner, the scheduler with scoped deadlines,
+This is version 0.11: the runner, the scheduler with scoped deadlines,
 processes with resource limits (its own children and the others on the machine), files, JSON, CSV, INI, HTTP, archives,
 hashing, text encodings, regular expressions, time, logging, argument
 parsing, a repository's tasks and the tools they call, declared once in
@@ -30,8 +30,9 @@ inside the executable. It is the tool an agent holds on a Windows machine
 instead of PowerShell; the [From PowerShell](powershell.md) page maps one
 to the other.
 
-kuu is the front door of a project: everything that runs in the project runs
-through `kuu.exe`, and gets a job, a deadline, limits, and a record. If
+kuu is the front door of a project: run repeated operations as tasks with
+`kuu run`, and their children with `task.exec`, to record them in the ledger.
+Children run in jobs with the timeouts and limits the calls specify. If
 something cannot be done from here, build a [tool](tools.md) for it, in any
 technology, and call it through the door. Editing is yours; running is the
 door's. The
@@ -51,9 +52,25 @@ usage: kuu FILE [arg ...]        run a Lua program file
        kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
        kuu capabilities [--json] what a program can reach from here, and what to read
        kuu version | --version | --help
-kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.
+
+Try a query now: all modules are available with -e; no file or manifest is needed.
+  kuu -e "print(require('json').encode(require('sys').info()))"
+Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing
+kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.
 ```
 <!-- /usage -->
+
+`kuu -e` gives an immediate query the same modules as a program file, without
+requiring a manifest. For example, from PowerShell:
+
+```powershell
+.\kuu.exe -e "print(require('json').encode(require('sys').info()))"
+```
+
+This prints the machine's facts as JSON. Use `print` to emit results; encode
+tables with `json.encode`. Arguments after the script are available as `...`
+and `rt.args`. The [agent guide](agent.md#try-an-inline-command) has more examples
+and the commands to find an API's documentation. Repeated work becomes a task.
 
 A program file is UTF-8, optionally with a BOM, with any line ending. The bytes
 must be valid UTF-8; kuu refuses an invalid file rather than repairing it. A
@@ -67,8 +84,8 @@ array of the `rt` module. There is no `arg` global.
 ```lua
 local rt = require("rt")
 print(rt.version, rt.lua, rt.route, rt.exe, rt.program, #rt.args)
--- 0.10.0  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
-rt.version_at_least(0, 10)  -- true: this runtime is 0.10.0 or newer
+-- 0.11  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
+rt.version_at_least(0, 11)  -- true: this runtime is 0.11 or newer
 ```
 
 `rt.route` is `"file"`, `"stdin"`, `"eval"`, or `"cmd"` for a verb such as
@@ -179,7 +196,9 @@ dropped, spaces to dashes — and `kuu docs sched deadlines` and `kuu docs
 sched#deadlines` print the same. A heading inside a fenced code block is
 text, not a section. Every module page heads its code set `## Errors`, so
 `kuu docs MODULE errors` is the code table of any module. Search hits are
-`page:line: text`, one per line; a search that finds nothing says so and
+`page:line: text`, one per line, grouped with a `Read: kuu docs PAGE SECTION`
+command for their surrounding section (or `Read: kuu docs PAGE` for a page's
+introduction). The JSON search shape is unchanged. A search that finds nothing says so and
 exits 0, and one given no text, or only blank text, is `ENTRY usage`.
 
 ```typescript
@@ -209,6 +228,8 @@ type DocsSearch = { ok: true; result: { text: string;
 - [Cookbook](cookbook.md): fourteen complete programs for common automation
   jobs, the last four shaped by the front door.
 - [Stability](stability.md): the future 1.x contract and minimum-version guards.
+- [Upgrading to 0.11](upgrading-0.11.md): N.N version numbers, corrections and
+  behavior changes since 0.10.0, and the shorter route to an inline command.
 - [proc](proc.md), [fs](fs.md), [http](http.md), [net](net.md),
   [sched](sched.md), [json](json.md), [csv](csv.md), [ini](ini.md),
   [re](re.md), [time](time.md), [hash](hash.md), [text](text.md),

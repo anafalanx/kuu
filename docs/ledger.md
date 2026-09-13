@@ -100,7 +100,7 @@ The chain is the point of `prev`. Nothing prevents editing a line — the file
 is text, the directory is yours — but an edited line no longer hashes to
 what the next record says, and `kuu capabilities` finds it: every time it
 reads the ledger it walks the whole chain and says whether it is intact,
-or at which line it breaks. Records older than ninety days are removed as
+at which line it breaks, or why it could not be read completely. Records older than ninety days are removed as
 new ones are written; the first record kept then names a line that is gone,
 and the walk takes it as the anchor.
 
@@ -115,9 +115,16 @@ the manifest starts at its top level is not a crossing of any run.
 
 `kuu capabilities` shows the last crossings, oldest first, and in its
 descriptor `project.ledger.last` carries `at`, `kind`, `name`, `status` and
-`seconds` for each; `records` is how many the ledger holds, `intact` whether
+`seconds` for each; `records` is how many the ledger holds after successful verification, `intact` whether
 each hashes the one before it, with `broken` naming the file and line where
-that fails; and `unaccounted` is the count of changes under the root that
+that fails. Invalid JSON or an object without the record's common fields
+is a broken record too, and is omitted from `last`. Both descriptor forms
+report the broken chain even when no recent record can be read.
+An unreadable day file or incomplete directory listing sets `intact` to false
+and `unreadable` to the filesystem diagnostic; the unverified `records` count
+is omitted. Absence is an empty ledger, but a read failure is never verified
+emptiness. `last` is empty when its required day files cannot be read.
+`unaccounted` is the count of changes under the root that
 no crossing accounts for — zero until something watches the root, which
 nothing does yet. The files are plain NDJSON: `fs.read` and `json.decode`
 one line at a time is the whole reader.
@@ -127,4 +134,10 @@ too long, a record holding text that is not UTF-8 — is said once on
 standard error, and the run goes on: the record is the door's, never a
 condition on the work. A task's error message that is not UTF-8, which a
 child's output in the console code page often is, is recorded and reported
-with each such byte as U+FFFD.
+with each such byte as U+FFFD. Failed record and final-tree writes also
+appear in the JSON envelope's `notes`; they preserve the task's outcome.
+After a failed record, the previous tree snapshot is retained so the next
+run can still account for those edits.
+If the preceding record cannot be read, the new record is refused with the
+same warning and `notes` behavior. The run continues without starting a new,
+unchained history behind the unreadable file.

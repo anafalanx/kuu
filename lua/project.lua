@@ -14,13 +14,13 @@ local rt = require "rt"
 
 local project = {}
 
--- The declaration file.  Through 0.9 it was tasks.lua; 0.10 still finds one
--- where no manifest.lua is, reads it as the manifest, and says so, so a
--- project renames when it upgrades and not before.  0.11 looks for the old
--- name no longer.
+-- The declaration file. Through 0.9 it was tasks.lua; the deprecated fallback
+-- still reads one where no manifest.lua is and warns so a project can rename
+-- it when upgrading. It remains supported in 0.11, with no removal scheduled;
+-- docs/upgrading-0.11.md withdraws the earlier removal date.
 project.MANIFEST = "manifest.lua"
 project.LEGACY = "tasks.lua"
-project.LEGACY_NOTE = "tasks.lua is read as the manifest for this release; rename it to manifest.lua, nothing inside it changes"
+project.LEGACY_NOTE = "tasks.lua is read as the manifest but is deprecated; rename it to manifest.lua, nothing inside it changes"
 
 local function join(dir, name)
   if dir:sub(-1) == "/" then return dir .. name end

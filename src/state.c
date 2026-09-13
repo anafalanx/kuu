@@ -94,14 +94,10 @@ static int l_rt_root(lua_State *L)
     return 1;
 }
 
-/* rt.version_at_least(major [, minor [, patch]]) -> is this runtime that version or
- * newer?
- *
- * A project used to guard its minimum with a pattern over rt.version, which
- * broke the moment the version grew a third component: "^(%d+)%.(%d+)$" does
- * not match "0.9.0", so every guard written that way refused the runtime it
- * was meant to accept.  Comparing here means a project never parses a version
- * string again, and the next component costs nobody anything. */
+/* rt.version_at_least(first [, second]) compares N.N numerically. Preserve
+ * the old optional third argument so existing guards for three-component
+ * releases still work: the current pair compares as (first, second, 0).
+ * This compatibility input never adds a component to the runtime's version. */
 static int l_rt_version_at_least(lua_State *L)
 {
     lua_Integer want[3] = {0, 0, 0};
@@ -120,7 +116,7 @@ static int l_rt_version_at_least(lua_State *L)
         }
     }
     unsigned have[3] = {0, 0, 0};
-    sscanf(KUU_VERSION, "%u.%u.%u", &have[0], &have[1], &have[2]);
+    sscanf(KUU_VERSION, "%u.%u", &have[0], &have[1]);
     int atleast = 1;
     for (int i = 0; i < 3; i++) {
         if ((lua_Integer)have[i] != want[i]) {
@@ -187,11 +183,22 @@ static int l_rt_page(lua_State *L)
     return 1;
 }
 
+/* Compare the exposed names, without their directory or file extension.
+ * A shared suffix can reverse a prefix pair: a.1.md sorts before a.md,
+ * although the public name a belongs before a.1. */
+static int payload_name_order(const char *a, const char *b, size_t prefix_length, size_t suffix_length)
+{
+    size_t a_length = strlen(a) - prefix_length - suffix_length;
+    size_t b_length = strlen(b) - prefix_length - suffix_length;
+    size_t common = a_length < b_length ? a_length : b_length;
+    int order = memcmp(a + prefix_length, b + prefix_length, common);
+    return order != 0 ? order : (a_length > b_length) - (a_length < b_length);
+}
+
 /* The names carried under `prefix` and ending in `suffix`, at that level
  * only, in order.  Selection over the payload rather than a sort buffer: the
  * sets are small, and this way there is nothing to allocate and nothing to
- * free on the error path.  Whole names are compared, which orders the bases
- * identically because every candidate shares the prefix and the suffix. */
+ * free on the error path. Compare the bases the caller will receive. */
 static int push_payload_names(lua_State *L, const char *prefix, const char *suffix)
 {
     size_t prefix_length = strlen(prefix), suffix_length = strlen(suffix);
@@ -208,10 +215,10 @@ static int push_payload_names(lua_State *L, const char *prefix, const char *suff
                 memchr(e->name + prefix_length, '/', length - prefix_length - suffix_length) != NULL) {
                 continue;
             }
-            if (previous != NULL && strcmp(e->name, previous) <= 0) {
+            if (previous != NULL && payload_name_order(e->name, previous, prefix_length, suffix_length) <= 0) {
                 continue;
             }
-            if (best == NULL || strcmp(e->name, best->name) < 0) {
+            if (best == NULL || payload_name_order(e->name, best->name, prefix_length, suffix_length) < 0) {
                 best = e;
             }
         }

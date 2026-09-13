@@ -92,7 +92,11 @@ usage: kuu FILE [arg ...]        run a Lua program file
        kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
        kuu capabilities [--json] what a program can reach from here, and what to read
        kuu version | --version | --help
-kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.
+
+Try a query now: all modules are available with -e; no file or manifest is needed.
+  kuu -e "print(require('json').encode(require('sys').info()))"
+Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing
+kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.
 ```
 <!-- /usage -->
 
@@ -172,8 +176,8 @@ follows from it:
   tell the truth about the platform.
 
 <!-- figures -->
-By the numbers, 0.10.0 is 15,960 lines of authored host C, 5,343 lines of kuu's own
-Lua, a suite of 6,222 lines, and 6,607 lines of manual in 46 pages that ship
+By the numbers, 0.11 is 16,188 lines of authored host C, 5,717 lines of kuu's own
+Lua, a suite of 7,217 lines, and 7,013 lines of manual in 47 pages that ship
 inside the executable. The palette is 27 public modules and 173 functions,
 plus methods on handles. The suite's own count is what `make test` prints.
 These figures are produced by `tools/bundle_docs.lua` from the executable
@@ -182,7 +186,7 @@ and the tree, and the suite holds them.
 The verbs, as `kuu --help` prints them:
 
 ```text
-kuu 0.10.0 -- a Lua 5.5 runtime for agents on Windows
+kuu 0.11 -- a Lua 5.5 runtime for agents on Windows
 usage: kuu FILE [arg ...]        run a Lua program file
        kuu - [arg ...]           run a program read from standard input
        kuu -e SCRIPT [arg ...]   run an inline script
@@ -192,7 +196,11 @@ usage: kuu FILE [arg ...]        run a Lua program file
        kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
        kuu capabilities [--json] what a program can reach from here, and what to read
        kuu version | --version | --help
-kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.
+
+Try a query now: all modules are available with -e; no file or manifest is needed.
+  kuu -e "print(require('json').encode(require('sys').info()))"
+Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing
+kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.
 ```
 <!-- /figures -->
 
@@ -678,6 +686,10 @@ the pages under `docs/`, never this part.
 
 ---
 
+<a id="kuu-page-index"></a>
+
+<a id="kuu-page-index-kuu"></a>
+
 ## kuu
 
 kuu is a Lua 5.5 runtime for agents on Windows: one static executable that
@@ -685,10 +697,10 @@ runs a Lua program and gives it native control over processes, files, the
 network, services, and event logs. It is built for agents, so the manual is short
 and exact: this is how kuu behaves, not how Lua works. Lua 5.5 itself is
 assumed; the one page you need about the language here is
-[Pitfalls](#pitfalls).
+[Pitfalls](#kuu-page-pitfalls).
 
 If you are an agent working in a project that runs through kuu, [For the
-agent](#agent) says what is expected of you and how to report back. Read
+agent](#kuu-page-agent) says what is expected of you and how to report back. Read
 it first, then Pitfalls once.
 
 kuu runs on Windows 11 version 23H2 and later, and Windows Server 2025 and
@@ -696,7 +708,7 @@ later. The runtime uses native Windows process, console and filesystem APIs.
 Console shutdown adapts to the older 23H2 lifetime contract; the Lua API is
 the same on every supported version.
 
-This is version 0.10.0: the runner, the scheduler with scoped deadlines,
+This is version 0.11: the runner, the scheduler with scoped deadlines,
 processes with resource limits (its own children and the others on the machine), files, JSON, CSV, INI, HTTP, archives,
 hashing, text encodings, regular expressions, time, logging, argument
 parsing, a repository's tasks and the tools they call, declared once in
@@ -705,18 +717,21 @@ machine's own facts, the registry, the environment, services, event logs,
 signature verification, and the network as seen from here. The provisional
 `pty` drives interactive console programs; `check` reads what can be known
 without running; `capabilities` says what is here, and the manual — this
-page, [the conduct expected of an agent](#agent), every module — is
+page, [the conduct expected of an agent](#kuu-page-agent), every module — is
 inside the executable. It is the tool an agent holds on a Windows machine
-instead of PowerShell; the [From PowerShell](#powershell) page maps one
+instead of PowerShell; the [From PowerShell](#kuu-page-powershell) page maps one
 to the other.
 
-kuu is the front door of a project: everything that runs in the project runs
-through `kuu.exe`, and gets a job, a deadline, limits, and a record. If
-something cannot be done from here, build a [tool](#tools) for it, in any
+kuu is the front door of a project: run repeated operations as tasks with
+`kuu run`, and their children with `task.exec`, to record them in the ledger.
+Children run in jobs with the timeouts and limits the calls specify. If
+something cannot be done from here, build a [tool](#kuu-page-tools) for it, in any
 technology, and call it through the door. Editing is yours; running is the
 door's. The
-[roadmap](#roadmap) records what is planned and why, and
-[inheritance](#inheritance) records what kuu learned from its predecessors.
+[roadmap](#kuu-page-roadmap) records what is planned and why, and
+[inheritance](#kuu-page-inheritance) records what kuu learned from its predecessors.
+
+<a id="kuu-page-index-running-a-program"></a>
 
 ### Running a program
 
@@ -731,9 +746,25 @@ usage: kuu FILE [arg ...]        run a Lua program file
        kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
        kuu capabilities [--json] what a program can reach from here, and what to read
        kuu version | --version | --help
-kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.
+
+Try a query now: all modules are available with -e; no file or manifest is needed.
+  kuu -e "print(require('json').encode(require('sys').info()))"
+Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing
+kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.
 ```
 <!-- /usage -->
+
+`kuu -e` gives an immediate query the same modules as a program file, without
+requiring a manifest. For example, from PowerShell:
+
+```powershell
+.\kuu.exe -e "print(require('json').encode(require('sys').info()))"
+```
+
+This prints the machine's facts as JSON. Use `print` to emit results; encode
+tables with `json.encode`. Arguments after the script are available as `...`
+and `rt.args`. The [agent guide](#kuu-page-agent-try-an-inline-command) has more examples
+and the commands to find an API's documentation. Repeated work becomes a task.
 
 A program file is UTF-8, optionally with a BOM, with any line ending. The bytes
 must be valid UTF-8; kuu refuses an invalid file rather than repairing it. A
@@ -747,8 +778,8 @@ array of the `rt` module. There is no `arg` global.
 ```lua
 local rt = require("rt")
 print(rt.version, rt.lua, rt.route, rt.exe, rt.program, #rt.args)
--- 0.10.0  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
-rt.version_at_least(0, 10)  -- true: this runtime is 0.10.0 or newer
+-- 0.11  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
+rt.version_at_least(0, 11)  -- true: this runtime is 0.11 or newer
 ```
 
 `rt.route` is `"file"`, `"stdin"`, `"eval"`, or `"cmd"` for a verb such as
@@ -758,9 +789,11 @@ cmd route, and nil otherwise. `rt.root([dir])` reads or moves the directory
 one of kuu's own Lua modules. `rt.verbs()` and `rt.pages()` are the verbs this
 executable answers to and the manual's pages, both sorted; they are carried in
 the executable where nothing else can see them, and
-[capabilities](#capabilities) reports them. `rt.page(name)` is the text of
+[capabilities](#kuu-page-capabilities) reports them. `rt.page(name)` is the text of
 one manual page, or nil for a name that is not one, so a program with no
 shell reads the manual the way `kuu docs` does.
+
+<a id="kuu-page-index-modules"></a>
 
 ### Modules
 
@@ -771,32 +804,32 @@ hashing, and every other organ are behind `require`.
 
 | module | gives |
 |---|---|
-| [`proc`](#proc) | children with decided lifetimes and resource limits: run, start, wait, kill, detach; the other processes: list, find, tree |
-| [`fs`](#fs) | files, directories, identity, links, walks, watches, with Windows truth |
-| [`http`](#http) | fetch and post over WinHTTP, with the machine's proxy and certificates |
-| [`sched`](#sched) | tasks, sleep, a monotonic clock, wall time, scoped deadlines |
-| [`json`](#json) | strict decoding and exact encoding |
-| [`hash`](#hash) | digests, HMAC, random bytes |
-| [`text`](#text) | strict conversion between UTF-8 and Windows encodings |
-| [`log`](#log) | structured lines that never interrupt the work |
-| [`cli`](#cli) | a program's arguments, declared once |
-| [`err`](#err) | the one error shape and how to test it |
-| [`task`](#task) | a repository's tasks and default child timeout, declared once in `manifest.lua`, run by `kuu run` |
-| [`check`](#check) | syntax, global declarations, require resolution, and palette names without running project code |
-| [`archive`](#archive) | zip and tar archives through the tar.exe Windows ships |
-| [`sys`](#sys) | facts about this machine and process, embedded Authenticode signatures |
-| [`svc`](#svc) | inspect, start, stop, restart, and wait for Windows services |
-| [`evt`](#evt) | read and filter Windows event logs |
-| [`pty`](#pty) | interactive console children and Lua-pattern expect; provisional |
-| [`mem`](#mem) | a small memory across runs, one JSON file per project |
-| [`sync`](#sync) | one at a time across processes: a named lock |
-| [`re`](#re) | regular expressions on PCRE2, with Unicode and named groups |
-| [`time`](#time) | instants, zones, ISO 8601, durations |
-| [`net`](#net) | the network from here: resolve, probe, listeners, addresses |
-| [`csv`](#csv) | comma-separated values, RFC 4180 and the Windows variants |
-| [`ini`](#ini) | INI files: read, write, and edit in place |
-| [`reg`](#reg) | the registry, typed |
-| [`env`](#env) | environment variables, live and persisted |
+| [`proc`](#kuu-page-proc) | children with decided lifetimes and resource limits: run, start, wait, kill, detach; the other processes: list, find, tree |
+| [`fs`](#kuu-page-fs) | files, directories, identity, links, walks, watches, with Windows truth |
+| [`http`](#kuu-page-http) | fetch and post over WinHTTP, with the machine's proxy and certificates |
+| [`sched`](#kuu-page-sched) | tasks, sleep, a monotonic clock, wall time, scoped deadlines |
+| [`json`](#kuu-page-json) | strict decoding and exact encoding |
+| [`hash`](#kuu-page-hash) | digests, HMAC, random bytes |
+| [`text`](#kuu-page-text) | strict conversion between UTF-8 and Windows encodings |
+| [`log`](#kuu-page-log) | structured lines that never interrupt the work |
+| [`cli`](#kuu-page-cli) | a program's arguments, declared once |
+| [`err`](#kuu-page-err) | the one error shape and how to test it |
+| [`task`](#kuu-page-task) | a repository's tasks and default child timeout, declared once in `manifest.lua`, run by `kuu run` |
+| [`check`](#kuu-page-check) | syntax, global declarations, require resolution, and palette names without running project code |
+| [`archive`](#kuu-page-archive) | zip and tar archives through the tar.exe Windows ships |
+| [`sys`](#kuu-page-sys) | facts about this machine and process, embedded Authenticode signatures |
+| [`svc`](#kuu-page-svc) | inspect, start, stop, restart, and wait for Windows services |
+| [`evt`](#kuu-page-evt) | read and filter Windows event logs |
+| [`pty`](#kuu-page-pty) | interactive console children and Lua-pattern expect; provisional |
+| [`mem`](#kuu-page-mem) | a small memory across runs, one JSON file per project |
+| [`sync`](#kuu-page-sync) | one at a time across processes: a named lock |
+| [`re`](#kuu-page-re) | regular expressions on PCRE2, with Unicode and named groups |
+| [`time`](#kuu-page-time) | instants, zones, ISO 8601, durations |
+| [`net`](#kuu-page-net) | the network from here: resolve, probe, listeners, addresses |
+| [`csv`](#kuu-page-csv) | comma-separated values, RFC 4180 and the Windows variants |
+| [`ini`](#kuu-page-ini) | INI files: read, write, and edit in place |
+| [`reg`](#kuu-page-reg) | the registry, typed |
+| [`env`](#kuu-page-env) | environment variables, live and persisted |
 | `rt` | the launch: version, executable, route, program, arguments, the require root |
 
 `require` searches `package.preload`, where these live, and then the program's
@@ -807,6 +840,8 @@ Environment variables such as `LUA_PATH` are never consulted and C modules are
 never loaded; `package.path` and `package.cpath` are empty strings to make that
 visible.
 
+<a id="kuu-page-index-output-and-input"></a>
+
 ### Output and input
 
 Standard input, output, and error are binary. What a program writes with
@@ -815,6 +850,8 @@ no CRLF translation and no re-encoding. Text is UTF-8 by convention, and the
 C runtime's file functions (`io.open`) and `os.getenv` take and return UTF-8.
 A terminal set to another code page will show UTF-8 bytes wrongly; a pipe will
 not.
+
+<a id="kuu-page-index-errors-and-exit-codes"></a>
 
 ### Errors and exit codes
 
@@ -839,6 +876,8 @@ that is neither a verb nor an existing file — a verb misspelt, most often —
 is `ENTRY notfound` naming both and where the verbs are listed; a name with
 a dot or a separator in it is looked for as a file only.
 
+<a id="kuu-page-index-the-manual-from-inside-the-executable"></a>
+
 ### The manual, from inside the executable
 
 ```text
@@ -859,7 +898,9 @@ dropped, spaces to dashes — and `kuu docs sched deadlines` and `kuu docs
 sched#deadlines` print the same. A heading inside a fenced code block is
 text, not a section. Every module page heads its code set `## Errors`, so
 `kuu docs MODULE errors` is the code table of any module. Search hits are
-`page:line: text`, one per line; a search that finds nothing says so and
+`page:line: text`, one per line, grouped with a `Read: kuu docs PAGE SECTION`
+command for their surrounding section (or `Read: kuu docs PAGE` for a page's
+introduction). The JSON search shape is unchanged. A search that finds nothing says so and
 exits 0, and one given no text, or only blank text, is `ENTRY usage`.
 
 ```typescript
@@ -872,87 +913,129 @@ type DocsSearch = { ok: true; result: { text: string;
   hits: { page: string; line: number; heading?: string; text: string }[] } }; // heading: the nearest one above the hit
 ```
 
+<a id="kuu-page-index-pages"></a>
+
 ### Pages
 
-- [For the agent](#agent): what is expected of an agent in a project that
+- [For the agent](#kuu-page-agent): what is expected of an agent in a project that
   runs through kuu, and the report it writes back in `kuu-eval.md`. Read
   first.
-- [From PowerShell](#powershell): each cmdlet an agent reaches for, and the
+- [From PowerShell](#kuu-page-powershell): each cmdlet an agent reaches for, and the
   kuu call that replaces it.
-- [Pitfalls](#pitfalls): what differs from the Lua an agent already knows,
+- [Pitfalls](#kuu-page-pitfalls): what differs from the Lua an agent already knows,
   and the Windows facts kuu refuses to hide.
-- [Adopting kuu](#adopting): a repository gets its own kuu.exe, a
+- [Adopting kuu](#kuu-page-adopting): a repository gets its own kuu.exe, a
   manifest.lua, and prerequisites by hash; nothing on the machine.
-- [capabilities](#capabilities): what a program can reach from here -- the
+- [capabilities](#kuu-page-capabilities): what a program can reach from here -- the
   verbs, the palette, and this project's tasks and modules, in one command;
   provisional.
-- [Cookbook](#cookbook): fourteen complete programs for common automation
+- [Cookbook](#kuu-page-cookbook): fourteen complete programs for common automation
   jobs, the last four shaped by the front door.
-- [Stability](#stability): the future 1.x contract and minimum-version guards.
-- [proc](#proc), [fs](#fs), [http](#http), [net](#net),
-  [sched](#sched), [json](#json), [csv](#csv), [ini](#ini),
-  [re](#re), [time](#time), [hash](#hash), [text](#text),
-  [reg](#reg), [env](#env), [sys](#sys), [svc](#svc), [evt](#evt),
-  [pty](#pty), [sync](#sync),
-  [mem](#mem), [archive](#archive), [log](#log), [cli](#cli),
-  [err](#err): the modules.
-- [Tasks](#task): `manifest.lua`, `kuu run`, `kuu list`, and the exit codes.
-- [Tools](#tools): the programs a project builds or fetches, declared in the
+- [Stability](#kuu-page-stability): the future 1.x contract and minimum-version guards.
+- [Upgrading to 0.11](#kuu-page-upgrading-011): N.N version numbers, corrections and
+  behavior changes since 0.10.0, and the shorter route to an inline command.
+- [proc](#kuu-page-proc), [fs](#kuu-page-fs), [http](#kuu-page-http), [net](#kuu-page-net),
+  [sched](#kuu-page-sched), [json](#kuu-page-json), [csv](#kuu-page-csv), [ini](#kuu-page-ini),
+  [re](#kuu-page-re), [time](#kuu-page-time), [hash](#kuu-page-hash), [text](#kuu-page-text),
+  [reg](#kuu-page-reg), [env](#kuu-page-env), [sys](#kuu-page-sys), [svc](#kuu-page-svc), [evt](#kuu-page-evt),
+  [pty](#kuu-page-pty), [sync](#kuu-page-sync),
+  [mem](#kuu-page-mem), [archive](#kuu-page-archive), [log](#kuu-page-log), [cli](#kuu-page-cli),
+  [err](#kuu-page-err): the modules.
+- [Tasks](#kuu-page-task): `manifest.lua`, `kuu run`, `kuu list`, and the exit codes.
+- [Tools](#kuu-page-tools): the programs a project builds or fetches, declared in the
   manifest and called through the door.
-- [Confined tools](#confined): what a tool that confines itself must
+- [Confined tools](#kuu-page-confined): what a tool that confines itself must
   provide, and the junction every lexical sandbox has to be told about.
-- [The ledger](#ledger): what `kuu run` remembers of every crossing, under
+- [The ledger](#kuu-page-ledger): what `kuu run` remembers of every crossing, under
   `.kuu/ledger`, chained and kept ninety days.
-- [check](#check): what `kuu check` finds without running a file.
-- [Toolchain](#toolchain): what kuu's own `.tools` holds and where it comes
+- [check](#kuu-page-check): what `kuu check` finds without running a file.
+- [Toolchain](#kuu-page-toolchain): what kuu's own `.tools` holds and where it comes
   from.
-- [Upgrading to 0.10](#upgrading-010): no call moves, but `check` reports
+- [Upgrading to 0.10](#kuu-page-upgrading-010): no call moves, but `check` reports
   four mistakes it used to pass and reads a project's own modules, so a green
   project can turn red without changing. `check --fix`, `capabilities`, and
   `text.trim`.
-- [Upgrading to 0.9](#upgrading-09): the version grows a patch component,
+- [Upgrading to 0.9](#kuu-page-upgrading-09): the version grows a patch component,
   which breaks the old pattern guard; `rt.version_at_least` replaces it. The atomic
   write retries its rename, and three modules leave the planned freeze.
-- [Upgrading to 0.8](#upgrading-08): Windows 11 23H2 support and the JSON
+- [Upgrading to 0.8](#kuu-page-upgrading-08): Windows 11 23H2 support and the JSON
   duplicate-key diagnostic fix, with the same Lua API.
-- [Upgrading to 0.7](#upgrading-07): deadlines, child limits, services,
+- [Upgrading to 0.7](#kuu-page-upgrading-07): deadlines, child limits, services,
   signatures, event logs, name checking, and provisional pty.
-- [Upgrading to 0.6](#upgrading-06): duration units and adoption fixes.
-- [Observed shortcomings](#shortcomings): reproductions, fixes, and external limitations.
-- [Roadmap](#roadmap): decisions taken and milestones ahead.
-- [Inheritance](#inheritance): laws, traps, and contracts carried over from
+- [Upgrading to 0.6](#kuu-page-upgrading-06): duration units and adoption fixes.
+- [Observed shortcomings](#kuu-page-shortcomings): reproductions, fixes, and external limitations.
+- [Roadmap](#kuu-page-roadmap): decisions taken and milestones ahead.
+- [Inheritance](#kuu-page-inheritance): laws, traps, and contracts carried over from
   machteld, the z estate, and the archived projects.
 
 ---
+
+<a id="kuu-page-agent"></a>
+
+<a id="kuu-page-agent-for-the-agent"></a>
 
 ## For the agent
 
 What is expected of you in a project that runs through kuu. Everything on
 this page is stated elsewhere in the manual as a fact about kuu; here it is
 stated once, as an instruction, in the order you meet it. Read it first,
-before [Pitfalls](#pitfalls).
+before [Pitfalls](#kuu-page-pitfalls).
+
+<a id="kuu-page-agent-arriving"></a>
 
 ### Arriving
 
-1. Run `kuu capabilities`. It says what this executable can do, what this
-   project declares — tasks, tools, modules — what has crossed the door
-   lately, whether anyone has reported back, and what to read next. It is
-   the one command that answers what you would otherwise assemble from
-   three places, and `--json` gives the same as one envelope.
-2. Read `kuu docs pitfalls` once. It is the delta between the Lua you know
-   and this runtime, plus the Windows facts kuu refuses to hide. Nothing
-   else in the manual is about the language.
-3. Open `kuu docs index` for the map and `kuu docs PAGE` for a page. When
-   a result surprises you, read the module's page before guessing; when an
-   error does, run `kuu docs search CODE` — every error names its domain
-   and code, and the search lands where the code is explained.
+Run `kuu capabilities` to discover the runtime and the project's tasks and
+tools. The manual is inside the executable; no network or source checkout
+is needed. With the project's copy in the current directory:
+
+```powershell
+.\kuu.exe docs                         # list pages and their descriptions
+.\kuu.exe docs fs                      # read a module's page
+.\kuu.exe docs search fs.read          # find an API and a command to read its context
+.\kuu.exe docs fs reading-and-writing  # retrieve only the relevant section
+.\kuu.exe docs fs errors               # look up the module's error codes
+```
+
+Sections are named by their heading or anchor, so copy the `Read:` command
+from a search result. `kuu docs --json` also works for lists, pages, sections,
+and searches. Read `kuu docs pitfalls` once for the Lua and Windows differences;
+`kuu docs index` is the full map. When an error surprises you, search for its
+code or read the module's `errors` section.
+
+<a id="kuu-page-agent-try-an-inline-command"></a>
+
+### Try an inline command
+
+Use `kuu -e` for immediate queries and small operations. Every kuu module is
+available, with no script file or manifest required. Print the answer explicitly;
+use `json.encode` for structured results. These examples run from PowerShell:
+
+```powershell
+.\kuu.exe -e "print(require('json').encode(require('sys').info()))"
+.\kuu.exe -e "print(require('json').encode(assert(require('fs').list('.'))))"
+.\kuu.exe -e "print(assert(require('hash').file('sha256', ...)))" README.md
+```
+
+The first describes the machine, the second lists the current directory as
+JSON, and the third hashes a file; replace `README.md` with the path you need.
+Arguments after the script arrive as `...` and `require('rt').args`, which
+keeps paths out of the Lua source. `assert` makes a failed operation visible
+as an error and a nonzero exit. A returned value alone is not printed.
+
+For a longer experiment, use `kuu FILE` or send Lua on standard input to
+`kuu -`. Turn repeated project operations into tasks in `manifest.lua`.
+Inline commands and scripts do not write the task ledger; set timeouts on
+any children or network operations they start.
+
+<a id="kuu-page-agent-running"></a>
 
 ### Running
 
 - **Everything that runs in the project runs through `kuu.exe`.** A
   crossing is a task run by `kuu run`, and each child that task starts
   with `task.exec`; each gets a job, the limits and the timeout it was
-  given, and a record in [the ledger](#ledger). `kuu FILE` and `kuu -e`
+  given, and a record in [the ledger](#kuu-page-ledger). `kuu FILE` and `kuu -e`
   are for trying something once: what they start is in a job with
   whatever `timeout` and `limits` the call gives, and nothing is recorded.
   Anything that will run again is a task in `manifest.lua`.
@@ -964,22 +1047,24 @@ before [Pitfalls](#pitfalls).
   "prog.exe" }` is a warning from `check` for that reason. A project
   program started from a shell without `kuu.exe`, or with `proc.run` where
   `task.exec { tool = ... }` was possible, is a bypass: it runs, and the
-  door does not see it. [Tools](#tools).
+  door does not see it. [Tools](#kuu-page-tools).
 - **Bound what you run.** `task.defaults { timeout = "10m" }` in the
   manifest gives every child a timeout it does not set itself; without
   it, and without a `timeout` on the call or the declaration, a child has
   no time bound at all. `sched.deadline` bounds a sequence of waits in
-  your own code. [Tasks](#task), [sched](#sched).
+  your own code. [Tasks](#kuu-page-task), [sched](#kuu-page-sched).
 - **Run `kuu check` after every edit and before every `kuu run`.** It
   reads without running: syntax, global declarations, requires, palette
   names, option names, error codes, closed sets and version comparisons,
   tool declarations and their calls. Errors fail it and warnings do not;
-  a warning is still something to read. [check](#check).
+  a warning is still something to read. [check](#kuu-page-check).
 - **If something cannot be done from here, build a tool for it**, in
   whatever technology you write best — fetched by URL and hash into the
   project's own `.tools/`, or built from the project's own source — and
   either way declared with `task.tool` and called through the door. kuu is
   never extended; a project is.
+
+<a id="kuu-page-agent-writing"></a>
 
 ### Writing
 
@@ -993,13 +1078,15 @@ before [Pitfalls](#pitfalls).
   uppercase domain of your own — the codes are yours, and `check` does not
   judge them — and return `nil, err` from a task for an expected failure,
   so `kuu run --json` and the ledger carry your domain and code. Branch on
-  `err.is`, never on the message. [err](#err).
+  `err.is`, never on the message. [err](#kuu-page-err).
 - **Fetch nothing the manifest does not list by URL and hash**, and
   install nothing on the machine: nothing goes on `PATH`, and nothing is
-  shared between repositories. [Adopting](#adopting).
+  shared between repositories. [Adopting](#kuu-page-adopting).
 - **`.kuu/` is kuu's** — the notebook and the ledger. It sits in
   `.gitignore` beside `kuu.exe`, `.tools/` and `build/`, and nothing in it
   is yours to edit.
+
+<a id="kuu-page-agent-reporting-back"></a>
 
 ### Reporting back
 
@@ -1010,7 +1097,7 @@ UTF-8 file the project commits, since `.kuu/` never travels and kuu sends
 nothing — and never rewrite an earlier entry. One entry per piece of work:
 
 ```markdown
-## 2026-09-13 — kuu 0.10.0 — adding the release task
+## 2026-09-13 — kuu 0.11 — adding the release task
 
 ### Worked
 - `kuu check` named the misspelt option and the fix before anything ran.
@@ -1035,17 +1122,24 @@ short: kuu counts them, and people read them where the project keeps
 them. Run `kuu capabilities` when you have written; its `eval` line shows
 the count and the date of the last entry, and nothing fails without it.
 
+<a id="kuu-page-agent-the-short-form"></a>
+
 ### The short form
 
 Run `kuu capabilities` first. Read pitfalls once. Everything that runs,
-runs through the door as a task with declared tools; try things with `kuu
-FILE`, keep them as tasks. Bound every child. `global none` at the top of
+runs through the door as a task with declared tools; try things with `kuu -e`
+or `kuu FILE`, keep them as tasks. Find APIs with `kuu docs search`, then copy
+the command to read their section. Bound every child. `global none` at the top of
 every file. `check` after every edit and before every run. Return `nil,
 err` for what is expected, raise for a mistake. Nothing on `PATH`, nothing
 fetched without a hash, nothing of yours in `.kuu/`. Write `kuu-eval.md`
 before you leave.
 
 ---
+
+<a id="kuu-page-pitfalls"></a>
+
+<a id="kuu-page-pitfalls-pitfalls"></a>
 
 ## Pitfalls
 
@@ -1054,15 +1148,17 @@ compiled as C, so the Lua 5.5 reference manual holds; this page is the delta
 between the Lua most agents know and this runtime, plus the Windows facts kuu
 refuses to hide. Read it once.
 
+<a id="kuu-page-pitfalls-lua-55-differences-from-54-habits"></a>
+
 ### Lua 5.5 differences from 5.4 habits
 
 - **`global` is a contextual keyword.** A statement beginning with `global`
   followed by a name, `none`, `*`, `function`, or an attribute is a global
   declaration. Elsewhere it is an ordinary name (kuu keeps Lua's default
   compatibility setting), so `local global = 1` still works. Avoid the name.
-- **Any global declaration switches the chunk to declared-only mode**, and
-  then every free name must be declared, `print` included. `global none` is
-  the declaration that adds nothing and exists only to switch. kuu recommends
+- **In a declared-only scope, every free name must be declared**, `print`
+  included. `global none` starts such a scope without declaring any names;
+  `global *` permits undeclared globals again. kuu recommends
   starting every file with it and declaring the standard names you use:
 
   ```lua
@@ -1084,12 +1180,14 @@ refuses to hide. Read it once.
   the value when the block exits, including by error; `local n <const> = ...`
   refuses reassignment. Every kuu handle supports `<close>`.
 
+<a id="kuu-page-pitfalls-what-kuu-removed-or-changed"></a>
+
 ### What kuu removed or changed
 
 - **Absent by design:** `io.popen`, `os.execute`, `os.remove`, `os.rename`,
   `os.tmpname`, `dofile`, `loadfile`, `package.loadlib`, and the `debug`
   library except `traceback` and `getinfo`. Processes belong to
-  [`proc`](#proc), files to [`fs`](#fs). `io.open` remains and takes
+  [`proc`](#kuu-page-proc), files to [`fs`](#kuu-page-fs). `io.open` remains and takes
   UTF-8 paths.
 - **`os.getenv` reads the live environment as UTF-8**; stock Lua returns the C
   runtime's startup copy in the ANSI code page.
@@ -1104,6 +1202,8 @@ refuses to hide. Read it once.
   error. Your own coroutines work; a palette wait inside one is served in
   place.
 - **`os.exit(n)`** ends the process at once. Children die with it either way.
+
+<a id="kuu-page-pitfalls-bytes-text-and-windows"></a>
 
 ### Bytes, text, and Windows
 
@@ -1132,6 +1232,8 @@ refuses to hide. Read it once.
   over several reads; loop until you see what you expect, and reconcile from
   a listing when `overflow` or `dropped` appears.
 
+<a id="kuu-page-pitfalls-values-and-results"></a>
+
 ### Values and results
 
 - **Expected failures are `nil, err`; mistakes raise.** A missing program, a
@@ -1150,6 +1252,8 @@ refuses to hide. Read it once.
   pass identifiers through floats.
 - **`fs.exists` returns a kind string or `false`**, so `if fs.exists(p) then`
   works and `if fs.exists(p) == "directory" then` is available.
+
+<a id="kuu-page-pitfalls-limits-worth-knowing"></a>
 
 ### Limits worth knowing
 
@@ -1186,6 +1290,8 @@ refuses to hide. Read it once.
   not. What is never in doubt is the large case: accumulating 200,000 pieces
   with `..` does not finish in reasonable time.
 
+<a id="kuu-page-pitfalls-errors-kuu-itself-prints"></a>
+
 ### Errors kuu itself prints
 
 Every classified failure kuu reports has the shape `kuu: DOMAIN code: text`,
@@ -1199,6 +1305,10 @@ message` with the traceback, and a crash in kuu itself is `kuu: crashed:
 …`, a defect to report.
 
 ---
+
+<a id="kuu-page-capabilities"></a>
+
+<a id="kuu-page-capabilities-capabilities"></a>
 
 ## capabilities
 
@@ -1219,7 +1329,7 @@ checkout.
 It is **provisional**: it arrived in 0.10.0, nothing has driven it yet, and
 what it reports is the shape a consuming agent would build on, so it sits
 outside the planned 1.0 freeze until a project has used it in earnest. See
-[stability](#stability).
+[stability](#kuu-page-stability).
 
 Nothing is reported that kuu cannot know.
 
@@ -1229,20 +1339,22 @@ Nothing is reported that kuu cannot know.
   description `check` reads, and the suite holds that list to the manual's
   module table in both directions.
 - **A project's modules are read from their text and never executed.** The
-  extraction is the one [check](#check) uses, so the two agree; it
+  extraction is the one [check](#kuu-page-check) uses, so the two agree; it
   over-approximates, and a module whose exports the text does not bound is
   counted rather than named. A program is not a module, and from the text
-  alone the two do not differ.
+  alone the two do not differ. Failed directory listings and unreadable
+  candidate modules make the inventory explicitly incomplete, with their
+  paths and diagnostics; they never become a successful empty inventory.
 - **Tasks and tools are declared by running `manifest.lua`**, which is project
   code. `kuu run` and `kuu list` already do that, and this does no more. A
   `manifest.lua` that does not load costs the task and tool lists and nothing
   else: the reason is reported and the rest of the descriptor still stands.
-  The tools listed are the executed reading; [check](#check) reads the
+  The tools listed are the executed reading; [check](#kuu-page-check) reads the
   same declarations from the text, and the suite holds the two equal.
 - **What a task installs under `.tools` is not reported at all.** kuu keeps no
   manifest of it, and a guess about a toolchain is worse than saying nothing.
 - **What agents wrote back is counted, not read.** `kuu-eval.md` at the root,
-  the report [For the agent](#agent) asks for, holds one entry per heading
+  the report [For the agent](#kuu-page-agent) asks for, holds one entry per heading
   shaped `## YYYY-MM-DD — kuu VERSION — what`; the descriptor says whether
   the file is there, how many such headings it holds outside fenced code,
   and the date of the last, and nothing else looks at the file.
@@ -1252,10 +1364,10 @@ half. kuu does not walk whatever directory it was started in instead: that is
 a different question, and an expensive one to answer by accident.
 
 ```text
-kuu 0.10.0 (Lua 5.5.1) at C:\work\app\kuu.exe
+kuu 0.11 (Lua 5.5.1) at C:\work\app\kuu.exe
 
   verbs      capabilities, check, docs, list, run  kuu VERB --help
-  manual     46 pages                              kuu docs PAGE | search TEXT
+  manual     47 pages                              kuu docs PAGE | search TEXT
   modules    27, 182 names                         require "NAME"
   errors     27 domains, codes in --json           err.is(e, DOMAIN, code)
 
@@ -1306,7 +1418,7 @@ type CapabilityReport = {
   ok: true; // this command has no failure of its own
   result: {
     kuu: {
-      version: string; // Major.Minor.Patch
+      version: string; // N.N: two natural-number components
       lua: string; // the Lua release, "Lua 5.5.1"
       exe: string; // this executable
       verbs: string[]; // the verbs carried as programs, sorted; see below
@@ -1330,11 +1442,13 @@ type CapabilityReport = {
       note?: string; // why the manifest did not load, naming the file read; tasks is then empty
       notes: string[]; // what the text form says beside the inventory: a tasks.lua read as the manifest
       ledger: { last: { at: number; kind: string; name: string; status: string; seconds: number }[]; // the last five crossings, oldest first
-                records: number; intact: boolean; broken?: string; // the chain, walked every time: how many, whether each hashes the one before it, and where not
+                records?: number; intact: boolean; broken?: string; unreadable?: string; // count only after successful verification; broken locates corruption, unreadable describes a read failure
                 unaccounted: number }; // changes no crossing accounts for; zero until something watches
       eval: { present: boolean; entries: number; last?: string }; // kuu-eval.md at the root: whether it is there, how many entries, and the last one's date
       modules: { name: string; path: string; names: string[] }[];
-      files: number; // .lua files below the root, whether or not they are modules
+      modules_complete: boolean; // false if enumeration or reading a candidate module failed
+      module_errors: { path: string; message: string; win32?: number }[];
+      files: number; // discovered .lua files below the root, whether or not they are modules
     };
   };
 };
@@ -1357,6 +1471,8 @@ such as `ProcStatus`; a literal outside one never matches either. `check`
 reports both mistakes where it can see them, and this is the same description
 it reads.
 
+<a id="kuu-page-capabilities-errors"></a>
+
 ### Errors
 
 The command has no error code of its own. Invalid command arguments use
@@ -1365,6 +1481,10 @@ exits 0, including a project whose `manifest.lua` does not load, because a
 descriptor that fails is worse than one that says what it could not find out.
 
 ---
+
+<a id="kuu-page-adopting"></a>
+
+<a id="kuu-page-adopting-adopting-kuu-in-a-repository"></a>
 
 ## Adopting kuu in a repository
 
@@ -1384,8 +1504,10 @@ repo/
 ```
 
 The examples require 0.10 or later, since they declare their tools. Read
-[upgrading to 0.10](#upgrading-010) when moving from 0.9, and the
+[upgrading to 0.10](#kuu-page-upgrading-010) when moving from 0.9, and the
 earlier upgrading pages from further back.
+
+<a id="kuu-page-adopting-1-give-the-repository-its-kuu"></a>
 
 ### 1. Give the repository its kuu
 
@@ -1410,10 +1532,12 @@ ignores it in — the root's own, or one in a directory above it up to the
 repository's — says so once, on standard error and as a note in its
 `--json` envelope; nothing else reminds you, and nothing fails over it.
 
+<a id="kuu-page-adopting-2-write-manifestlua"></a>
+
 ### 2. Write manifest.lua
 
 `manifest.lua` sits at the repository root. It states the minimum kuu version
-it needs, lists the prerequisites, and declares the tasks. [Tasks](#task)
+it needs, lists the prerequisites, and declares the tasks. [Tasks](#kuu-page-task)
 has the full contract; this is the shape:
 
 ```lua
@@ -1501,6 +1625,8 @@ Three habits make this work:
   through `task.exec`. `kuu run` turns that into an exit code and, with
   `--json`, into a record another program can read.
 
+<a id="kuu-page-adopting-3-run-it"></a>
+
 ### 3. Run it
 
 ```text
@@ -1518,22 +1644,26 @@ failed, 1 for another task failure, and 2 when kuu could not start it.
 warns about unresolved modules before anything runs, so run it first after
 editing.
 
+<a id="kuu-page-adopting-4-keep-state-take-turns-ask-the-machine"></a>
+
 ### 4. Keep state, take turns, ask the machine
 
-- [`mem`](#mem) is a small notebook per repository in `.kuu/memory.json`:
+- [`mem`](#kuu-page-mem) is a small notebook per repository in `.kuu/memory.json`:
   the last build's hash, a counter, a note for the next run.
-- [`sync`](#sync) is a named lock across processes, for the task that two
+- [`sync`](#kuu-page-sync) is a named lock across processes, for the task that two
   agents must not run at once.
-- [`sys`](#sys) says what machine this is; [`env`](#env) sets variables
-  for the children a task starts; [`proc`](#proc) runs them with decided
-  lifetimes and finds the ones already running; [`net`](#net) tells
+- [`sys`](#kuu-page-sys) says what machine this is; [`env`](#kuu-page-env) sets variables
+  for the children a task starts; [`proc`](#kuu-page-proc) runs them with decided
+  lifetimes and finds the ones already running; [`net`](#kuu-page-net) tells
   whether the service came up.
-- [`svc`](#svc) inspects and controls services; [`evt`](#evt) reads the
-  event logs. [`sys.signature`](#sys) verifies an embedded
+- [`svc`](#kuu-page-svc) inspects and controls services; [`evt`](#kuu-page-evt) reads the
+  event logs. [`sys.signature`](#kuu-page-sys-syssignature) verifies an embedded
   Authenticode signature before a project runs an installer.
-- [`sched.deadline`](#sched) bounds a sequence of waits, while
-  `task.defaults` and [`proc` limits](#proc) bound the children.
-  The [cookbook](#cookbook) has complete programs for these jobs.
+- [`sched.deadline`](#kuu-page-sched-deadlines) bounds a sequence of waits, while
+  `task.defaults` and [`proc` limits](#kuu-page-proc-limits) bound the children.
+  The [cookbook](#kuu-page-cookbook) has complete programs for these jobs.
+
+<a id="kuu-page-adopting-5-upgrading-kuu"></a>
 
 ### 5. Upgrading kuu
 
@@ -1541,10 +1671,12 @@ Copy the new `kuu.exe` over the old one in the repository root, read the
 intervening upgrading notes, run `check`, and run the tasks. Raise
 `NEED_MAJOR` and `NEED_MINOR` only when the recipes begin to require a newer
 feature. Compare the components numerically: 0.10 is newer than 0.9. The
-[stability statement](#stability) defines this minimum guard and the future
-1.x promise; the [roadmap](#roadmap) lists what changed per version.
+[stability statement](#kuu-page-stability) defines this minimum guard and the future
+1.x promise; the [roadmap](#kuu-page-roadmap) lists what changed per version.
 Repositories upgrade one at a time; there is no machine-wide state to keep
 in step.
+
+<a id="kuu-page-adopting-what-not-to-do"></a>
 
 ### What not to do
 
@@ -1558,13 +1690,17 @@ in step.
 
 ---
 
+<a id="kuu-page-task"></a>
+
+<a id="kuu-page-task-tasks"></a>
+
 ## Tasks
 
 A repository declares its tasks once, in a `manifest.lua` at its root, and runs
 them with `kuu run`. There is no second file to keep in step: the task list,
 each task's description, its dependencies, and its arguments live in the
 declaration, and `kuu list` reads them back from there. The same file
-declares the [tools](#tools) the tasks call.
+declares the [tools](#kuu-page-tools) the tasks call.
 
 ```lua
 -- manifest.lua
@@ -1604,7 +1740,7 @@ task "test" {
 task.default "build"
 ```
 
-The programs a task runs are declared as [tools](#tools) beside the tasks,
+The programs a task runs are declared as [tools](#kuu-page-tools) beside the tasks,
 and called by name: `check` then holds each call to its declaration, and
 `capabilities` lists them. A `task.exec` of a bare program still runs, and
 `check` warns that nothing describes it.
@@ -1618,6 +1754,8 @@ kuu run --dry-run test       the plan, in order, arguments checked, nothing run
 kuu list [--json]            the tasks, their descriptions, dependencies, and arguments
 ```
 
+<a id="kuu-page-task-where-kuu-looks"></a>
+
 ### Where kuu looks
 
 `kuu run` and `kuu list` walk up from the current directory to the nearest
@@ -1626,7 +1764,7 @@ point `require` at it. A task's relative paths are therefore relative to the
 project root wherever the command was typed, children started by a task begin
 there, and `require "lib.helper"` in `manifest.lua` reads `lib/helper.lua` of the
 project. Without a `manifest.lua` anywhere above, both verbs exit 2 with
-`TASK noproject`, naming [Adopting](#adopting). A manifest that loads and
+`TASK noproject`, naming [Adopting](#kuu-page-adopting). A manifest that loads and
 declares no task is not an empty project by accident: `kuu list`, `kuu run`
 and `kuu capabilities` say so and name the declaration's shape and this
 page; one whose tasks are all hidden is said to be that, with `kuu list
@@ -1635,11 +1773,14 @@ unknown` with the nearest declared name suggested, and `kuu list` named; a
 `task.default` naming a task the manifest does not declare is the same
 code, saying it is the manifest's own mistake.
 
-Through 0.9 the file was `tasks.lua`. 0.10 still finds a `tasks.lua` where no
+Through 0.9 the file was `tasks.lua`. kuu still finds a `tasks.lua` where no
 `manifest.lua` is, reads it as the manifest, and says so on standard error
 each time; a directory holding both is read from `manifest.lua` and told
-nothing. 0.11 will not look for the old name. Rename the file — nothing
-inside it changes.
+nothing. This fallback is deprecated but remains supported in 0.11, with no
+scheduled removal. Rename the file — nothing inside it changes. The earlier
+removal date was withdrawn; see [upgrading to 0.11](#kuu-page-upgrading-011).
+
+<a id="kuu-page-task-declaring"></a>
 
 ### Declaring
 
@@ -1650,8 +1791,8 @@ declaring a name twice.
 | attribute | meaning |
 |---|---|
 | `desc` | one line for `kuu list` |
-| `deps` | names to run first, each once, in dependency order; a cycle is `TASK cycle` naming the chain, an unknown name is `TASK unknown` saying who needed it |
-| `args` | a [cli](#cli) spec for the arguments after the task name; checked when declared, so a broken spec fails `kuu list` too |
+| `deps` | a contiguous array of task-name strings to run first, each once, in dependency order; sparse arrays and keyed tables are `TASK badvalue`; a cycle is `TASK cycle` naming the chain, an unknown name is `TASK unknown` saying who needed it |
+| `args` | a [cli](#kuu-page-cli) spec for the arguments after the task name; checked when declared, so a broken spec fails `kuu list` too |
 | `run` | `function(opts)`; `opts` is the parsed arguments, or an empty table; optional when `deps` is non-empty |
 | `hidden` | left out of `kuu list`; still runs by name |
 
@@ -1672,10 +1813,12 @@ alone lists the tasks and exits 2.
 and `kuu list`, so keep work inside `run` functions. A syntax error or a raise
 while declaring is reported with its line and exits 2.
 
+<a id="kuu-page-task-running-and-failing"></a>
+
 ### Running and failing
 
 A task succeeds by returning nothing. It fails by raising, or by returning
-`nil, err` — an error of the project's own domain and code, as [err](#err)
+`nil, err` — an error of the project's own domain and code, as [err](#kuu-page-err)
 says; a second value that is a string instead is wrapped as `TASK failed`
 with that text as the message. The runner prints one line per task on standard error when it
 finishes, `kuu: build 1.2s`, and on failure names the task and the error.
@@ -1684,7 +1827,9 @@ task runs. Every argument is checked before anything runs: the named task's
 against its spec, and each dependency's spec against no arguments. So a
 wrong argument, or a dependency that requires an argument, exits 2 with
 nothing started, and `--help` after the task name prints that task's usage
-on standard output and exits 0, as every `--help` does.
+on standard output and exits 0, as every `--help` does. The selected task's
+arguments are handled first, so a dependency that requires an argument does
+not prevent requesting that help.
 
 ```lua
 run = function(opts)
@@ -1707,7 +1852,9 @@ This bounds each child, not the whole task or its dependency plan; use
 `sched.deadline` for a scope containing several waits.
 
 `task.exec` runs a child on kuu's own console, so its output streams through
-as it happens; under `--json` it streams to standard error instead. It takes
+as it happens; under `--json` it streams to standard error instead. Both
+modes give the child kuu's own standard input, including piped input and
+EOF. It takes
 the same table as `proc.run` (`cwd`, `env`, `timeout`, `maxout`, `limits`)
 and returns `true`, or `nil, err` with `TASK exit` and the child's code in
 `err.exit`, which `kuu run` then uses as its own exit code. A child that timed
@@ -1719,8 +1866,8 @@ same way. The caller's argv and
 options table is never modified, in either console or JSON mode.
 The `limits` table has `memory` (bytes or a size string), `cpu` (seconds or
 a duration string), and `processes` (a positive count); see
-[proc limits](#proc). To capture output instead, use
-[proc.run](#proc) directly and decide for yourself.
+[proc limits](#kuu-page-proc). To capture output instead, use
+[proc.run](#kuu-page-proc) directly and decide for yourself.
 
 | exit | meaning |
 |---|---|
@@ -1728,6 +1875,8 @@ a duration string), and `processes` (a positive count); see
 | the child's code | a `task.exec` child exited non-zero |
 | 1 | a task raised or returned `nil, err` |
 | 2 | no `manifest.lua`, a broken `manifest.lua`, an unknown task or dependency, a cycle, or wrong arguments |
+
+<a id="kuu-page-task-json"></a>
 
 ### JSON
 
@@ -1740,6 +1889,12 @@ output of a `task.exec` child is streamed to standard error as it arrives,
 whatever `inherit` the task asked for, with no cap on its size. Only a direct
 `io.stdout:write` bypasses this, and then the task itself has broken the
 contract.
+
+JSON reports replace invalid UTF-8 bytes in messages and descriptions with
+U+FFFD, including errors raised while loading the manifest. `list --json`
+and `capabilities --json` use the same conversion. Invalid bytes in map keys
+are repaired too; if names then coincide, numbered suffixes preserve every
+entry in the report.
 
 The lines are events — the run once its plan is checked, each task as it
 starts and finishes, each child a task runs through the door — and the last
@@ -1835,6 +1990,8 @@ Malformed command-line options are rejected with a diagnostic on stderr
 before either verb builds a JSON report. `--help` before the task name
 prints the verb's usage and exits 0, and after it the task's, the same way.
 
+<a id="kuu-page-task-the-module-in-a-program"></a>
+
 ### The module in a program
 
 The same module drives the verbs and is open to programs that build on them.
@@ -1855,7 +2012,7 @@ task.command { tool = "report", "--out", p }   -- the table task.exec would run,
 ```
 
 The tools a manifest declares with `task.tool "name" { ... }`, and
-`task.exec { tool = "name", ... }`, are on their own page: [Tools](#tools).
+`task.exec { tool = "name", ... }`, are on their own page: [Tools](#kuu-page-tools).
 
 | code | meaning |
 |---|---|
@@ -1868,10 +2025,14 @@ The tools a manifest declares with `task.tool "name" { ... }`, and
 | `TASK exit` | a `task.exec` child exited non-zero; `err.exit` is the code |
 
 Errors returned or raised by `proc` while starting a child keep their
-original domain and code; [proc](#proc) lists them. A job limit produces
+original domain and code; [proc](#kuu-page-proc) lists them. A job limit produces
 `TASK failed` with its kind in the message, such as `limit (memory)`.
 
 ---
+
+<a id="kuu-page-tools"></a>
+
+<a id="kuu-page-tools-tools"></a>
 
 ## Tools
 
@@ -1915,12 +2076,14 @@ task "report" {
 | `output` | what the tool writes on standard output: `ndjson`, `json`, `lines`, or `none` (the default) |
 | `emits` | the fields its records carry; descriptive, listed by `capabilities`, verified by nothing |
 | `timeout` | the child timeout when the call gives none; the default from `task.defaults` after that |
-| `reach` | what the tool touches — `read`, `write` and `net` lists; declared and shown, never enforced, since whether a tool can be confined is its own technology's business. [Confined tools](#confined) says what a tool that confines itself must provide |
+| `reach` | what the tool touches — `read`, `write` and `net` lists; declared and shown, never enforced, since whether a tool can be confined is its own technology's business. [Confined tools](#kuu-page-confined) says what a tool that confines itself must provide |
 
 A name the declaration cannot hold raises `TASK usage`, and `kuu check`
 reports the same name without running, in whichever file the declaration
 stands; a value of the wrong shape raises `TASK badvalue`; a name declared
 twice, `TASK badvalue`.
+
+<a id="kuu-page-tools-calling-one"></a>
 
 ### Calling one
 
@@ -1951,7 +2114,9 @@ decodes what comes back. A tool the manifest does not declare is
 `TASK unknown` from either. That `proc.run` is the program's own call: the
 child has the job and the timeout like any other, but only `task.exec`
 crosses the door, so neither the `kuu run --json` stream nor [the
-ledger](#ledger) sees it.
+ledger](#kuu-page-ledger) sees it.
+
+<a id="kuu-page-tools-what-the-door-does-and-does-not"></a>
 
 ### What the door does, and does not
 
@@ -1976,6 +2141,8 @@ output it has.
 kuu owns exactly one wire: its own output. Every `--json` verb speaks JSON,
 and the ledger and `kuu run --json` speak NDJSON. kuu never reads a tool's
 protocol, and no tool needs to know kuu's.
+
+<a id="kuu-page-tools-a-tool-that-reads-like-a-module"></a>
 
 ### A tool that reads like a module
 
@@ -2003,6 +2170,8 @@ return M
 checked as an export of that module, and the call inside is checked against
 the `yaml` declaration. No plugin system is needed, and none exists.
 
+<a id="kuu-page-tools-what-check-and-capabilities-see"></a>
+
 ### What `check` and `capabilities` see
 
 `kuu check` reads the manifest as text — nothing runs — and takes each
@@ -2021,7 +2190,7 @@ warning: the door still runs it, but nothing describes it. A declaration
 with a part the text does not show — a computed key, a value built by an
 expression — or a name declared more than once is reported and its calls
 are not judged, the way a module whose exports cannot be bounded is left
-alone. [check](#check) has the details; `check.tools(root)` is the reading
+alone. [check](#kuu-page-check) has the details; `check.tools(root)` is the reading
 it uses.
 
 `kuu capabilities` lists the tools from the registry the manifest filled when
@@ -2033,6 +2202,10 @@ Whatever a task installs under `.tools` and never declares is not seen by
 either. Declare it, and it is.
 
 ---
+
+<a id="kuu-page-confined"></a>
+
+<a id="kuu-page-confined-confined-tools"></a>
 
 ## Confined tools
 
@@ -2046,6 +2219,8 @@ A confined tool is still called through the door, declared in the manifest
 like any other, with `reach` saying what it was granted. The door records
 `reach`; it does not enforce it, because it cannot see inside a process it
 did not write. Enforcement is the tool's own, and these are its terms.
+
+<a id="kuu-page-confined-what-a-confined-tool-must-provide"></a>
 
 ### What a confined tool must provide
 
@@ -2066,6 +2241,8 @@ did not write. Enforcement is the tool's own, and these are its terms.
 - **Its own file access, not the shell's.** A confined tool opens files
   through its own permission check, which brings the fact below into play.
 
+<a id="kuu-page-confined-the-junction"></a>
+
 ### The junction
 
 A lexical path sandbox — an allow list of directories, a deny list, or
@@ -2085,8 +2262,8 @@ established on 2026-09-12, against a runtime whose permission model is
 lexical, and it is a property of the model, not of the runtime.
 
 So a project grants a directory only after looking at what it contains, and
-the door supplies the look. `fs.dirs` reports every reparse point under a
-directory without entering it:
+the door supplies part of the look. `fs.dirs` reports directory reparse
+points without entering them; it does not inspect file symlinks:
 
 ```lua
 local fs = require "fs"
@@ -2100,12 +2277,17 @@ if #walk.links > 0 then
 end
 ```
 
-`walk.links` is empty when the directory holds no junction, symlink, or mount
-point, which is the only state in which a lexical grant means what it says.
-A directory that legitimately holds one is granted with that named, or not
-at all. The preflight is the project's to run, before the grant, every time:
+An empty `walk.links` means the directory walk found no directory reparse
+points. It does not establish that the tree is free of links: before granting
+it, the project must also list the files in each returned directory and
+inspect them with `fs.link`, rejecting file symlinks and any inspection failure.
+The walk's own `errors` must also be checked. A directory that legitimately
+holds a link is granted with that named, or not at all. The complete preflight
+is the project's to run, before the grant, every time:
 a junction can be made after the check as easily as before it, which is one
 more reason `reach` is a declaration and not a promise.
+
+<a id="kuu-page-confined-what-the-record-says"></a>
 
 ### What the record says
 
@@ -2116,6 +2298,10 @@ is not a fact about confinement. The manual names no runtime; a project that
 chooses one owns the choice and the measurement.
 
 ---
+
+<a id="kuu-page-ledger"></a>
+
+<a id="kuu-page-ledger-the-ledger"></a>
 
 ## The ledger
 
@@ -2132,9 +2318,11 @@ table included, is the program's own call and not a crossing.
 .kuu/ledger/tree.json              the tree as the last run left it
 ```
 
-Add `.kuu/` to the project's `.gitignore`, as for [mem](#mem). The ledger
+Add `.kuu/` to the project's `.gitignore`, as for [mem](#kuu-page-mem). The ledger
 is the machine's, not the repository's; a summary a project wants to keep
 is the project's to commit.
+
+<a id="kuu-page-ledger-a-record"></a>
 
 ### A record
 
@@ -2156,7 +2344,7 @@ is the project's to commit.
 | `argv`, `cwd`, `pid` | what ran, from where, as what; `cwd` only for a child whose call gave one, and an absent field is absent, never `null` |
 | `at`, `seconds` | when it began, as an instant, and how long it took |
 | `status`, `code`, `bytes`, `error` | how it ended: a child's `exit`, `timeout`, `killed` or `limit` with its code, and the bytes on each stream when kuu relayed them (under `--json`; a child on the console has kuu's own streams and nothing is counted); a task's or the run's `ok` or `failed` with the error |
-| `delta` | on the first record of a run only: what changed under the root since the previous run, by size and mtime, skipping `.git`, `.tools`, `build`, `node_modules` and `.kuu`, and not entering a junction or symlink, as [`fs.dirs`](#fs) does not; the counts are complete, and up to forty paths are named, each with the content hash of what is there now when it can be read — a file another process holds open, or a name Windows would rewrite, is named without its `sha256`. That says which edits this run ran against. An edit with no crossing after it is work in progress, not a bypass |
+| `delta` | on the first record of a run only: what changed under the root since the previous run, by size and mtime, skipping `.git`, `.tools`, `build`, `node_modules` and `.kuu`, and not entering a junction or symlink, as [`fs.dirs`](#kuu-page-fs) does not; the counts are complete, and up to forty paths are named, each with the content hash of what is there now when it can be read — a file another process holds open, or a name Windows would rewrite, is named without its `sha256`. That says which edits this run ran against. An edit with no crossing after it is work in progress, not a bypass |
 | `prev` | the SHA-256 of the record line before this one, across days |
 
 The three kinds, as a reader would type them:
@@ -2219,7 +2407,7 @@ The chain is the point of `prev`. Nothing prevents editing a line — the file
 is text, the directory is yours — but an edited line no longer hashes to
 what the next record says, and `kuu capabilities` finds it: every time it
 reads the ledger it walks the whole chain and says whether it is intact,
-or at which line it breaks. Records older than ninety days are removed as
+at which line it breaks, or why it could not be read completely. Records older than ninety days are removed as
 new ones are written; the first record kept then names a line that is gone,
 and the walk takes it as the anchor.
 
@@ -2230,13 +2418,22 @@ against. `kuu list` and `kuu capabilities` run `manifest.lua` to read its
 declarations and write nothing; `kuu check` runs nothing at all. A child
 the manifest starts at its top level is not a crossing of any run.
 
+<a id="kuu-page-ledger-reading-it"></a>
+
 ### Reading it
 
 `kuu capabilities` shows the last crossings, oldest first, and in its
 descriptor `project.ledger.last` carries `at`, `kind`, `name`, `status` and
-`seconds` for each; `records` is how many the ledger holds, `intact` whether
+`seconds` for each; `records` is how many the ledger holds after successful verification, `intact` whether
 each hashes the one before it, with `broken` naming the file and line where
-that fails; and `unaccounted` is the count of changes under the root that
+that fails. Invalid JSON or an object without the record's common fields
+is a broken record too, and is omitted from `last`. Both descriptor forms
+report the broken chain even when no recent record can be read.
+An unreadable day file or incomplete directory listing sets `intact` to false
+and `unreadable` to the filesystem diagnostic; the unverified `records` count
+is omitted. Absence is an empty ledger, but a read failure is never verified
+emptiness. `last` is empty when its required day files cannot be read.
+`unaccounted` is the count of changes under the root that
 no crossing accounts for — zero until something watches the root, which
 nothing does yet. The files are plain NDJSON: `fs.read` and `json.decode`
 one line at a time is the whole reader.
@@ -2246,9 +2443,19 @@ too long, a record holding text that is not UTF-8 — is said once on
 standard error, and the run goes on: the record is the door's, never a
 condition on the work. A task's error message that is not UTF-8, which a
 child's output in the console code page often is, is recorded and reported
-with each such byte as U+FFFD.
+with each such byte as U+FFFD. Failed record and final-tree writes also
+appear in the JSON envelope's `notes`; they preserve the task's outcome.
+After a failed record, the previous tree snapshot is retained so the next
+run can still account for those edits.
+If the preceding record cannot be read, the new record is refused with the
+same warning and `notes` behavior. The run continues without starting a new,
+unchained history behind the unreadable file.
 
 ---
+
+<a id="kuu-page-check"></a>
+
+<a id="kuu-page-check-check"></a>
 
 ## check
 
@@ -2271,15 +2478,17 @@ Four things are checked:
 
 - **It parses.** Each file goes through Lua 5.5's own compiler, text only, the
   way kuu would load it. A syntax error is reported with its line. Under a
-  global declaration (`global none`, or any `global` statement), the compiler
+  declared-only global scope (for example, after `global none`), the compiler
   also refuses an undeclared global, so the classic typo is an error here.
+  `global *` permits undeclared globals, and a declaration inside a block
+  does not make the rest of the file declared-only.
   A file that does not compile gets that one error, and the missing-`global`
   warning below if that applies, and nothing else: its requires are not
   listed and no other check is made until it parses, since the text they
   read is not yet a program.
 - **It declares its globals.** A file with no `global` statement at all gets a
   warning, because in that file an undeclared global is silently nil at run
-  time. [Pitfalls](#pitfalls) says how to start a file.
+  time. [Pitfalls](#kuu-page-pitfalls) says how to start a file.
 - **Its requires resolve.** Every literal `require "name"` is listed. A name
   that is neither one of kuu's modules nor a file under the root
   (`name.lua` or `name/init.lua`, dots as directories) is a warning with its
@@ -2308,7 +2517,9 @@ only a missed diagnostic; one wrongly excluded is a false positive on correct
 code, which is far more expensive. So when the export set cannot be bounded
 the module is left unchecked entirely rather than guessed at: a computed key
 (`M[name] = ...`), a metatable, a return that is not a plain local, or a local
-that was not built as a table in that file.
+that was not built as a table in that file. Passing or aliasing that table
+also puts its exports out of reach, since another reference can add names.
+Redeclaring the returned local likewise leaves its exports unchecked.
 
 Name checking follows direct local require bindings and lexical scopes.
 Parameters, block locals, and loop variables can shadow an alias. If an
@@ -2326,22 +2537,24 @@ has no binding to shadow or reassign, so nothing can make it uncertain. The
 module name must be a literal, as it must be everywhere else here; a computed
 `require(name)` says nothing and is left alone.
 
-Four things are checked against kuu's own interface, and all four are
-mistakes that run without complaint today. A code its domain does not have,
+Four things are checked against kuu's own interface before those expressions
+run. A code its domain does not have,
 so `err.is` answers false for every error and the handler it guards is dead:
 `err.is(e, "PROC", "notfund")`. An option a call does not take:
 `proc.run { cwdd = "x" }`, which the runtime raises on, but only if the line
 is reached. A closed set compared with a literal outside it, such as
 `rt.route == "flie"`, which likewise never matches. And `rt.version` compared
-by text, which no project should do since the version grew a third component;
-use `rt.version_at_least`.
+by text: public versions use `N.N`, two natural numbers, and lexical order
+would put `"0.11"` before `"0.9"`. Use `rt.version_at_least(0, 11)` for a
+minimum version.
 
 Error *domains* are not checked, only the codes within a domain kuu owns.
 `err.new` is public and a project names its own domains, so an unfamiliar one
 says nothing about correctness.
 
-Beyond these, no call is type-checked: argument counts, option values, and
-types still belong to runtime validation.
+Beyond these, ordinary calls are not type-checked: argument counts, option
+values, and types still belong to runtime validation. Literal tool
+declarations are checked for the shapes needed to describe them below.
 
 **The manifest's tools are checked the same way.** Each
 `task.tool "name" { ... }` in `manifest.lua` is read as the literal it is —
@@ -2355,7 +2568,8 @@ any other file and in either spelling: `outputt` is an `option` error with
 `output` suggested, found here rather than when the declaration runs. An
 option name is `-x`, `--long`, or a Windows switch `/x` — not `-` or `--`
 alone, not a negative number, not a path — and `--name=value` is judged by
-its name. The value an option takes is skipped: after `--out`, declared as a
+its name and supplies its own value. `--` ends option checking; subsequent
+arguments are positional. The value an option takes is skipped: after `--out`, declared as a
 `path`, the next argument is its value whatever it looks like. Anything not
 a literal is not judged, and a declaration without `args` leaves its
 arguments undescribed. Under a root that holds a manifest, a `task.exec`
@@ -2366,8 +2580,10 @@ declaration with a part the text does not show — a computed key, a value an
 expression builds — and a name declared more than once are `tool` warnings
 too, and their calls are not judged, the way a module whose exports cannot
 be bounded is left alone. A manifest that does not parse is one syntax
-error, and no call anywhere is judged against it. [Tools](#tools) has the
+error, and no call anywhere is judged against it. [Tools](#kuu-page-tools) has the
 declaration.
+
+<a id="kuu-page-check-fixing-the-declaration"></a>
 
 ### Fixing the declaration
 
@@ -2378,7 +2594,15 @@ the report describes what is now on disk.
 It knows nothing about Lua's scoping rules, because the compiler already does.
 Under a global declaration the compiler names each undeclared variable in
 turn, so the needed set is found by compiling and reading the complaint; and a
-declared name is unnecessary exactly when removing it still compiles.
+declared name is unnecessary when removing it still compiles in declared-only
+mode. Removing the final unused name leaves `global none` behind.
+
+The fixer handles plain name lists, optionally with a leading `<const>`, at
+the start of the file after its comments. Initialized declarations and other
+forms it cannot preserve are reported as not fixed and left byte for byte
+unchanged. Initializer expressions are never dropped or executed by fixing.
+Leading long comments, including license headers with `--[=[ ... ]=]`
+delimiters, are kept outside declarations inserted by `--adopt`.
 
 The direction that matters is removal. Forgetting to add a name is a loud
 load-time error and fixes itself; forgetting to remove one when its last use
@@ -2414,7 +2638,7 @@ bad.lua:1: unexpected symbol near '='
 strict.lua:2: variable 'print' is not declared
 app.lua:12: "notfund" is not a code in PROC, so this never matches; did you mean "notfound"?
 app.lua:19: cwdd is not an option of proc.run; did you mean cwd?
-app.lua:24: rt.version is Major.Minor.Patch and is never compared by text; use rt.version_at_least(...)
+app.lua:24: rt.version is N.N (two natural numbers) and is never compared by text; use rt.version_at_least(...)
 lib/helper.lua: warning: no global declaration: an undeclared global is not an error here; start with `global none`
 ghost.lua:3: warning: require "nothere" names no kuu module and no file under C:/work/app
 kuu: 6 files, 5 errors, 2 warnings
@@ -2448,7 +2672,7 @@ type CheckReport = {
   };
 };
 type CheckError =
-  | { kind: "read" | "syntax"; line: number; message: string }
+  | { kind: "read" | "syntax" | "analysis"; line: number; message: string }
   | { kind: "name" | "code" | "option" | "value"; line: number; message: string;
       module: string; name: string; suggestion?: string };
 type CheckWarning = {
@@ -2463,14 +2687,19 @@ type ToolDeclaration = {
 
 Each error and warning carries `line` (0 when it is about the whole file) and
 `message`. The closed set of error kinds is `read` (cannot read the file),
-`syntax` (Lua compilation, including undeclared globals), `name` (an unknown
+`syntax` (Lua compilation, including undeclared globals), `analysis` (a valid
+Lua chunk that the additional static inspection could not process), `name` (an unknown
 palette export), `code` (an error code its domain does not have), `option`
 (an option a call does not take), and `value` (a closed set compared with a
 literal outside it, `rt.version` compared by text or matched to its end by
-a two-component pattern included — that is the guard published through
-0.8, which refuses every release from 0.9.0 on, and this is where a project
-still carrying it is told, naming [upgrading to 0.9](#upgrading-09); a
-pattern that reads three components, or one, is left alone). For `value`,
+a three-component pattern included — public versions have two components
+from 0.11 onward, so that guard cannot match, and the finding names
+[upgrading to 0.11](#kuu-page-upgrading-011). A pattern that reads two components,
+or one, is left alone; `rt.version_at_least` is the recommended minimum
+version check). A malformed
+literal tool declaration is also a `value` finding, with `module` set to
+`task.tool` and `name` to the tool's declared name; it is omitted from `tools`
+and its calls are not judged. For other `value` findings,
 `name` is the literal that was written. Warning kinds
 are `globals` (no declaration), `require` (unresolved module), and `tool` (a
 tool declaration the text does not bound, or a program run through the door
@@ -2492,27 +2721,42 @@ same finding kinds; `tools` holds the manifest's declarations when the file
 is the manifest, and is empty otherwise. `check.tree(dir, root)` returns
 `{root, reports = {...}}`. Either spelling of `root` — backslashes, a
 trailing slash, a relative path — is taken as `fs.absolute` spells it.
+An unreadable directory or incomplete listing contributes a `read` finding
+at the directory's path, with line 0 and the filesystem diagnostic. The
+remaining readable files are still checked, and the command exits 1.
+Each public call reads the current manifest; a tree check shares its parsed
+declarations only for that operation, including a fresh pass after `--fix`.
 
 The extraction above is reachable on its own. `check.exports(path)` is the set
 of names a module exports, read from its text, or nil when the text does not
 bound them; `check.modules(root)` returns
-`{root, files, modules = {{name, path, exports}, ...}}` -- every `.lua` file
+`{root, files, modules = {{name, path, exports}, ...}, complete, errors}` -- every `.lua` file
 below the root that a `require` name could reach and whose exports it could
-bound, in name order, with `files` counting all of them.
-[capabilities](#capabilities) reports what it returns. `check.tools(root)`
+bound, in name order, with `files` counting all discovered `.lua` files.
+Unicode names follow the loader's rules; a literal dot in a filename is not
+a directory separator, and a project file hidden by a bundled module is not
+advertised. `complete` is false if a listing or candidate file could not be
+read; `errors` is an array of `{path, message, win32?}` describing each failure.
+[capabilities](#kuu-page-capabilities) reports what it returns. `check.tools(root)`
 is the manifest's tool declarations as the checker reads them, in declaration
 order, only those the text bounds; `capabilities` lists the same tools from
 the registry the manifest filled, and the suite holds the two readings equal.
+
+<a id="kuu-page-check-errors"></a>
 
 ### Errors
 
 The command's complete `CHECK` code set is `notfound`, for an explicitly
 named path that is neither a file nor a directory. Invalid command arguments
 use `CLI usage`. The checking module returns findings rather than `nil, err`;
-a file-read failure is a `read` finding containing the underlying `FS`
+a file-read or directory-enumeration failure is a `read` finding containing the underlying `FS`
 diagnostic. Filesystem argument errors retain their original domain and code.
 
 ---
+
+<a id="kuu-page-cli"></a>
+
+<a id="kuu-page-cli-cli"></a>
 
 ## cli
 
@@ -2539,7 +2783,12 @@ with `--` is an option; anything else is positional; a positional with
 `rest = true` collects everything left over. Types: `flag`, `string`, `int`,
 `number`, `duration` (converted to seconds), `size` (converted to bytes).
 Attributes: `type`, `default`, `min`, `max`, `choices`, `help`, `required`,
-`rest`. Results are keyed by the name without dashes.
+`rest`. Results are keyed by the name without the leading `--`. The `help`
+result key is reserved, so neither an option `--help` nor a positional `help`
+may be declared. `min` and `max` must be finite numbers and apply only to
+numeric types; duration bounds use seconds and size bounds use bytes.
+Combining `rest = true` with `required = true` requires at least one value.
+Size conversion rejects overflow instead of returning infinity.
 
 On the command line: `--name value` and `--name=value` both work; a flag is
 `--all`, `--all=false`; `--` ends options; `--help` is always accepted and
@@ -2550,8 +2799,10 @@ Parsing never prints and never exits. A wrong command line is `nil, err` with
 `CLI usage`, whose message names the problem and ends with the generated usage
 text, ready to print. A wrong spec raises immediately: `CLI usage` for an
 attribute an entry cannot hold, `CLI badvalue` for an unknown type, a default
-that fails its own type, two entries on one key, `--help` redeclared, a flag as
-a positional, or a positional after the rest entry.
+that fails its own type, invalid numeric bounds, two entries on one key, the
+reserved `help` key redeclared, a flag as a positional, or a positional after
+the rest entry. Both `parse` and `usage` validate bounds even when the option
+is unused.
 
 ```lua
 cli.usage(spec, "watchit")   -- the text: usage line, arguments, options with defaults and ranges
@@ -2574,7 +2825,7 @@ local r = require("proc").run { "tool.exe", timeout = opts.timeout }
 ```
 
 This changed in 0.6: 0.5 returned milliseconds. See
-[Upgrading to 0.6](#upgrading-06) before reusing an older spec. Rounding and
+[Upgrading to 0.6](#kuu-page-upgrading-06) before reusing an older spec. Rounding and
 floating-point precision match `time.duration`; results are numbers of seconds,
 not exact integer millisecond counts at arbitrarily large magnitudes.
 
@@ -2584,6 +2835,10 @@ arguments; raised for an attribute a spec entry cannot hold) and `badvalue`
 text they cannot parse).
 
 ---
+
+<a id="kuu-page-proc"></a>
+
+<a id="kuu-page-proc-proc"></a>
 
 ## proc
 
@@ -2605,6 +2860,8 @@ and the loop resumes it when the child is complete. Complete means the whole
 job is empty and stdout and stderr have reached end of file, so a grandchild
 that outlives the child keeps the result open, as it should.
 
+<a id="kuu-page-proc-procrun"></a>
+
 ### proc.run
 
 ```lua
@@ -2620,8 +2877,10 @@ local r = proc.run("cmd.exe", "/c", "echo hi")   -- plain arguments, no options
 
 The array part is the command: the executable and its arguments, each a
 string. A bare name such as `git` resolves from `PATH` only, never from the
-current directory; a name with a separator is used as given; names without an
-extension try `.exe`, `.com`, `.bat`, `.cmd`. Arguments are quoted for the
+current directory, and empty `PATH` entries are ignored; a name with a separator
+is used as given. Names without an extension try `.exe`, `.com`, `.bat`, `.cmd`
+in that order, searching `PATH` entries in their listed order for each extension.
+Long paths work both explicitly and through `PATH`. Arguments are quoted for the
 child exactly by the rules the child's C runtime parses them with, so what you
 pass is what it receives: spaces, quotes, and backslashes need no escaping.
 
@@ -2652,11 +2911,13 @@ the child could not be started, with these codes:
 Unknown option names raise rather than pass silently, so a typo cannot
 become a run with the wrong settings.
 
-`run` accepts `cwd`, `env`, `timeout`, `stdin`, `maxout`, `inherit`, and
-`limits`; `start` additionally accepts `stream`. An omitted `timeout` has
+`run` accepts `cwd`, `env`, `timeout`, `stdin`, `maxout`, `inherit`,
+`inherit_stdin`, and `limits`; `start` additionally accepts `stream`. An omitted `timeout` has
 no time limit; zero requests an immediate timeout. `inherit` and `stream`
 default to false. Environment names are compared ignoring case: duplicates,
 empty names, `=`, and NUL are refused, as are NUL bytes in text values.
+
+<a id="kuu-page-proc-limits"></a>
 
 ### Limits
 
@@ -2675,10 +2936,15 @@ no output.
 
 Windows refuses allocations and child creation that exceed memory and process
 limits; kuu terminates the job when the corresponding notification arrives.
-The kernel terminates a job that exhausts its CPU time. The result has
+The kernel checks accumulated CPU time periodically and terminates a job
+found over its quota; enforcement can overshoot the requested CPU time.
+This is [Windows' job-time contract](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information).
+The result has
 `status = "limit"` and names the bound in `limit`. `timeout` is independently
 elapsed wall-clock time; keep it when a child can wait without using CPU.
 An intentional breakaway still follows the rules described under `detach`.
+
+<a id="kuu-page-proc-procstart-and-the-child-handle"></a>
 
 ### proc.start and the child handle
 
@@ -2700,6 +2966,8 @@ idempotent; after it, `pid` is nil and the other methods raise `PROC closed`.
 Repeated waits on a finished child return
 the same result.
 
+<a id="kuu-page-proc-streams"></a>
+
 ### Streams
 
 ```lua
@@ -2709,7 +2977,7 @@ c:close_stdin()                  -- EOF for the child once the queue has drained
 c:read("line", "5s")             -- the next stdout line without its ending; nil at EOF
 c:read(4096)                     -- up to that many bytes, once at least one is there
 c:read("some")                   -- whatever has arrived, once anything has
-c:read("all")                    -- everything to EOF
+c:read("all")                    -- everything to EOF, within the buffer bound below
 c:read_err("line")               -- the same for stderr
 for line in c:lines() do ... end -- stdout lines to EOF; c:err_lines() likewise
 ```
@@ -2718,15 +2986,35 @@ In stream mode the program reads the pipes itself, so `wait` reports the exit
 with empty `out` and `err`. Reads that must wait park the calling task and
 accept a timeout, returning `nil, err` with `PROC timeout` while the data stays
 buffered. One task at a time may read a given stream; a second raises
-`PROC busy`. `maxout` becomes the backpressure point: when that much is unread,
+`PROC busy`. In stream mode `maxout` must be positive and becomes the
+backpressure point: when that much is unread,
 kuu stops reading and the child blocks on its write until the program catches
-up, so nothing is ever truncated. Closing the child wakes a parked reader with
+up, so nothing is ever truncated. A `read("all")` whose buffer fills before
+EOF, or a `read("line")` whose buffer fills before its line ending, returns
+`nil, PROC toobig` instead of waiting on its own backpressure. This includes
+an unterminated final line or output exactly `maxout` bytes long when EOF has
+not yet been observed. No bytes are consumed by that error: continue with
+`read("some")` or numeric reads to drain the stream, or choose a larger
+`maxout` when starting the child. `lines()` and `err_lines()` raise read
+errors, including `PROC toobig`, so iteration cannot mistake them for EOF.
+Closing the child wakes a parked reader with
 `PROC closed`. A child that does not read its stdin is not an error; a child
 that never gets its stdin closed may never exit, so `close_stdin` when you are
 done.
 
 The stdin queue has its own fixed 64 MiB bound, independent of `maxout`.
 `write` returns `nil, PROC toobig` when a write cannot be queued within it.
+Pending writes hold their own stable chunk; consumed queue storage is reused
+as input progresses, so a continuing backlog does not retain all earlier input.
+
+To capture or stream output while keeping interactive or piped input, set
+`inherit_stdin = true`. The child reads kuu's own standard input directly;
+there is no input queue to write or close. Missing or closed standard input
+is EOF. This works with `run` and `start`, including `stream = true`, and
+cannot be combined with `stdin` or `inherit = true`. It is not an option for
+`detach` or PTY sessions.
+
+<a id="kuu-page-proc-the-console"></a>
 
 ### The console
 
@@ -2739,6 +3027,8 @@ pagers, prompts, and Ctrl-C reach it as if it had been started from the
 terminal, with every supervision guarantee intact. Nothing is captured; `out`
 and `err` are empty. It cannot be combined with `stdin` or `stream`.
 
+<a id="kuu-page-proc-waiting-on-several-children"></a>
+
 ### Waiting on several children
 
 ```lua
@@ -2748,6 +3038,8 @@ local results = proc.wait_all({ a, b, c }, "10m")        -- results in the order
 
 Both return `nil, err` with `PROC timeout` when the duration passes; the
 children keep running. Children that already finished answer at once.
+
+<a id="kuu-page-proc-procdetach"></a>
 
 ### proc.detach
 
@@ -2765,6 +3057,8 @@ kuu's own child jobs permit breakaway, so a program that kuu runs can itself
 detach a process, and only a process that asks to break away leaves; nothing
 escapes supervision by accident.
 
+<a id="kuu-page-proc-procalive-and-prockill"></a>
+
 ### proc.alive and proc.kill
 
 ```lua
@@ -2774,6 +3068,8 @@ proc.kill(pid)         -- true, or nil, PROC notfound | access | oserror
 
 For processes kuu did not start. `kill` terminates one process, not a tree;
 use a supervised child when the tree matters.
+
+<a id="kuu-page-proc-proclist-procfind-proctree"></a>
 
 ### proc.list, proc.find, proc.tree
 
@@ -2792,7 +3088,7 @@ An entry:
 | `pid`, `parent`, `name`, `threads` | from the process snapshot; always present |
 | `exe` | the full UTF-8 path of the executable, with forward slashes like `fs.absolute` |
 | `cmdline` | the command line as the kernel holds it |
-| `started` | when the process began, an instant for [`time`](#time) |
+| `started` | when the process began, an instant for [`time`](#kuu-page-time) |
 | `cpu` | seconds of kernel plus user time so far |
 | `memory`, `private` | the working set and the private bytes |
 
@@ -2814,6 +3110,8 @@ wears that pid today did not start them.
 Tree expansion stops after 64 levels; a deepest entry then has no expanded
 children.
 
+<a id="kuu-page-proc-errors"></a>
+
 ### Errors
 
 | PROC code | when |
@@ -2827,12 +3125,14 @@ children.
 | `timeout` | a child wait, stream read, `wait_any`, or `wait_all` outlasted its wait duration |
 | `closed` | raised for a closed handle; returned when stdin is closed or a pending read's handle closes |
 | `busy` | raised: another task is already reading that stream |
-| `toobig` | stdin could not queue the write within its 64 MiB bound |
+| `toobig` | stdin could not queue the write within its 64 MiB bound, or an `all`/unfinished-line read filled `maxout` before completion; buffered output remains readable with numeric/`some` reads; line iterators raise this error |
 | `oserror` | Windows, snapshot, or allocation failure |
 
 Waiting can also propagate the scheduler's `SCHED` errors, including
-`deadline`; see [sched](#sched). Child results with `status = "timeout"`,
+`deadline`; see [sched](#kuu-page-sched). Child results with `status = "timeout"`,
 `"killed"`, or `"limit"` are result states, not error codes.
+
+<a id="kuu-page-proc-two-things-to-know"></a>
 
 ### Two things to know
 
@@ -2846,6 +3146,8 @@ Waiting can also propagate the scheduler's `SCHED` errors, including
   choose; `cmd.exe` writes CRLF line ends and the console code page. Decode
   deliberately.
 
+<a id="kuu-page-proc-tools-that-construct-their-own-commands"></a>
+
 ### Tools that construct their own commands
 
 Kuu preserves the argument vector it passes to a child. A child may construct
@@ -2857,6 +3159,10 @@ command. Process metadata's `cmdline` stays verbatim; only `exe` is normalized.
 Use `fs.canon` identity when different path spellings or aliases must compare equal.
 
 ---
+
+<a id="kuu-page-fs"></a>
+
+<a id="kuu-page-fs-fs"></a>
 
 ## fs
 
@@ -2874,6 +3180,8 @@ drive-relative path such as `C:foo`, a device path, and a component ending in
 `.` or a space. Refusals of the path itself raise `FS badvalue`; a path that is
 not there is `nil, err` with `FS notfound`.
 
+<a id="kuu-page-fs-reading-and-writing"></a>
+
 ### Reading and writing
 
 ```lua
@@ -2888,7 +3196,7 @@ fs.write(path, data, { atomic = false })             -- plain overwrite
 ```
 
 An atomic write leaves either the old bytes or all of the new ones, never a
-torn file. It creates `name.kuu-<pid>-<tick>.tmp` in the same directory and
+torn file. It creates `.kuu-<32 random hex digits>.tmp` in the same directory and
 renames it over the target, which a watcher sees as an added temporary file
 and a rename.
 
@@ -2908,6 +3216,8 @@ errors and the same bound. 0.9.0 gave the retry to the atomic write alone,
 and the intermittent failures the suite kept seeing were exactly the two
 calls it had not reached.
 
+<a id="kuu-page-fs-facts-about-a-path"></a>
+
 ### Facts about a path
 
 ```lua
@@ -2926,6 +3236,8 @@ or symlink whose target is gone is `nil, err` with `FS dangling`, distinct from
 `notfound`, because a resolver may continue past a missing name but must stop
 at an existing broken link.
 
+<a id="kuu-page-fs-making-and-removing"></a>
+
 ### Making and removing
 
 ```lua
@@ -2940,6 +3252,8 @@ fs.copy(from, to, { replace = true })
 `remove` without `recursive` on a non-empty directory is `FS notempty`. A
 recursive remove never follows a junction or symlink: the link is removed as a
 link and its target is untouched. Read-only files are removed.
+
+<a id="kuu-page-fs-listing-and-walking"></a>
 
 ### Listing and walking
 
@@ -2966,7 +3280,8 @@ be read is an `errors` row with the raw Windows code, and the counts add up.
 use `*` and `?`, match base names, and ignore case; at most 64 are accepted.
 
 **A pruned directory is not in `paths`.** It was excluded by name, so it is
-reported in `skipped` and `pruned` instead, and the plain walk below reads
+reported in `skipped` and `pruned` instead, including at the depth limit
+(where pruning takes precedence over `depthlimited`), and the plain walk below reads
 nothing the prune was asked to exclude:
 
 ```lua
@@ -2980,7 +3295,9 @@ skipped, so that loop listed the files of every excluded directory. Two
 independent programs made exactly that mistake. A directory stopped by the
 `depth` cap, or a link not followed, does stay in `paths`: those are the
 frontier the walk was asked to stop at, not names it was asked to exclude.
-See [upgrading to 0.9](#upgrading-09).
+See [upgrading to 0.9](#kuu-page-upgrading-09).
+
+<a id="kuu-page-fs-watching"></a>
 
 ### Watching
 
@@ -3001,6 +3318,13 @@ precedence removed, added, renamed, modified, unless `raw = true` asks for
 every notification. The watch is armed before `fs.watch` returns. When
 `overflow` appears or `dropped` grows, the system could not describe every
 change: reconcile from `fs.list` or `fs.dirs`.
+
+Concurrent readers compete for batches in the order they started waiting.
+One reader receives each batch; the others remain parked for later changes
+or their own timeout. Events are not broadcast. Closing the watch wakes all
+waiting readers with `FS closed`.
+
+<a id="kuu-page-fs-paths-as-strings"></a>
 
 ### Paths as strings
 
@@ -3029,6 +3353,8 @@ Links are matched by name but never entered. Each directory that could not be
 listed is one entry of `errors`, with `path` and `message`, and the rest of
 the results stand.
 
+<a id="kuu-page-fs-places"></a>
+
 ### Places
 
 ```lua
@@ -3046,6 +3372,8 @@ same one. Both default to the temporary directory and to the prefix `kuu-`.
 A prefix or suffix with a separator, and a suffix ending in a dot or a space,
 which Windows would create and then never name the same way again, are
 refused before anything is created.
+
+<a id="kuu-page-fs-errors"></a>
 
 ### Errors
 
@@ -3065,10 +3393,14 @@ refused before anything is created.
 | `oserror` | anything else, with the Windows message |
 
 `read` with `encoding` keeps conversion failures in the `TEXT` domain, as
-documented in [text](#text). A surrounding `sched.deadline` can interrupt
+documented in [text](#kuu-page-text). A surrounding `sched.deadline` can interrupt
 a watch read with `SCHED deadline`; it does not preempt synchronous file I/O.
 
 ---
+
+<a id="kuu-page-http"></a>
+
+<a id="kuu-page-http-http"></a>
 
 ## http
 
@@ -3097,13 +3429,15 @@ local r, e = http.request { method = "PUT", url = url, body = bytes, headers = {
 Bodies are bytes until something says otherwise; decode deliberately.
 Compressed responses (gzip, deflate) are decompressed transparently.
 
+<a id="kuu-page-http-options"></a>
+
 ### Options
 
 | option | default | meaning |
 |---|---|---|
 | `timeout` | `"30s"` | the whole request, from connect to the last byte; `HTTP timeout` when exceeded; zero is refused because WinHTTP reads it as infinite |
 | `maxbody` | `"64M"`, `"8G"` with `to` | the body is refused as `HTTP toobig` beyond this, never truncated |
-| `to` | | stream the body into this file; written beside it as a temporary and renamed into place, with the same retry as [`fs.write`](#fs) since 0.10.0, so a failed download leaves the previous file untouched |
+| `to` | | stream the body into this file; a relative path is resolved when the request starts. Written beside it as a temporary and renamed into place, with the same retry as [`fs.write`](#kuu-page-fs) since 0.10.0, so a failed download leaves the previous file untouched |
 | `sha256` | | 64 hex digits the body must hash to, checked as it arrives; otherwise `HTTP mismatch`, and a `to` file is never placed. A non-2xx answer is then `HTTP status`, because specific bytes were asked for |
 | `headers` | | a table of name = value; names and values may not contain control characters, and names no colon or space |
 | `type` | `application/octet-stream` when there is a body | the `Content-Type`; wins over a `Content-Type` header |
@@ -3121,6 +3455,8 @@ process, because a session per request was measured to leak a handle each
 time, but cookies are disabled on every request, so nothing set by one answer
 is sent with the next. A caller who wants a cookie sends the `Cookie` header.
 
+<a id="kuu-page-http-errors"></a>
+
 ### Errors
 
 | HTTP code | when |
@@ -3133,13 +3469,15 @@ is sent with the next. A caller who wants a cookie sends the `Cookie` header.
 | `toobig` | the body exceeded `maxbody` |
 | `mismatch` | the body did not hash to `sha256`; the message carries both digests |
 | `status` | a non-2xx answer to a request that gave `sha256` |
-| `badvalue` | raised: a malformed url, header, timeout, size, or redirect value |
+| `badvalue` | raised: a malformed url, method, body, content type, header, timeout, size, or redirect value |
 | `encoding` | raised: a URL or header is not valid UTF-8 |
 | `usage` | raised: an unknown option, or no url |
 | `oserror` | anything else, with the Windows message |
 
 A refused download destination path keeps the path helper's `FS` domain
 (`badvalue`, `encoding`, or `oserror`) and is raised before the request starts.
+A destination containing a NUL byte is rejected as `HTTP badvalue` before any
+file is created or request is sent.
 An enclosing `sched.deadline` propagates `SCHED deadline` while cancelling the
 request, independently of the request's own `HTTP timeout`.
 
@@ -3153,6 +3491,10 @@ An execution sandbox or a different account can change available credentials;
 the diagnostic describes the reported failure without bypassing TLS validation.
 
 ---
+
+<a id="kuu-page-net"></a>
+
+<a id="kuu-page-net-net"></a>
 
 ## net
 
@@ -3174,6 +3516,8 @@ Resolving and probing park the calling task and let the others run; both
 take a timeout, five seconds unless given. `listeners` and `addresses` take
 synchronous snapshots of Windows' local tables.
 
+<a id="kuu-page-net-netresolve"></a>
+
 ### net.resolve
 
 ```lua
@@ -3189,6 +3533,8 @@ numeric interface scope, such as `fe80::1%1`, in both `resolve` and
 Failures: `nil, NET resolve` when the name has no address, `nil, NET timeout`
 when nothing answered in time. An empty name, a name with NUL, or a malformed timeout is a
 programming error and raises NET badvalue.
+
+<a id="kuu-page-net-netprobe"></a>
 
 ### net.probe
 
@@ -3219,6 +3565,8 @@ repeat
 until sched.clock() > deadline
 ```
 
+<a id="kuu-page-net-netlisteners"></a>
+
 ### net.listeners
 
 ```lua
@@ -3229,7 +3577,9 @@ Every TCP port with a listening socket on this machine, sorted by port, with
 the address it is bound to (`0.0.0.0` or `::` for all interfaces), the owning
 process id, and that process's executable name where a process by that id
 still exists. The same table answers `proc.find { port = }` in
-[`proc`](#proc), which gives the owner's full entry. UDP is not listed.
+[`proc`](#kuu-page-proc), which gives the owner's full entry. UDP is not listed.
+
+<a id="kuu-page-net-netaddresses"></a>
 
 ### net.addresses
 
@@ -3243,6 +3593,8 @@ family, the on-link prefix length, whether the adapter is up, whether it is
 the loopback interface, and its MAC address when it has one. To find the
 machine's own routable IPv4, filter for `up`, not `loopback`, `family ==
 "ipv4"`, and an address not starting with `169.254.`.
+
+<a id="kuu-page-net-errors"></a>
 
 ### Errors
 
@@ -3259,6 +3611,10 @@ Domain `NET`.
 
 ---
 
+<a id="kuu-page-sched"></a>
+
+<a id="kuu-page-sched-sched"></a>
+
 ## sched
 
 Tasks and time. The scheduler is the loop that runs every program: one thread,
@@ -3267,6 +3623,8 @@ one Lua state, coroutines that switch only where a palette call waits.
 ```lua
 local sched = require("sched")
 ```
+
+<a id="kuu-page-sched-tasks"></a>
 
 ### Tasks
 
@@ -3290,6 +3648,8 @@ carries on; join again later.
 The program ends when its main chunk returns, whatever tasks are still
 running; join what you spawn.
 
+<a id="kuu-page-sched-sleep-and-time"></a>
+
 ### Sleep and time
 
 ```lua
@@ -3308,6 +3668,8 @@ with `now`.
 
 Durations everywhere in kuu are a number of seconds or a string with a unit:
 `"250ms"`, `"30s"`, `"1.5m"`, `"2h"`. A string without a unit is refused.
+
+<a id="kuu-page-sched-deadlines"></a>
 
 ### Deadlines
 
@@ -3335,6 +3697,8 @@ the wait is interrupted; give it its own `timeout` when it needs a firm
 wall-clock lifetime. Program exit still closes every supervised job.
 HTTP and network operations cancel their outstanding work when abandoned.
 
+<a id="kuu-page-sched-where-waiting-is-not-possible"></a>
+
 ### Where waiting is not possible
 
 A palette call parks the running coroutine by yielding. Inside a metamethod,
@@ -3342,6 +3706,8 @@ a `string.gsub` callback, a `table.sort` comparator, or a coroutine the program
 created itself, Lua cannot yield to kuu. In those places kuu drives the loop in
 place until the wait is over, so the call still returns the right thing, and
 other tasks still make progress meanwhile.
+
+<a id="kuu-page-sched-errors"></a>
 
 ### Errors
 
@@ -3357,9 +3723,13 @@ other tasks still make progress meanwhile.
 These are the complete SCHED codes. `join` and `deadline` also propagate
 errors raised by the function they run or observe, preserving the original
 error object. Ordinary Lua argument-type errors remain Lua errors; see
-[err](#err).
+[err](#kuu-page-err).
 
 ---
+
+<a id="kuu-page-json"></a>
+
+<a id="kuu-page-json-json"></a>
 
 ## json
 
@@ -3371,6 +3741,8 @@ local v, e = json.decode(text)            -- nil, err JSON parse | depth | dupli
 local s = json.encode(v)                  -- raises JSON badvalue | encoding | depth | oserror
 local pretty = json.encode(v, { pretty = true })
 ```
+
+<a id="kuu-page-json-the-mapping"></a>
 
 ### The mapping
 
@@ -3387,6 +3759,8 @@ Decoded arrays are marked, so an empty array stays `[]` on the way back and
 `json.is_array(t)` tells. An unmarked table encodes as an array when its keys
 are exactly 1 to n with n above zero, and as an object otherwise: `{}` is an
 object, `json.array{}` is `[]`. `json.array(t)` marks an existing table.
+Marked arrays must also have exactly the keys 1 to n, with no holes or other
+keys; use `json.null` for an explicit null element.
 
 ```lua
 local doc = json.decode('{"ids": [1, null, 3], "empty": {}}')
@@ -3398,6 +3772,8 @@ json.encode { list = json.array {}, none = json.null }   -- '{"list":[],"none":n
 Integers survive exactly; a document carrying 64-bit identifiers round-trips
 without loss. Integers beyond 64 bits decode as floats. Integral floats encode
 with a decimal point (`2.0`), so the two number kinds do not blur.
+
+<a id="kuu-page-json-a-decided-key-order"></a>
 
 ### A decided key order
 
@@ -3422,9 +3798,13 @@ json.is_object(v)   -- true for a marked ordered object
 
 It marks the table it is given, exactly as `json.array` does, and nests at any
 depth. Each entry must be a two-element `{ key, value }` table whose key is a
-string; anything else raises `JSON badvalue` naming the entry. Decoding is
+string; the outer list and each pair must have no holes or extra keys.
+Malformed shapes raise `JSON badvalue`; repeated object keys raise
+`JSON duplicate`, matching the decoder's policy. Decoding is
 unchanged: a document read back is an ordinary table, because the order is a
 property of writing, not of the value.
+
+<a id="kuu-page-json-refusals"></a>
 
 ### Refusals
 
@@ -3437,7 +3817,7 @@ and string keys, non-string keys, strings that are not valid UTF-8, and cycles,
 which surface as `JSON depth`.
 
 The complete code set is `parse`, `duplicate`, and `depth` for decoding;
-`badvalue`, `encoding`, `depth`, `usage`, and `oserror` for encoding. `usage`
+`badvalue`, `duplicate`, `encoding`, `depth`, `usage`, and `oserror` for encoding. `usage`
 is raised for an unknown option; `oserror` means the encoder could not
 allocate its document.
 
@@ -3445,6 +3825,10 @@ Output is compact by default, with the seven short escapes, lowercase
 `\u00xx` for other control characters, and UTF-8 left raw.
 
 ---
+
+<a id="kuu-page-csv"></a>
+
+<a id="kuu-page-csv-csv"></a>
 
 ## csv
 
@@ -3462,6 +3846,8 @@ csv.encode(rows)                                       -- CRLF line ends, quotes
 csv.encode(recs, { columns = { "a", "b" } })           -- records: a header row, then each record's fields
 csv.encode(rows, { separator = ";", bom = true })      -- Excel opens it as UTF-8
 ```
+
+<a id="kuu-page-csv-csvdecode"></a>
 
 ### csv.decode
 
@@ -3487,6 +3873,8 @@ field, a quote inside an unquoted field, text after a closing quote, or a
 row whose field count differs from the first row's unless `ragged` allows
 it.
 
+<a id="kuu-page-csv-csvencode"></a>
+
 ### csv.encode
 
 ```lua
@@ -3507,12 +3895,23 @@ separator, a quote, a line end, or leading or trailing whitespace.
 | `newline` | `"\r\n"` | RFC 4180 and Excel; `"\n"` when a Unix tool reads it |
 | `bom` | `false` | a leading byte order mark, which Excel needs to read UTF-8 |
 
+<a id="kuu-page-csv-errors"></a>
+
 ### Errors
+
+Header mode rejects duplicate column names with `CSV parse`, so one field
+cannot silently replace another. Array mode preserves the original cells.
+Encoding records likewise requires distinct string column names and raises
+`CSV badvalue` for duplicates.
 
 Domain `CSV`: `parse` (returned), `badvalue` (raised), and `usage` (raised for
 an unknown option).
 
 ---
+
+<a id="kuu-page-ini"></a>
+
+<a id="kuu-page-ini-ini"></a>
 
 ## ini
 
@@ -3540,19 +3939,29 @@ style survive, and section and key names match ignoring ASCII letter case.
 Non-ASCII bytes are compared exactly. Read the
 file with `fs.read`, edit, write it back with `fs.write`.
 
+<a id="kuu-page-ini-rules"></a>
+
 ### Rules
 
 - Keys before any section header live under the empty section name, `""`.
+- Section names must be strings. `encode` and `set` reject names containing
+  CR or LF because they would write additional lines instead of the requested
+  section. Spaces and brackets within a section name are preserved.
 - Keys and values are trimmed. A value in surrounding double quotes has
   them removed and the inside kept, as the Windows profile functions do;
   encode and set quote a value that would not otherwise survive.
 - A line without `=` is a key with an empty value.
+- `encode` and `set` reject empty or padded keys, keys containing `=` or a
+  line end, and keys beginning with a comment or section marker (`;`, `#`, `[`),
+  because those spellings cannot preserve the requested key when read back.
 - There are no inline comments: everything after `=` is the value, a `;`
   included, which is what Windows does too.
 - Duplicate keys: the last wins. Duplicate sections merge, ignoring case
   and keeping the first spelling of each section and key in the table.
 - Values are strings; numbers and booleans given to `encode` or `set` are
   written with `tostring`.
+
+<a id="kuu-page-ini-iniset-and-iniremove"></a>
 
 ### ini.set and ini.remove
 
@@ -3572,13 +3981,19 @@ unchanged when there is nothing to remove. Both edits preserve a UTF-8 BOM.
 Files using one line-ending style retain it; mixed LF/CRLF input is normalized
 to CRLF if any CRLF is present, otherwise LF.
 
+<a id="kuu-page-ini-errors"></a>
+
 ### Errors
 
-Domain `INI`, all raised: `badvalue` for a key holding `=`, a value that
-spans lines, or a table that is not sections of keys; `usage` for an unknown
-option.
+Domain `INI`, all raised: `badvalue` for an unrepresentable key or section
+name, a value that spans lines, or a table that is not sections of keys;
+`usage` for an unknown option.
 
 ---
+
+<a id="kuu-page-hash"></a>
+
+<a id="kuu-page-hash-hash"></a>
 
 ## hash
 
@@ -3626,6 +4041,10 @@ raises instead of silently hashing the filename before that byte.
 
 ---
 
+<a id="kuu-page-text"></a>
+
+<a id="kuu-page-text-text"></a>
+
 ## text
 
 Strict conversion between UTF-8 and the encodings Windows programs emit.
@@ -3663,7 +4082,7 @@ Lua pattern, so Lua retries the match at every position and the cost grows
 with the whole string rather than with the blanks. Trimming a 15-byte line
 300,000 times measured 300 ms by that pattern and 13 ms through `trim`;
 trimming a 278 KB document 200 times, 3.2 seconds against 26 ms. See
-[Pitfalls](#pitfalls).
+[Pitfalls](#kuu-page-pitfalls).
 
 Encodings: `utf-8`, `utf-16le`, `utf-16be`, `latin1`, `ansi` (the system code
 page), `oem` (the console code page), and `cpNNN` for any Windows code page
@@ -3687,6 +4106,10 @@ bytes and paired surrogates; byte-order marks are not interpreted or produced.
 | `oserror` | raised: allocation or Windows case mapping failed |
 
 ---
+
+<a id="kuu-page-re"></a>
+
+<a id="kuu-page-re-re"></a>
 
 ## re
 
@@ -3766,6 +4189,10 @@ a megabyte of `gsub` well under a second.
 
 ---
 
+<a id="kuu-page-time"></a>
+
+<a id="kuu-page-time-time"></a>
+
 ## time
 
 Instants, zones, and ISO 8601. An instant is a number of seconds since
@@ -3813,6 +4240,10 @@ explicit zone arguments remain programming errors and raise.
 
 ---
 
+<a id="kuu-page-archive"></a>
+
+<a id="kuu-page-archive-archive"></a>
+
 ## archive
 
 Zip and tar archives using Windows' archive components. `pack` and `unpack`
@@ -3841,8 +4272,18 @@ The format follows the archive's extension: `.zip`, `.tar`, `.tar.gz` or
 `.tgz`, `.tar.xz`, `.tar.zst`, `.tar.bz2`. `unpack` creates the directory
 when needed and overwrites what is there; `strip` drops that many leading
 path components, so an archive whose single top-level directory carries the
-version lands where you say. `pack` replaces an existing archive; entries are
-names inside the directory, never absolute and never climbing out. Windows'
+version lands where you say. `pack` creates a temporary archive beside the
+destination and replaces the existing archive only after packing succeeds.
+Invalid arguments, failed packing, and timeouts preserve the previous archive.
+When the output lies inside the input directory, that exact output and its
+temporary file are excluded from the archive; other files with the same name
+at different paths are kept.
+Entries must be a dense array of names inside the directory, never absolute
+and never climbing out; holes, map keys, and non-table lists raise
+`ARCHIVE badvalue` before staging the output. Names beginning with `@` or
+`--` are literal filenames, including when entries are discovered by packing
+a whole directory. A leading `./` may appear in their archived names.
+Windows'
 bsdtar refuses archive entries that would climb out of the target directory,
 so an unpack stays under the directory you name.
 
@@ -3850,7 +4291,7 @@ so an unpack stays under the directory you name.
 |---|---|
 | `ARCHIVE notfound` | no archive, or no directory, at that path |
 | `ARCHIVE failed` | an invalid archive, unsupported format, or rejected entry; pack/unpack retain tar's diagnostic |
-| `ARCHIVE badvalue` | raised: wrong paths, a negative `strip`, or entries that leave the directory; returned for an empty directory to pack |
+| `ARCHIVE badvalue` | raised: wrong paths, a negative `strip`, an invalid entry array, or entries that leave the directory; returned for an empty directory to pack |
 | `ARCHIVE usage` | raised: an unknown option |
 | `ARCHIVE timeout` | the archive operation did not finish within `timeout` (default 30m) |
 | `ARCHIVE encoding` | an entry has no valid Unicode filename |
@@ -3886,6 +4327,10 @@ local ok, e2 = archive.unpack("build/zig.zip", ".tools/zig", { strip = 1 })
 
 ---
 
+<a id="kuu-page-log"></a>
+
+<a id="kuu-page-log-log"></a>
+
 ## log
 
 Say what happened, where someone can read it later.
@@ -3908,13 +4353,18 @@ fields sorted by key, quoted where a space or quote would make them ambiguous:
 Field values may be strings, numbers, booleans, error objects (rendered as
 `DOMAIN code: message`), or tables (rendered as JSON). Each call returns true
 when the line was emitted and false when it was filtered or dropped.
+Field keys are rendered with `tostring`; text output keeps each original
+key's value, including numeric keys. Keys with the same displayed spelling
+appear as separate text fields.
+
+<a id="kuu-page-log-configuration"></a>
 
 ### Configuration
 
 ```lua
 log.configure { level = "debug" }            -- debug, info, warn, error, off; default info
 log.configure { file = "build/log.txt" }     -- append to a file; false returns to stderr
-log.configure { json = true }                -- one JSON object per line: ts, level, msg, fields
+log.configure { json = true }                -- one JSON object per line: ts, level, msg, then your fields
 log.configure { sink = function(line) end }  -- your own destination; false removes it
 log.configure()                              -- { level, file, json, sink, dropped }
 ```
@@ -3928,7 +4378,14 @@ previous configuration intact; a file that cannot be opened raises
 `LOG oserror` at configure time rather than being discovered by silently
 counting drops. Writing never raises: a sink that fails increments `dropped`,
 which `configure()` reports, because a diagnostic must not terminate the work
-it describes. The default sink is standard error, resolved at write time, so a
+it describes. An unrenderable message or field is also counted as a drop.
+JSON mode always emits JSON; invalid UTF-8 strings, cyclic tables, or other
+values that JSON cannot encode cause the entire record to be dropped, with
+no line sent to the sink. User fields are top-level JSON properties; the
+logger's `ts`, `level`, and `msg` properties take precedence. A custom
+sink may report failure by raising, returning `false`, or returning `nil, err`;
+returning nothing means success. Failed file writes and flushes count as drops.
+The default sink is standard error, resolved at write time, so a
 program that never logs opens nothing.
 
 | LOG code | when |
@@ -3938,6 +4395,10 @@ program that never logs opens nothing.
 | `oserror` | raised: the log file cannot be opened |
 
 ---
+
+<a id="kuu-page-err"></a>
+
+<a id="kuu-page-err-err"></a>
 
 ## err
 
@@ -3974,10 +4435,12 @@ formed — `fs.read` given a malformed path, `re.match` given a subject that
 is not UTF-8, `time.duration` given a bare number in a string — raises,
 because the fix is in the code that called it, not in the data. Every
 module follows this since 0.10.0; where two once disagreed on the same kind
-of failure, the disagreement is named in [upgrading to 0.10](#upgrading-010).
+of failure, the disagreement is named in [upgrading to 0.10](#kuu-page-upgrading-010).
 
 Branch on `err.is(e, "PROC", "notfound")`, never on the message text.
 Messages are for people; domains and codes are for programs.
+
+<a id="kuu-page-err-in-your-own-code"></a>
 
 ### In your own code
 
@@ -3990,7 +4453,7 @@ from a function, or from a task's `run`, for the outcome the function
 exists to report; raise for a caller's mistake. A task that returns
 `nil, err` fails with that domain and code: `kuu run` prints `kuu: REPORT
 stale: …`, the `--json` stream and envelope carry them as `error.domain`
-and `error.code`, and so does [the ledger](#ledger). A task that returns
+and `error.code`, and so does [the ledger](#kuu-page-ledger). A task that returns
 `nil, "some text"` instead is wrapped as `TASK failed` with that text as
 the message, and a caller can no longer tell it from any other failure.
 Of the extra fields, `exit` is the one kuu carries out of the task — into
@@ -3998,6 +4461,10 @@ the stream, the envelope, the ledger, and the process's exit code; any
 other, `{ path = p }` say, stays on the Lua value for the task's own callers.
 
 ---
+
+<a id="kuu-page-mem"></a>
+
+<a id="kuu-page-mem-mem"></a>
 
 ## mem
 
@@ -4020,11 +4487,11 @@ mem.open("build/state.json")                            -- somewhere else instea
 The file is `.kuu/memory.json` under the project root, the nearest
 `manifest.lua` upward from the current directory, or under the directory
 `require` searches when there is no project. `.kuu/` is kuu's own and is
-never committed — it holds [the ledger](#ledger) too; a memory that is
+never committed — it holds [the ledger](#kuu-page-ledger) too; a memory that is
 meant to travel with the repository is opened somewhere else with
 `mem.open(path)`.
 
-Every `get` reads the file. Every `set` holds a [`sync`](#sync) lock across
+Every `get` reads the file. Every `set` holds a [`sync`](#kuu-page-sync) lock across
 processes in the same Windows session, named after the file, while it reads, merges, and
 writes atomically, so two kuu processes writing at once take turns and
 neither loses the other's keys; a writer that cannot get the lock within ten
@@ -4047,6 +4514,10 @@ lock setup failures keep their `FS` or `SYNC` domain. An `update` callback's
 error propagates unchanged, releases the lock, and leaves the file intact.
 
 ---
+
+<a id="kuu-page-sync"></a>
+
+<a id="kuu-page-sync-sync"></a>
 
 ## sync
 
@@ -4092,6 +4563,10 @@ has its own `Local` namespace and does not share these locks.
 
 ---
 
+<a id="kuu-page-sys"></a>
+
+<a id="kuu-page-sys-sys"></a>
+
 ## sys
 
 Facts about this machine and this process, read fresh on every call.
@@ -4125,6 +4600,8 @@ Drive types are `fixed`, `removable`, `remote`, `cdrom`, `ramdisk`, or
 where the older calls lie to programs without a manifest. `elevated` is what a
 PowerShell script means by `IsInRole(Administrator)`: this process, now, with
 this token. Nothing here is cached and nothing here writes.
+
+<a id="kuu-page-sys-syssignature"></a>
 
 ### sys.signature
 
@@ -4161,6 +4638,8 @@ Before running an installer, also match its signer or pinned thumbprint to the
 identity you expect. Signature inspection opens the file for reading and
 prevents writes while checking it; it does not reserve the path after return.
 
+<a id="kuu-page-sys-errors"></a>
+
 ### Errors
 
 The complete SYS code set is `notfound` (missing signature path), `access`
@@ -4171,6 +4650,10 @@ an unknown option), and `oserror` (other Windows or allocation failures).
 `sys.info` has no expected error return.
 
 ---
+
+<a id="kuu-page-reg"></a>
+
+<a id="kuu-page-reg-reg"></a>
 
 ## reg
 
@@ -4193,6 +4676,8 @@ A key is written `HKCU\Software\Vendor\App`; either slash works, and so do
 the long root names. Roots: `HKLM`, `HKCU`, `HKCR`, `HKU`, `HKCC`. The
 value name `nil` or `""` is the key's default value. kuu is a 64-bit
 process and sees the 64-bit view.
+
+<a id="kuu-page-reg-types"></a>
 
 ### Types
 
@@ -4218,6 +4703,8 @@ original `bytes` instead of `value`. An empty string is still `""`.
 Keys, value names, and text passed to `set` cannot contain NUL; binary
 values can.
 
+<a id="kuu-page-reg-functions"></a>
+
 ### Functions
 
 ```lua
@@ -4235,6 +4722,8 @@ reg.remove(key)                      -- true | nil, err
 Writing under `HKLM` needs an elevated kuu; without it the answer is
 `nil, REG access`, not a silent redirect.
 
+<a id="kuu-page-reg-errors"></a>
+
 ### Errors
 
 Domain `REG`: `notfound` (no such key or value), `access` (run elevated),
@@ -4242,6 +4731,10 @@ Domain `REG`: `notfound` (no such key or value), `access` (run elevated),
 (text cannot be represented as UTF-8), `oserror`.
 
 ---
+
+<a id="kuu-page-env"></a>
+
+<a id="kuu-page-env-env"></a>
 
 ## env
 
@@ -4264,11 +4757,13 @@ env.forget("TOOL_HOME")                      -- removed, then the change is broa
 env.persist("TOOL_HOME", "C:\\tool", "machine")  -- for everyone; needs an elevated kuu
 ```
 
+<a id="kuu-page-env-the-two-environments"></a>
+
 ### The two environments
 
 The **live environment** is this process's copy. `set` changes it for kuu
 and for every child kuu starts afterwards; nothing outside notices. A
-child's `env` option in [`proc`](#proc) does the same for one child.
+child's `env` option in [`proc`](#kuu-page-proc) does the same for one child.
 `get` and `os.getenv` return `""` for an empty value and `nil` for an
 absent variable. Names and text values cannot contain NUL.
 
@@ -4285,6 +4780,8 @@ To add a directory to the user's `Path`, read `env.persisted("Path")`,
 edit the string, and persist it back; nothing here edits `Path` for you,
 because appending blindly is how `Path` fills with duplicates.
 
+<a id="kuu-page-env-functions"></a>
+
 ### Functions
 
 ```lua
@@ -4299,6 +4796,8 @@ env.forget(name [, scope])          -- true | nil, err
 
 `scope` is `"user"` (the default) or `"machine"`.
 
+<a id="kuu-page-env-errors"></a>
+
 ### Errors
 
 Domain `ENV`: `badvalue` (raised: an empty name, a name with `=`, an unknown
@@ -4306,6 +4805,10 @@ scope, or embedded NUL), `notfound` (forgetting what is not there), `access` (th
 scope without elevation), `oserror`.
 
 ---
+
+<a id="kuu-page-svc"></a>
+
+<a id="kuu-page-svc-svc"></a>
 
 ## svc
 
@@ -4345,6 +4848,8 @@ those of the current token. A refused operation returns `nil, SVC access`
 naming the service; running elevated may be necessary. `list` also needs
 permission to read each listed service's configuration.
 
+<a id="kuu-page-svc-errors"></a>
+
 ### Errors
 
 The complete SVC code set is `notfound` (no such service), `access`
@@ -4353,6 +4858,10 @@ The complete SVC code set is `notfound` (no such service), `access`
 (other Windows failures, including service transition failures).
 
 ---
+
+<a id="kuu-page-evt"></a>
+
+<a id="kuu-page-evt-evt"></a>
 
 ## evt
 
@@ -4399,6 +4908,8 @@ publisher is uninstalled. This is a bounded snapshot, not a subscription;
 choose a small `limit` when polling repeatedly. Channel permissions apply:
 reading `Security`, for example, usually requires administrator rights.
 
+<a id="kuu-page-evt-errors"></a>
+
 ### Errors
 
 The complete EVT code set is `notfound` (unknown channel), `access`
@@ -4407,6 +4918,10 @@ instants, levels, or limits), `usage` (raised for an unknown option), and
 `oserror` (other Windows failures).
 
 ---
+
+<a id="kuu-page-pty"></a>
+
+<a id="kuu-page-pty-pty----provisional-console-automation"></a>
 
 ## pty -- provisional console automation
 
@@ -4427,13 +4942,15 @@ assert(p:write("exit\r"))
 assert(p:wait("5s"))
 ```
 
+<a id="kuu-page-pty-launch-and-lifetime"></a>
+
 ### Launch and lifetime
 
 `pty.spawn { exe, args..., cols = 120, rows = 30, cwd = path, env = table,
 timeout = duration, maxout = "64M", limits = table }` returns a console
 handle or `nil, err`. Dimensions must be integers from 1 to 32767. The
 command, `cwd`, environment overrides/removals, lifetime `timeout`, and
-job `limits` follow [proc](#proc). Without a lifetime timeout the child
+job `limits` follow [proc](#kuu-page-proc). Without a lifetime timeout the child
 can run indefinitely. `stdin`, `stream`, `inherit` and unknown options are
 refused; input is written through the console handle.
 
@@ -4465,12 +4982,14 @@ application expects them. The pending input queue is bounded at 64 MiB.
 `p:resize(cols, rows)` changes the console buffer size and returns
 `true` or `nil, err`.
 
-`p:wait([timeout])` returns the [proc result](#proc), including `status`,
+`p:wait([timeout])` returns the [proc result](#kuu-page-proc), including `status`,
 `code`, `pid`, `elapsed` and optional `limit`. Output is consumed through
 `read`/`expect`; the result's `out` and `err` are empty. A wait timeout
 returns `nil, PTY timeout` and leaves the child alive. `p:kill()` terminates
 the entire child job; `wait` can still observe its result. A scope deadline
 interrupts the current wait with `SCHED deadline`; it does not close `p`.
+
+<a id="kuu-page-pty-output-and-matching"></a>
 
 ### Output and matching
 
@@ -4506,6 +5025,8 @@ or use a larger cap when spawning a new one. Read while a chatty program
 runs: waiting for exit without draining a full output buffer can leave that
 program blocked on output.
 
+<a id="kuu-page-pty-errors"></a>
+
 ### Errors
 
 The closed PTY code set is `usage` (an option the command table does not
@@ -4520,6 +5041,10 @@ raise; operational failures return `nil, err`. An enclosing deadline raises
 
 ---
 
+<a id="kuu-page-powershell"></a>
+
+<a id="kuu-page-powershell-from-powershell"></a>
+
 ## From PowerShell
 
 kuu is the tool an agent holds on a Windows machine instead of PowerShell:
@@ -4528,6 +5053,8 @@ maps what an agent reaches for in PowerShell to the kuu call that does it,
 with the differences that matter. Where kuu has nothing yet, it says so.
 Process and network waits cooperate with the scheduler; file and machine
 inspection calls can be synchronous, as their manual pages describe.
+
+<a id="kuu-page-powershell-processes"></a>
 
 ### Processes
 
@@ -4539,7 +5066,7 @@ inspection calls can be synchronous, as their manual pages describe.
 | `tool 2>&1 \| Out-String` | `r.out`, `r.err` | bytes, captured separately; beyond `maxout` the rest is dropped and `r.truncated` says so |
 | `Start-Process` without `-Wait` | `proc.start { ... }` then `c:wait()` | one child per handle, closed with it |
 | `Start-Process -NoNewWindow` for an interactive tool | `proc.run { ..., inherit = true }` | the child gets kuu's own console |
-| an interactive tool that reads console prompts | `pty.spawn { "cmd.exe" }`, `p:expect({ ">" }, "5s")`, `p:write("echo hello\r")` | a private pseudoconsole with supervised lifetime; provisional API, see [pty](#pty) |
+| an interactive tool that reads console prompts | `pty.spawn { "cmd.exe" }`, `p:expect({ ">" }, "5s")`, `p:write("echo hello\r")` | a private pseudoconsole with supervised lifetime; provisional API, see [pty](#kuu-page-pty) |
 | `tool \| ForEach-Object { }` | `for line in c:lines() do` | live, with backpressure, no thread |
 | `Start-Job`, `Wait-Job -Any` | `sched.spawn`, `proc.wait_any` | tasks are coroutines, not processes |
 | `Start-Process -WindowStyle Hidden` for a daemon | `proc.detach { ... }` | the one child that outlives kuu, on purpose |
@@ -4547,7 +5074,9 @@ inspection calls can be synchronous, as their manual pages describe.
 | `Stop-Process -Id` | `proc.kill(pid)` | that one process, by id |
 | `Get-Process`, `netstat -o`, `tasklist` | `proc.list`, `proc.find { name = "tool" }`, `proc.tree` | find also accepts one `pid` or `port`; entries carry exe, command line, start, cpu, memory when this user may ask |
 | `Start-Process -Verb RunAs` | deferred | elevation needs a broker; not yet |
-| `cmd /c "a \| b"` | `proc.run { "cmd.exe", "/c", "a \| b" }` | explicit; cmd re-parses its argument, see [proc](#proc) |
+| `cmd /c "a \| b"` | `proc.run { "cmd.exe", "/c", "a \| b" }` | explicit; cmd re-parses its argument, see [proc](#kuu-page-proc) |
+
+<a id="kuu-page-powershell-files"></a>
 
 ### Files
 
@@ -4572,6 +5101,8 @@ inspection calls can be synchronous, as their manual pages describe.
 | `Set-Location`, `Get-Location` | `fs.chdir(p)`, `fs.cwd()` | process-wide, as in PowerShell |
 | `Get-Acl`, `Set-Acl` | deferred | icacls through `proc.run` until a real need |
 
+<a id="kuu-page-powershell-network-and-downloads"></a>
+
 ### Network and downloads
 
 | PowerShell | kuu | the difference |
@@ -4583,6 +5114,8 @@ inspection calls can be synchronous, as their manual pages describe.
 | `Expand-Archive`, `tar -xf` | `archive.unpack(file, dir, { strip = 1 })` | zip and the tar family, through the tar.exe Windows ships |
 | `Compress-Archive` | `archive.pack(file, dir)` | |
 | `Test-NetConnection -Port`, `Resolve-DnsName`, `Get-NetTCPConnection`, `Get-NetIPAddress`, `ipconfig` | `net.probe`, `net.resolve`, `net.listeners`, `net.addresses` | probe reports the address that answered and the elapsed time; connect and DNS waits yield |
+
+<a id="kuu-page-powershell-data-and-text"></a>
 
 ### Data and text
 
@@ -4607,13 +5140,15 @@ inspection calls can be synchronous, as their manual pages describe.
 | `Select-Xml`, `[xml]` | deferred | |
 | `Write-Host`, `Write-Verbose` | `print`, `io.stderr:write`, `log` | log writes never raise; invalid configuration does |
 
+<a id="kuu-page-powershell-the-machine"></a>
+
 ### The machine
 
 | PowerShell | kuu | the difference |
 |---|---|---|
 | `[Environment]::OSVersion`, `Get-ComputerInfo` | `sys.info()` | the truthful build, the display name, elevation, cpus, memory, drives, uptime |
 | `[Security.Principal.WindowsPrincipal]…IsInRole` | `sys.info().elevated` | |
-| `$env:NAME`, `[Environment]::SetEnvironmentVariable(..., 'User')`, `setx` | `env.get`, `env.set`; `env.persist`, `env.forget` with the change broadcast | live and persisted are two different things; see [env](#env) |
+| `$env:NAME`, `[Environment]::SetEnvironmentVariable(..., 'User')`, `setx` | `env.get`, `env.set`; `env.persist`, `env.forget` with the change broadcast | live and persisted are two different things; see [env](#kuu-page-env) |
 | `Get-ItemProperty HKLM:\...`, `Set-ItemProperty`, `New-Item HKCU:\...`, `reg.exe` | `reg.get`, `reg.set`, `reg.values`, `reg.keys`, `reg.remove` | typed: dword, qword, string, expandstring, multistring, binary |
 | `Get-Service`, `Start-Service`, `Stop-Service`, `Restart-Service` | `svc.list`, `svc.status`, `svc.start`, `svc.stop`, `svc.restart` | local services; transitions wait for the requested state; no service creation API |
 | `Get-WinEvent`, `Get-WinEvent -ListLog *` | `evt.read`, `evt.logs` | bounded local snapshots with typed fields and filters; no log mutation |
@@ -4621,6 +5156,8 @@ inspection calls can be synchronous, as their manual pages describe.
 | `Register-ScheduledTask` | `schtasks.exe` through `proc.run` | deferred as a module |
 | `New-Object -ComObject WScript.Shell` for shortcuts | no | desktop plumbing, not an agent's tool |
 | `Enable-WindowsOptionalFeature`, `New-NetFirewallRule`, `Set-MpPreference` | no | security settings stay with the person |
+
+<a id="kuu-page-powershell-the-script-itself"></a>
 
 ### The script itself
 
@@ -4634,11 +5171,15 @@ inspection calls can be synchronous, as their manual pages describe.
 | a wrapper adding `-Timeout` to every command | `task.defaults { timeout = "10m" }` | a default for `task.exec`; each call can override it, including with zero; `task.defaults {}` clears the default |
 | `Export-Clixml` for state between runs | `mem.set`, `mem.get`, `mem.update` | a JSON notebook per project, 1 MiB at most; update holds the lock through read, callback, and write |
 | `Set-StrictMode -Version Latest` | `global none` at the top of the file | the compiler refuses an undeclared global |
-| `try { } catch { }` | `nil, err` for expected failures, `pcall` for mistakes | see [err](#err) |
+| `try { } catch { }` | `nil, err` for expected failures, `pcall` for mistakes | see [err](#kuu-page-err) |
 | `-WhatIf` | `kuu run --dry-run` | loads task declarations and shows dependency order; task bodies do not run |
 | `Test-ModuleManifest`, `PSScriptAnalyzer` | `kuu check` | syntax, global declarations, `require` resolution, and misspelt known palette exports; does not check types or argument counts |
 
 ---
+
+<a id="kuu-page-cookbook"></a>
+
+<a id="kuu-page-cookbook-cookbook"></a>
 
 ## Cookbook
 
@@ -4647,8 +5188,10 @@ run it with your repository's `kuu.exe`. Inputs are positional arguments;
 paths belong to the current directory unless absolute. The first ten
 programs require kuu 0.7 or later, and the four after them, which are
 shaped by the front door — a manifest, a wrapper module, a reader of the
-run stream, a reader of the ledger — require 0.10. [`pty`](#pty) is
+run stream, a reader of the ledger — require 0.10. [`pty`](#kuu-page-pty) is
 provisional.
+
+<a id="kuu-page-cookbook-1-wait-for-a-port-to-open"></a>
 
 ### 1. Wait for a port to open
 
@@ -4672,6 +5215,8 @@ end)
 assert(up, e)
 print("ready", up.address, port)
 ```
+
+<a id="kuu-page-cookbook-2-install-a-tool-by-hash"></a>
 
 ### 2. Install a tool by hash
 
@@ -4700,6 +5245,8 @@ assert(response.status == 200, "download returned HTTP " .. response.status)
 assert(archive.unpack(cached, dest, { strip = strip, timeout = "10m" }))
 print("installed", dest)
 ```
+
+<a id="kuu-page-cookbook-3-tail-a-log-while-a-build-runs"></a>
 
 ### 3. Tail a log while a build runs
 
@@ -4739,6 +5286,8 @@ assert(result.status == "exit" and result.code == 0,
   "build ended: " .. result.status .. " / " .. tostring(result.code))
 ```
 
+<a id="kuu-page-cookbook-4-find-the-process-on-a-port-and-stop-it"></a>
+
 ### 4. Find the process on a port and stop it
 
 `kuu stop-port.lua PORT EXPECTED_PID` stops one process. Supply the PID you
@@ -4763,6 +5312,8 @@ end)
 assert(stopped, e)
 print("stopped", expected)
 ```
+
+<a id="kuu-page-cookbook-5-verify-an-installers-signature-before-running-it"></a>
 
 ### 5. Verify an installer's signature before running it
 
@@ -4793,6 +5344,8 @@ assert(result.status == "exit" and result.code == 0,
 print("installed", signature.signer)
 ```
 
+<a id="kuu-page-cookbook-6-check-a-service-and-start-it"></a>
+
 ### 6. Check a service and start it
 
 `kuu start-service.lua NAME` uses the service's internal name, not its display
@@ -4811,6 +5364,8 @@ assert(after.state == "running", "service did not stay running")
 print(after.name, after.state, after.pid)
 ```
 
+<a id="kuu-page-cookbook-7-read-the-last-errors-from-the-event-log"></a>
+
 ### 7. Read the last errors from the event log
 
 `kuu event-errors.lua [CHANNEL]` prints up to 20 errors from the last day,
@@ -4826,6 +5381,8 @@ local events = assert(evt.read(rt.args[1] or "System", {
 }))
 for _, event in ipairs(events) do print(json.encode(event)) end
 ```
+
+<a id="kuu-page-cookbook-8-run-a-step-under-a-deadline-with-limits"></a>
 
 ### 8. Run a step under a deadline with limits
 
@@ -4852,6 +5409,8 @@ end)
 assert(ok, e)
 ```
 
+<a id="kuu-page-cookbook-9-edit-an-ini-value-in-place"></a>
+
 ### 9. Edit an INI value in place
 
 `kuu edit-ini.lua FILE SECTION KEY VALUE` preserves comments, spacing, line
@@ -4872,12 +5431,14 @@ assert(fs.write(path, ini.set(before, section, key, value)))
 print("updated", path, section, key)
 ```
 
+<a id="kuu-page-cookbook-10-drive-a-prompt-through-pty"></a>
+
 ### 10. Drive a prompt through pty
 
 `kuu prompt.lua` drives `cmd.exe`'s console input, sets a value through
 `set /p`, and checks the answer. `expect` consumes through the matched text
 and uses Lua patterns. `text()` is the accumulated plain-text view, not a
-terminal screen. See the provisional [`pty`](#pty) contract before driving
+terminal screen. See the provisional [`pty`](#kuu-page-pty) contract before driving
 a different interactive program.
 
 ```lua
@@ -4897,6 +5458,8 @@ assert(child:write("exit\r"))
 local result = assert(child:wait("5s"))
 assert(result.status == "exit" and result.code == 0, "prompt child failed")
 ```
+<a id="kuu-page-cookbook-11-a-manifest-a-task-with-arguments-a-dependency-and-a-declared-tool"></a>
+
 ### 11. A manifest: a task with arguments, a dependency, and a declared tool
 
 `manifest.lua` at the project root. `kuu run report --since 2026-09-01`
@@ -4943,12 +5506,15 @@ task "report" {
 task.default "report"
 ```
 
+<a id="kuu-page-cookbook-12-a-module-that-wraps-a-tool-and-decodes-its-ndjson"></a>
+
 ### 12. A module that wraps a tool and decodes its NDJSON
 
 `tools/report.lua` in the project, required as `require "tools.report"`:
 the tool is run for its output through `task.command`, so the declared exe
 and timeout apply, and each line of standard output is one record. A line
-that does not decode is the tool's fault, and says which line. This is the
+that does not decode is the tool's fault, and says which line. Truncated
+capture is refused before parsing, so a valid prefix is never a complete result. This is the
 program's own `proc.run`, not a crossing; a task that wants the record
 calls `task.exec` instead.
 
@@ -4964,6 +5530,7 @@ function M.rows(since)
   if not r then return nil, e end
   if r.status ~= "exit" then return nil, err.new("REPORT", "failed", "report: " .. r.status) end
   if r.code ~= 0 then return nil, err.new("REPORT", "exit", "report exited with code " .. r.code, { exit = r.code }) end
+  if r.truncated then return nil, err.new("REPORT", "toobig", "report output exceeded the capture limit") end
   local rows, number = {}, 0
   for line in r.out:gmatch("[^\r\n]+") do
     number = number + 1
@@ -4976,6 +5543,8 @@ end
 
 return M
 ```
+
+<a id="kuu-page-cookbook-13-read-the-kuu-run---json-stream-as-it-happens"></a>
 
 ### 13. Read the `kuu run --json` stream as it happens
 
@@ -5017,6 +5586,8 @@ if not last.ok then
 end
 ```
 
+<a id="kuu-page-cookbook-14-what-failed-last-from-the-ledger"></a>
+
 ### 14. What failed last, from the ledger
 
 `kuu last-failure.lua [ROOT]` reads `.kuu/ledger/*.ndjson` under the
@@ -5053,6 +5624,10 @@ print(failed.kind, failed.name, failed.error and (failed.error.domain .. " " .. 
 
 ---
 
+<a id="kuu-page-inheritance"></a>
+
+<a id="kuu-page-inheritance-inheritance"></a>
+
 ## Inheritance
 
 What kuu carries over from machteld, the z estate, the els method, and the
@@ -5061,6 +5636,8 @@ retrospectives, and commit histories. Each item is a law kuu keeps, a trap it
 must not fall into again, or a contract it copies. The source is named so the
 reasoning can be reread. This is the register the roadmap's "learn every
 lesson" instruction produces; add to it, never silently edit it.
+
+<a id="kuu-page-inheritance-laws"></a>
 
 ### Laws
 
@@ -5103,6 +5680,8 @@ lesson" instruction produces; add to it, never silently edit it.
   tools for a month.
 - **Build the hostile fixture first.** The real junction, dangling link,
   hidden directory, or locked file exposes what self-review never does.
+
+<a id="kuu-page-inheritance-windows-traps-kuus-c-obeys"></a>
 
 ### Windows traps kuu's C obeys
 
@@ -5206,6 +5785,8 @@ Host and build:
   byte-identical rebuild before signing. Sign the final executable, not the
   interpreter it came from.
 
+<a id="kuu-page-inheritance-contracts-kuu-copies"></a>
+
 ### Contracts kuu copies
 
 - Durations and sizes carry units; a bare number is seconds or bytes, never
@@ -5233,6 +5814,8 @@ Host and build:
   get, and search that never touch the network. Error messages are greppable
   in the manual. Every example in the manual is executed by a test.
 
+<a id="kuu-page-inheritance-task-runners-and-locks-for-03"></a>
+
 ### Task runners and locks, for 0.3
 
 - Five task runners in the estate shared no library; the same converter and
@@ -5259,6 +5842,8 @@ Host and build:
   anything was the most useful verb agents had. Bare invocation from a pipe
   gets help, never an interactive shell.
 
+<a id="kuu-page-inheritance-what-the-estates-agents-got-wrong"></a>
+
 ### What the estate's agents got wrong
 
 - Under strict globals, declaring any `global` switches the chunk into
@@ -5276,6 +5861,10 @@ Host and build:
 
 ---
 
+<a id="kuu-page-roadmap"></a>
+
+<a id="kuu-page-roadmap-roadmap"></a>
+
 ## Roadmap
 
 kuu began on 2026-09-09 as the successor to machteld, the Tcl runtime for
@@ -5283,6 +5872,8 @@ agents, after the owner concluded that estate-wide management had to stop and
 that each project should stand alone with its own tools. The name was reused
 from an earlier, archived attempt to reimplement Lua 5.5 in Go; the new kuu
 embeds PUC Lua instead. This page records the decisions and the milestones.
+
+<a id="kuu-page-roadmap-decisions"></a>
 
 ### Decisions
 
@@ -5293,25 +5884,27 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | a language of kuu's own | none, by owner decision on 2026-09-11: no successor language, no compiler, no emission subset | kuu is a runtime for Lua 5.5 and grows capabilities in the palette and options on the calls already there; existing technology is recombined, not syntax invented |
 | a mandated runtime | none. No JavaScript, Go, Tcl or other runtime is shipped, fetched by kuu, mandated, or recommended; kuu is never extended, a project is, and `.kuu/` never holds anything that runs | decided 2026-09-13. A design for a downloaded, pinned JavaScript runtime was recorded on 2026-09-12 and set aside the next day; the note stands as the record of what was considered and measured. The problem it answered — the palette grows only through C — is answered by the front door instead: a project builds the tool it needs and calls it through `kuu.exe`, and the manual says what a confined tool must provide without naming what to write it in |
 | host language | C, the els method's subset | the host lives on two C boundaries, Win32 and the Lua API, and machteld's process-lifetime and text-boundary code transfers verbatim |
-| compiler | gcc 16.2.0-3 from MSYS2 UCRT64, unpacked into `.tools` from 18 archives pinned by SHA-256 and retained | the estate's proven recipe; gcc and GNU make are the chosen production build, with Clang only for sanitizer tests. Pinned on 2026-09-13, when the 16.1 tree that built everything before turned out to be a copy of a live install whose packages the mirror no longer served; the record is the table in [toolchain](#toolchain), the check is `certutil`, and no tool in the repository fetches or verifies it |
+| compiler | gcc 16.2.0-3 from MSYS2 UCRT64, unpacked into `.tools` from 18 archives pinned by SHA-256 and retained | the estate's proven recipe; gcc and GNU make are the chosen production build, with Clang only for sanitizer tests. Pinned on 2026-09-13, when the 16.1 tree that built everything before turned out to be a copy of a live install whose packages the mirror no longer served; the record is the table in [toolchain](#kuu-page-toolchain), the check is `certutil`, and no tool in the repository fetches or verifies it |
 | build | GNU make from the same `.tools`, recipes under `cmd.exe` | no PowerShell in the repository, and kuu never builds kuu: the build is make and gcc, the tests are Lua run by the built kuu |
 | self-hosting | none, by owner decision | kuu is not required to bootstrap or build itself; a person with `.tools` populated runs `make` |
-| versions | `Major.Minor.Patch`, all natural numbers, since 0.9.0 | 0.1 through 0.8 had no patch component; a frozen 1.x needs a way to ship one correction without claiming new capability, and the component is cheaper to add before the freeze than after it. `rt.version_at_least` compares them so no project parses the text |
+| versions | `N.N`, two nonnegative integers, from 0.11 | the owner chose release numbers without semantic-version compatibility categories; compare components numerically, so 0.11 follows 0.10. `rt.version_at_least` compares them without parsing text. The earlier 0.9.0 and 0.10.0 names remain historical; contract changes and explicit interface commitments live in the upgrading and stability pages |
 | dependency pinning | none: a project fetches what it needs by url and hash with `http` and `archive`; kuu's own compiler is obtained by hand from archives pinned by hash and retained, never fetched by kuu | the lock built in 0.3 was removed in 0.4 as formalism; kuu does not bootstrap itself |
-| the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has only stock Lua's `io` and `os`, and a static check can list what else a file asks for. It gates a program that does not reach around it: `_ENV` is an upvalue, needs no declaration, and reaches `load` and the whole palette from a file `check` reports with `"requires":[]` and a clean bill ([shortcomings](#shortcomings)) |
+| the gate | `require` | a program obtains capabilities by naming modules; a stray Lua file has only stock Lua's `io` and `os`, and a static check can list what else a file asks for. It gates a program that does not reach around it: `_ENV` is an upvalue, needs no declaration, and reaches `load` and the whole palette from a file `check` reports with `"requires":[]` and a clean bill ([shortcomings](#kuu-page-shortcomings)) |
 | the manual | for kuu, not for Lua | one page of what an agent's Lua priors get wrong here; no reference manual, no index |
 | process lifetime | the no-orphans law, first thing in the palette | every child is born into a kill-on-close job; only `detach`, and a child's own deliberate breakaway, step outside it |
 | what stays out | `store` (SQLite), publishing, Tk, a wrap verb, Tcl in the runtime, PATH lookup, `io.popen`, `os.execute` | tools or hazards, not organs. Any of them may be a project's tool, fetched by hash into its own root and called through the door; none is recommended, and none enters the palette unless it cannot be a tool |
 | projects share nothing | every project carries its own `kuu.exe`, copied in by hand, directly in its root since 0.6 (0.4 and 0.5 put it in `.tools`); nothing on `PATH`, no machine changes, no bootstrap scripts | the owner ended estate-wide management; a small executable is copied, not fetched by glue |
 | what a project may fetch | upstream downloads only, into its own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger fetches from the same public sources. kuu itself fetches nothing, ever; `.kuu/` holds only kuu's own state, the notebook and the ledger |
 | a project's tools | whatever a project builds or fetches into its own root, in any technology, declared in its manifest with the arguments it takes and the shape it emits, and called through the door | there are exactly two kinds of thing a program can reach: the palette, kuu's, described by `_palette` and gated by `require`; and the project's tools, the project's, declared in `manifest.lua`. There is no third kind; a tool that wants to read like a module is wrapped by an ordinary project module |
-| the project's declaration file | `manifest.lua` at the root: prerequisites by hash, tasks, and `tool` declarations, in one file; `tasks.lua` still found for one release, with a warning | decided 2026-09-13; one authored file, read two ways from one source — executed by `run`, `list` and `capabilities`, read as literals by `check`, held equal by the suite |
+| the project's declaration file | `manifest.lua` at the root: prerequisites by hash, tasks, and `tool` declarations, in one file; `tasks.lua` remains a deprecated fallback with a warning and no scheduled removal | decided 2026-09-13; one authored file, read two ways from one source — executed by `run`, `list` and `capabilities`, read as literals by `check`, held equal by the suite. The earlier planned removal in 0.11 was withdrawn |
 | kuu's own repository | free of kuu: build and release are make, gcc, and cmd recipes; no `manifest.lua` there | self-reference is unwelcome, for release steps too |
 | releases | anafalanx/kuu public; GitHub Releases carry `kuu.exe` and its `.sha256`; signed with the owner's existing Certum certificate through the Windows SDK's signtool | the estate already signs this way, and public releases need no credentials to fetch |
 | the second project | `C:\dev\kuu-test-project`, local, no remote, tailored to test kuu features | a project built to exercise the runtime, before any existing one is converted |
 | what kuu is | the front door of a project: everything that *runs* in a project runs through `kuu.exe` — a task, a build, a test, a tool, a fetch — and gets a job, a deadline, limits, tree-kill on the door's death, a record, and where the door can read it, a check. Writing code is not a crossing; what an agent writes becomes the door's business the moment it first runs, and `check` stands at that threshold | decided 2026-09-13, after the review of 2026-09-12 ([plan](notes/plan-front-door-2026-09-13_001735.md)). The door is the only part that must last fifteen years, so it is Lua on C, small, built with great care, and it stops growing; what a project needs beyond it is a tool the project builds, in any technology, and calls through the door. The earlier row — a power tool in the agent's hand that removes the fumbling, not the knowing — stands as the description of the palette |
 | dependencies | no lock: verification is a capability (`http.get` with `sha256`, `fs.unpack`), and the agent writes its own setup | the lock was formalism for a shared-payload world that no longer exists |
 | memory across runs | `mem`, a small JSON notebook per project, Lua only, capped at 1 MiB | agents need to remember between runs; the executable stays nimble; SQLite stays out |
+
+<a id="kuu-page-roadmap-inventory"></a>
 
 ### Inventory
 
@@ -5361,7 +5954,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `kuu capabilities [--json]`: the verbs, the public modules and their names, the error domains and closed sets, and this project's tasks and modules; `rt.verbs`, `rt.pages` | 0.10.0 |
 | `text.trim`, native, replacing a helper hand-rolled six times; the unanchored `$` out of every hot path in `lua/` and `tools/`; `check` lexes by byte | 0.10.0 |
 | `kuu.md`: what kuu is, what its predecessors taught, and the whole manual inlined by `tools/bundle_docs.lua`, held to `docs/` by the suite | 0.10.0 |
-| `manifest.lua` as the declaration file, `tasks.lua` found for one release; tools declared beside tasks with `task.tool` and called with `task.exec { tool = }`, read by `check` as literals and held to; the ledger under `.kuu/ledger`, chained, with the tree delta and the repository's head; `kuu run --json` as a stream | 0.10.0 |
+| `manifest.lua` as the declaration file, with a warned `tasks.lua` fallback that remains supported; tools declared beside tasks with `task.tool` and called with `task.exec { tool = }`, read by `check` as literals and held to; the ledger under `.kuu/ledger`, chained, with the tree delta and the repository's head; `kuu run --json` as a stream | 0.10.0 |
 | `kuu docs agent`, what is expected of an agent and the `kuu-eval.md` report back, named by every entry point and counted by `capabilities`; `docs` a verb like the others with sections, descriptions, search and `--json`; `rt.page` | 0.10.0 |
 | every verb points onward: a manifest that declares nothing, a misspelt verb, an unknown task with the nearest name, no project, a first `.kuu/` not ignored, the 0.8 version guard found by `check`; `notes` on the JSON envelopes; `kuu run TASK --help` exits 0; `TASK failed` carries `status` and `limit` | 0.10.0 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
@@ -5375,6 +5968,8 @@ imported by name; four resolved with `GetProcAddress` at run time —
 from System32 only while `archive.list` runs. 191 names is what "small"
 means here, and the number is meant to go down, not up: a module that would
 add to it is a tool the project builds, called through the door.
+
+<a id="kuu-page-roadmap-milestones"></a>
 
 ### Milestones
 
@@ -5463,8 +6058,8 @@ add to it is a tool the project builds, called through the door.
    dependency-only tasks, the `version` command, consistent duration units,
    Unicode archive listing and ZIP creation, process path consistency, and
    actionable TLS diagnostics. GCC analysis and deterministic parser fuzzing
-   supplement the regression suite. See the [migration notes](#upgrading-06)
-   and [observations log](#shortcomings). Released 2026-09-10, after the cold
+   supplement the regression suite. See the [migration notes](#kuu-page-upgrading-06)
+   and [observations log](#kuu-page-shortcomings). Released 2026-09-10, after the cold
    setup and recovery run of Time Actual on a second machine.
    - The earlier console/control plan is deferred. `pty`, `svc`, `evt`,
      `worker`, `serve`, and export-aware `check` are not implemented in 0.6.
@@ -5484,12 +6079,12 @@ add to it is a tool the project builds, called through the door.
    follows direct local require bindings through lexical scopes and catches
    unknown exports without running project code. `pty` drives console prompts
    through ConPTY and stays provisional.
-   - The [cookbook](#cookbook) gives ten complete programs, extracted and
+   - The [cookbook](#kuu-page-cookbook) gives ten complete programs, extracted and
      checked by the suite and exercised with safe fixtures. The
-     [stability statement](#stability) names the future 1.x contract and
+     [stability statement](#kuu-page-stability) names the future 1.x contract and
      replaces exact-version guards with numeric minimums. The module pages,
      PowerShell map, error-code sets, and JSON schemas are documented together;
-     [upgrading to 0.7](#upgrading-07) records the changes from 0.6.
+     [upgrading to 0.7](#kuu-page-upgrading-07) records the changes from 0.6.
    - `make gate` combines the suite, GCC analysis, deterministic fuzzing, and
      soak. The parser corpus now includes CSV, INI decode and edits, JSON,
      and registry key text. `make asan` builds a separate test executable
@@ -5500,8 +6095,8 @@ add to it is a tool the project builds, called through the door.
    final output and finish canceled I/O safely. The Lua API is unchanged,
    and `pty` remains provisional. The JSON duplicate-key diagnostic also
    keeps its parser-owned key alive while formatting the error. See
-   [upgrading to 0.8](#upgrading-08) and the validation evidence in
-   [observed shortcomings](#shortcomings).
+   [upgrading to 0.8](#kuu-page-upgrading-08) and the validation evidence in
+   [observed shortcomings](#kuu-page-shortcomings).
 9. **0.9.0, the pre-freeze correction release.** The last release in which a
    contract may still be corrected, so it is mostly subtraction and
    correction rather than features: additions stay legal at 1.x, contract
@@ -5523,7 +6118,7 @@ add to it is a tool the project builds, called through the door.
    `worker` and `serve` can still wait for 1.1 and are not a freeze blocker.
    Every component of `make gate` passes: the suite five times over, native
    analysis, parser fuzzing, and — for the first time on any host — a soak
-   gate with zero failures. See [upgrading to 0.9](#upgrading-09).
+   gate with zero failures. See [upgrading to 0.9](#kuu-page-upgrading-09).
    - Released 2026-09-11 at 12:55:48 UTC: the tag names `81f9fd7`, the signed
      executable is 1,563,512 bytes, and the local file, the asset downloaded
      again, and the published sidecar all carry the same SHA-256, with the
@@ -5595,14 +6190,14 @@ add to it is a tool the project builds, called through the door.
      Two measurements went the other way: flattening a build to avoid
      intermediate strings measured 1.03x, so no string builder was written;
      and `log`'s `format_text` on one `table.concat` ran 30% slower and was
-     reverted, so [pitfalls](#pitfalls) now carries the crossover, about ten
+     reverted, so [pitfalls](#kuu-page-pitfalls) now carries the crossover, about ten
      short pieces, instead of the rule it was written from.
    - Recorded, not built. `_ENV` is an upvalue, so under `global none` with
      nothing declared it reaches `load` and the whole palette while
      `kuu check --json` reports `"requires":[]` and a clean bill; the `require`
      gate holds only for a program that does not reach around it, and the
      small answer, reporting such a reference from `check`, is unimplemented
-     ([observations](#shortcomings)). And a JavaScript capability was
+     ([observations](#kuu-page-shortcomings)). And a JavaScript capability was
      designed on 2026-09-12 — a downloaded, pinned runtime under a permission
      model, never shipped — and set aside the next day, after a whole-project
      review and a spike, for the front door: kuu stays Lua on C and stops
@@ -5631,7 +6226,7 @@ add to it is a tool the project builds, called through the door.
      Two laws hold in every module: an unknown option raises `usage` —
      eleven calls ignored one and four called it `badvalue` — through one
      helper in C and one in Lua; and the raise-or-return line is stated in
-     [err](#err) by the function's purpose, which moved `hash.file`,
+     [err](#kuu-page-err) by the function's purpose, which moved `hash.file`,
      `cli.duration` and `cli.size` and left `re` and `text` where they were.
      The `fs.c` raise-path leak the review named did not reproduce under two
      scans and is recorded as such.
@@ -5643,10 +6238,10 @@ add to it is a tool the project builds, called through the door.
      resolved with `task.command`; `check` reads the declarations from the
      manifest's text and holds every call to them, `capabilities` lists them
      from the registry, and the suite holds the two readings equal —
-     [tools](#tools), and [confined tools](#confined) for what a tool
+     [tools](#kuu-page-tools), and [confined tools](#kuu-page-confined) for what a tool
      that confines itself must provide and the junction that walks out of any
      lexical grant. `kuu run --json` is a stream, each event as it happens
-     and the envelope last. The door keeps a [ledger](#ledger): one record
+     and the envelope last. The door keeps a [ledger](#kuu-page-ledger): one record
      per crossing under `.kuu/ledger`, chained by hash, ninety days, with the
      tree delta since the previous run and the repository's head read from
      `.git` itself. Part I's figures are produced by the bundler and held by
@@ -5666,14 +6261,30 @@ add to it is a tool the project builds, called through the door.
      `test/fixtures` correct so a name that falls out of use fails instead of
      rotting; and `kuu.md` regenerated and compared. `docs/capabilities.md` is
      a new manual page, and
-     [upgrading to 0.10](#upgrading-010) the migration: no call moves, but
+     [upgrading to 0.10](#kuu-page-upgrading-010) the migration: no call moves, but
      a project green on 0.9.0 can be red here without changing, and the
      documented set of `check` error kinds grows from three to six, which is
      the one change that can break a program reading the JSON.
      `capabilities` is provisional and outside the planned freeze until a
-     project has driven it, by the rule [stability](#stability) already
+     project has driven it, by the rule [stability](#kuu-page-stability) already
      applies to `pty`, `svc`, `evt` and `sys.signature`.
-11. **1.0.** Criteria for the owner to set. Proposed: three projects driven
+11. **0.11, corrections and the first encounter.** Published versions return
+   to two nonnegative integers, compared numerically, without semantic-version
+   compatibility categories. Existing three-argument minimum-version guards
+   remain accepted, with the running release compared as `(0, 11, 0)`.
+   The deprecated `tasks.lua` fallback remains supported without a removal
+   date. Two reviews of 0.10.0
+   corrected process and HTTP allocation ownership, bounded streaming reads,
+   archive replacement, ledger failure reporting, checker inference, helper
+   validation, and payload generation. Whole-output and unfinished-line reads
+   now return recoverable `PROC toobig` at the unread buffer bound; incomplete
+   module inventories and unreadable history are explicit in the descriptor.
+   Entry help and the agent guide demonstrate immediate work through `kuu -e`,
+   and documentation search points to commands that retrieve the relevant
+   section. [Upgrading to 0.11](#kuu-page-upgrading-011) records the version, behavior and
+   schema changes. The next evidence comes from agents doing ordinary work in
+   prepared projects, with kuu as the execution entry point.
+12. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
    verdict. Two amendments agreed on 2026-09-11: a **clean soak gate on every
@@ -5681,8 +6292,10 @@ add to it is a tool the project builds, called through the door.
    promise on a signal nobody trusts; and **at least one cold adopter**,
    because every adoption finding on record comes from Time Actual, which
    co-evolved with the runtime and therefore routes around contract mistakes
-   instead of reporting them. Between 0.10.0 and 1.0: the freeze, the month of
+   instead of reporting them. Between 0.11 and 1.0: the freeze, the month of
    use, and corrections driven by what that use finds.
+
+<a id="kuu-page-roadmap-the-05-review-fixes-implemented"></a>
 
 ### The 0.5 review: fixes implemented
 
@@ -5755,8 +6368,10 @@ over every authored host C file with warnings as errors; `make fuzz` exercises
 durations, paths, dates, and command lines with fixed seeds, arbitrary bytes,
 structured mutations, round trips, and supervised child deadlines. The
 Windows command-line parser provides an independent quoting check. See
-[toolchain](#toolchain) for replay commands. Analysis also made the error
+[toolchain](#kuu-page-toolchain) for replay commands. Analysis also made the error
 raiser's non-returning contract explicit and led to entry-allocation cleanup.
+
+<a id="kuu-page-roadmap-open-decisions"></a>
 
 ### Open decisions
 
@@ -5770,10 +6385,14 @@ raiser's non-returning contract explicit and led to entry-allocation cleanup.
   restricted tokens are moderate, path allow-lists are not — and waits for a
   real need.
 
+<a id="kuu-page-roadmap-backlog"></a>
+
 ### Backlog
 
 Small things, unscheduled: cancellation and a streaming body reader in
 `http`; `kuu docs` as a searchable single page.
+
+<a id="kuu-page-roadmap-the-lua-versus-tcl-ledger"></a>
 
 ### The Lua-versus-Tcl ledger
 
@@ -5833,6 +6452,8 @@ once: the alternation gap closed with `re`, and the anchoring gap with
 model, the byte strings, and the C API have been strengths at every step so
 far.
 
+<a id="kuu-page-roadmap-06-fixes-from-real-repository-adoption"></a>
+
 ### 0.6: fixes from real repository adoption
 
 Time Actual exposed cross-module duration units, lossy archive names, process
@@ -5840,7 +6461,7 @@ path inconsistency, and task/entry friction. 0.6 uses numeric
 seconds throughout, supports dependency-only tasks and `kuu version`, returns
 Unicode archive inventories, writes UTF-8 ZIP headers, normalizes process
 executable paths, and identifies client-key/proxy TLS failures. See
-[migration notes](#upgrading-06) and the [observations log](#shortcomings).
+[migration notes](#kuu-page-upgrading-06) and the [observations log](#kuu-page-shortcomings).
 The Tcl sandbox issue remains an execution-environment limitation. The windres
 workaround belongs to the consuming build recipe and is now documented.
 
@@ -5853,17 +6474,25 @@ machine, recorded in the observations log, and 0.6 was released.
 
 ---
 
+<a id="kuu-page-shortcomings"></a>
+
+<a id="kuu-page-shortcomings-shortcomings-observed-in-real-use"></a>
+
 ## Shortcomings observed in real use
 
 Findings from adopting Kuu in real repositories. Record the trigger, impact,
 workaround, and verification status. A limitation or rough edge is not
 necessarily a runtime defect; fixes should follow reproduced evidence.
 
+<a id="kuu-page-shortcomings-time-actual-adoption-—-2026-09-10"></a>
+
 ### Time Actual adoption — 2026-09-10
 
 0.6 addresses seven runtime/API findings below. The
 Tcl sandbox limitation remains external; the windres recipe issue is resolved
 in Time Actual. Original observations and 0.5 workarounds are retained for context.
+
+<a id="kuu-page-shortcomings-kuu-version-executes-a-repositorys-version-file"></a>
 
 #### `kuu version` executes a repository's VERSION file
 
@@ -5875,6 +6504,8 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
 - **Status:** Fixed in 0.6. `version` is a reserved verb; `./version` still
   executes a file. Both version forms reject extra arguments.
 
+<a id="kuu-page-shortcomings-dependency-only-tasks-require-an-empty-function"></a>
+
 #### Dependency-only tasks require an empty function
 
 - **Kind:** task declaration friction.
@@ -5885,6 +6516,8 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
 - **Workaround:** add `run = function() end`; run `kuu list` as well as `check`.
 - **Status:** Fixed in 0.6. A task with non-empty dependencies may omit `run`;
   cycles, failure propagation, argument checks, and JSON plans still apply.
+
+<a id="kuu-page-shortcomings-restricted-networking-produces-an-opaque-winhttp-error"></a>
 
 #### Restricted networking produces an opaque WinHTTP error
 
@@ -5903,6 +6536,8 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   named client-key/proxy causes and actionable context. The hosting restriction itself
   is external.
 
+<a id="kuu-page-shortcomings-cli-durations-cannot-be-passed-directly-to-process-timeouts"></a>
+
 #### CLI durations cannot be passed directly to process timeouts
 
 - **Kind:** cross-module unit mismatch; confirmed during real task execution.
@@ -5917,7 +6552,9 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   Time Actual retains this for 0.5 compatibility and exercises both runtime versions.
 - **Status:** Fixed in 0.6. CLI results, bounds, and choices use seconds, matching
   native consumers. This is an intentional API change; see [migration
-  notes](#upgrading-06). Time Actual handles both 0.5 and 0.6 explicitly.
+  notes](#kuu-page-upgrading-06). Time Actual handles both 0.5 and 0.6 explicitly.
+
+<a id="kuu-page-shortcomings-tcl-path-normalization-fails-inside-the-agents-filesystem-sandbox"></a>
 
 #### Tcl path normalization fails inside the agent's filesystem sandbox
 
@@ -5933,6 +6570,8 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   can still run inside the sandbox.
 - **Status:** External limitation remains. Normal Windows execution passes; no Kuu
   runtime defect was demonstrated.
+
+<a id="kuu-page-shortcomings-archivelist-returns-non-utf-8-filenames-on-windows"></a>
 
 #### `archive.list` returns non-UTF-8 filenames on Windows
 
@@ -5952,6 +6591,8 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   Windows archiveint.dll, without extraction or ANSI-output guessing. Unicode, JSON,
   empty archives, and cancellation have regression coverage.
 
+<a id="kuu-page-shortcomings-downstream-tools-can-reintroduce-shell-quoting-problems"></a>
+
 #### Downstream tools can reintroduce shell quoting problems
 
 - **Kind:** external tool limitation encountered through process orchestration.
@@ -5962,8 +6603,10 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   pass relative resource/include paths. The moved checkout then built and
   passed its tests with the original toolchain directories unavailable.
 - **Status:** Resolved in the Time Actual recipe. The internal-command boundary and
-  windres workaround are documented in [proc](#proc); no Kuu quoting defect was
+  windres workaround are documented in [proc](#kuu-page-proc); no Kuu quoting defect was
   demonstrated.
+
+<a id="kuu-page-shortcomings-process-metadata-and-filesystem-paths-use-different-separators"></a>
 
 #### Process metadata and filesystem paths use different separators
 
@@ -5977,6 +6620,8 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   `fs.absolute`; command lines remain unchanged. Regression coverage checks a real child
   process.
 
+<a id="kuu-page-shortcomings-zip-creation-loses-names-outside-the-system-code-page"></a>
+
 #### ZIP creation loses names outside the system code page
 
 - **Kind:** confirmed encoding defect in the archive wrapper's writer options.
@@ -5987,6 +6632,8 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
 - **Fix:** pass `--options zip:hdrcharset=UTF-8` for ZIP creation.
 - **Status:** fixed in 0.6; the regression compares the source name,
   Unicode listing, and extracted file for ZIP and compressed tar formats.
+
+<a id="kuu-page-shortcomings-intermittent-access-denied-while-replacing-files"></a>
 
 #### Intermittent access denied while replacing files
 
@@ -6009,6 +6656,8 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
   build (3 failures). This predates the OS-floor change; its cause remains
   unisolated. The soak gate is not clean on this host.
 
+<a id="kuu-page-shortcomings-entry-routes-leave-startup-allocations-to-process-teardown"></a>
+
 #### Entry routes leave startup allocations to process teardown
 
 - **Kind:** native allocation cleanup found by GCC analysis, not a reported
@@ -6020,6 +6669,8 @@ in Time Actual. Original observations and 0.5 workarounds are retained for conte
 - **Status:** fixed locally. The entry dispatcher borrows converted arguments;
   its caller releases them, and file/eval/stdin routes share explicit cleanup.
   GCC analysis and the entry regression cases pass.
+
+<a id="kuu-page-shortcomings-validation-of-06-before-its-release"></a>
 
 ### Validation of 0.6 before its release
 
@@ -6047,7 +6698,11 @@ The intermittent file-access failures above remain recorded despite passing
 reruns. These validation results preceded the source checkpoint push; no
 release or signing was performed.
 
+<a id="kuu-page-shortcomings-cold-setup-and-recovery-—-2026-09-10"></a>
+
 ### Cold setup and recovery — 2026-09-10
+
+<a id="kuu-page-shortcomings-file-hashing-fails-on-paths-that-the-filesystem-api-can-read"></a>
 
 #### File hashing fails on paths that the filesystem API can read
 
@@ -6062,6 +6717,8 @@ release or signing was performed.
   suite passes **838 checks**, and native static analysis passes.
 - **Published 0.5 workaround:** Time Actual's installer supplies an explicit
   extended-length Windows path until the fixed 0.6 binary is released.
+
+<a id="kuu-page-shortcomings-installation-presence-stamps-accept-damaged-tools"></a>
 
 #### Installation presence stamps accept damaged tools
 
@@ -6082,6 +6739,8 @@ release or signing was performed.
 See [the dated handoff](notes/handoff-2026-09-10_193511.md) for the exact paused
 state, local evidence and remaining work. Earlier full application results
 above do not establish completion of the new recovery recipe's validation.
+
+<a id="kuu-page-shortcomings-cold-setup-and-recovery-on-a-second-machine-—-2026-09-10"></a>
 
 ### Cold setup and recovery on a second machine — 2026-09-10
 
@@ -6129,6 +6788,8 @@ Observations, none of them a kuu defect:
 - **`env` printed a stray `1`** after the Python and Tcl versions, `gsub`'s
   count reaching `print`. Fixed in the recipe.
 
+<a id="kuu-page-shortcomings-promoting-07-on-windows-11-23h2-—-2026-09-11"></a>
+
 ### Promoting 0.7 on Windows 11 23H2 — 2026-09-11
 
 - **Kind:** a newly supported OS exposed a static-import and console-lifetime
@@ -6161,9 +6822,11 @@ Observations, none of them a kuu defect:
   available for a fresh run. See the file-access finding above for the
   pre-existing soak failure.
 - **Release status:** the compatibility fix is included in
-  [0.8](#upgrading-08). The published signed 0.7 asset and its digest are
+  [0.8](#kuu-page-upgrading-08). The published signed 0.7 asset and its digest are
   unchanged and still cannot start on 23H2. The validation evidence above
   records the earlier development build; its remaining findings stay open.
+
+<a id="kuu-page-shortcomings-json-duplicate-key-error-lifetime-—-2026-09-11"></a>
 
 ### JSON duplicate-key error lifetime — 2026-09-11
 
@@ -6173,6 +6836,8 @@ Observations, none of them a kuu defect:
 - **Fix:** build the error while the document still owns the key, then free
   the document. The existing duplicate-key regression now checks the key in
   the message as well as the error code. Included in 0.8.
+
+<a id="kuu-page-shortcomings-process-tree-chain-check-during-23h2-validation-—-2026-09-11"></a>
 
 ### Process-tree chain check during 23H2 validation — 2026-09-11
 
@@ -6197,6 +6862,8 @@ Observations, none of them a kuu defect:
   the machine offers: every readable process whose snapshot children include
   an unreadable one shows it no such child.
 
+<a id="kuu-page-shortcomings-orphaned-io-completion-during-console-shutdown-—-2026-09-11"></a>
+
 ### Orphaned I/O completion during console shutdown — 2026-09-11
 
 - **Observed:** the 0.8 release review found that a canceled console read
@@ -6210,6 +6877,8 @@ Observations, none of them a kuu defect:
   The console suite also leaves an exited console open through shutdown
   while another Lua finalizer runs a process. Included in 0.8.
 
+<a id="kuu-page-shortcomings-published-08-on-the-23h2-host-—-2026-09-11"></a>
+
 ### Published 0.8 on the 23H2 host — 2026-09-11
 
 The final signed 0.8 release starts on build 22631.7517 and passes all
@@ -6222,6 +6891,8 @@ remains open. Time Actual's task/recovery tests, all 2,191 engine checks,
 application build and isolated self-test pass with the promoted release.
 
 See the [dated adoption record](notes/validation-0.8-23h2-2026-09-11_104022.md).
+
+<a id="kuu-page-shortcomings-the-replacement-failure-isolated-and-closed-—-2026-09-11"></a>
 
 ### The replacement failure isolated and closed — 2026-09-11
 
@@ -6258,6 +6929,8 @@ failed once and passed on rerun, and `an unknown host is HTTP notfound`, which
 returned `HTTP timeout` when sandbox DNS stalled past ten seconds. Neither is
 reproduced; neither should be attributed to a kuu defect without evidence.
 
+<a id="kuu-page-shortcomings-the-soak-gate-is-clean-—-2026-09-11"></a>
+
 ### The soak gate is clean — 2026-09-11
 
 The compatibility gate above recorded 38 soak rounds with 21 state writes
@@ -6271,6 +6944,8 @@ and parser fuzzing passes 10,000 cases per family on both fixed seeds. Every
 component of `make gate` therefore passes on this host, which is the first
 host on which that has been true.
 
+<a id="kuu-page-shortcomings-_env-reaches-every-capability-without-declaring-one-—-2026-09-11"></a>
+
 ### `_ENV` reaches every capability without declaring one — 2026-09-11
 
 - **Kind:** a gap in a documented affordance. Not a sandbox escape: kuu has
@@ -6279,7 +6954,7 @@ host on which that has been true.
   always and needs no declaration. Under `global none` with nothing declared,
   `_ENV.load("return 2 + 3")()` compiles and runs code, and
   `_ENV.require("proc")` reaches the whole palette.
-- **Impact:** [`check`](#check) says its require listing "is how an agent sees
+- **Impact:** [`check`](#kuu-page-check) says its require listing "is how an agent sees
   what else a file asks for before running it", and for such a file it does
   not. The file below draws `"requires":[]`, `"errors":0`, `"warnings":0`,
   `"ok":true` from `kuu check --json`, and then starts a child:
@@ -6304,12 +6979,24 @@ host on which that has been true.
 
 ---
 
+<a id="kuu-page-stability"></a>
+
+<a id="kuu-page-stability-stability"></a>
+
 ## Stability
 
 kuu is still before 1.0. The 0.x releases may change contracts when use in
 real repositories shows a mistake. Each such change belongs in that release's
 upgrading page, with the old form beside the replacement. Projects carry a
 specific `kuu.exe` in their own repository; updating that copy is deliberate.
+
+Published versions from 0.11 have the form `N.N`, two nonnegative integers
+compared numerically: 0.11 follows 0.10. The components identify and order
+releases; they do not encode semantic-version compatibility categories.
+Compatibility follows the explicit promises below and each release's
+upgrading notes, not an inference from which number changed.
+
+<a id="kuu-page-stability-the-10-boundary"></a>
 
 ### The 1.0 boundary
 
@@ -6323,7 +7010,9 @@ The same promise covers running a file, stdin, or an inline program; the
 `docs`, `run`, `list`, and `check` verbs; their documented options and exit
 codes; and their documented JSON reports. It includes the supported Windows
 baseline and the documented Lua language version. The freeze is a promise
-for 1.x, not a claim that the 0.10.0 interface can no longer improve.
+for the named 1.x release family, not a claim that the current interface can
+no longer improve. It is an explicit commitment, independent of the release
+numbering convention.
 
 `pty`, `svc`, `evt`, and `sys.signature` are provisional, and so is the
 `capabilities` verb with its JSON report. Their APIs may change before or
@@ -6348,6 +7037,8 @@ Private modules and names starting with `_`, command implementation modules
 under `cmd`, internal helper processes, build artifacts, and undocumented
 implementation details are also outside the public contract.
 
+<a id="kuu-page-stability-what-1x-may-add"></a>
+
 ### What 1.x may add
 
 A 1.x release may add a module, function, verb, optional argument, option,
@@ -6367,46 +7058,57 @@ It may not remove or rename a public entry, change an accepted argument's
 meaning, change defaults for existing calls, change duration or size units,
 change the type or meaning of an existing result field, change a documented
 exit code or error domain/code, or weaken a documented lifetime or atomicity
-guarantee. Such changes require a new major version and a migration note.
+guarantee. Such a change cannot be made under this promise: it would require
+an explicitly announced replacement compatibility policy and a migration
+note. Changing a version number alone does not authorize it.
+
+<a id="kuu-page-stability-a-minimum-version-guard"></a>
 
 ### A minimum-version guard
 
 A `manifest.lua` should ask for the oldest release whose features it uses,
-rather than compare the runtime version for equality. Since 0.9.0 a version
-has three natural-number components, Major.Minor.Patch, and
-`rt.version_at_least` compares them, so a project never parses the version
-text:
+rather than compare the runtime version for equality. `rt.version_at_least`
+compares the release's numeric components, so a project never parses the
+version text:
 
 ```lua
 global none
 global <const> require, assert
 local rt = require "rt"
-assert(rt.version_at_least(0, 10),
-  "this project requires kuu 0.10.0 or later; found " .. rt.version)
+assert(rt.version_at_least(0, 11),
+  "this project requires kuu 0.11 or later; found " .. rt.version)
 ```
 
-`rt.version_at_least(major [, minor [, patch]])` answers whether the running
-kuu is that version or newer. An omitted component is zero, and a component
-that is not a natural number raises `RT badvalue`. It compares numbers, so
-0.10 comes after 0.9, and 1.0 after both.
+`rt.version_at_least(first [, second])` answers whether the running kuu is
+that version or newer. An omitted component is zero; negative or noninteger
+components raise `RT badvalue`. It compares numbers, so 0.11
+comes after 0.10, and 1.0 after both.
 
-A guard written before 0.9.0 matched the version text with
-`rt.version:match("^(%d+)%.(%d+)$")`. That pattern does not match `0.9.0`, so
-such a guard refuses every release from 0.9.0 onward whatever minimum it asks
-for. Replace it with the call above; see
-[Upgrading to 0.9](#upgrading-09).
+A third argument remains accepted for compatibility with guards written when
+releases had three components. The running 0.11 compares as `(0, 11, 0)` for
+those calls; no third component appears in its published version. Use two
+arguments in new guards.
+
+Version text changed from two components to three at 0.9.0 and returns to two
+at 0.11. A three-component pattern no longer matches `rt.version`; replace
+it with the call above. [Upgrading to 0.11](#kuu-page-upgrading-011) gives the
+current migration; [upgrading to 0.9](#kuu-page-upgrading-09) records the earlier
+change as history.
 
 Place this before declarations that use newer capabilities. The guard tests
 the minimum capability level, while the checked-in release hash and the
 project's tests decide which executable the project adopts. Run those tests
-when updating, and read the upgrading notes for every intervening 0.x
-release or a future major release.
+when updating, and read the upgrading notes for every intervening release.
 
 For the changes introduced with this statement, see
-[Upgrading to 0.7](#upgrading-07). For a complete `manifest.lua`, see
-[Adopting kuu](#adopting).
+[Upgrading to 0.7](#kuu-page-upgrading-07). For a complete `manifest.lua`, see
+[Adopting kuu](#kuu-page-adopting).
 
 ---
+
+<a id="kuu-page-toolchain"></a>
+
+<a id="kuu-page-toolchain-toolchain"></a>
 
 ## Toolchain
 
@@ -6416,10 +7118,12 @@ other project's tools are consulted. This page says exactly what `.tools` holds
 so that another machine, or another person, can reproduce it.
 
 Projects kuu drives are the same: each fetches its own prerequisites by url
-and hash into its own `.tools`, with [`http`](#http) and
-[`archive`](#archive), and carries its own `kuu.exe` directly in the
+and hash into its own `.tools`, with [`http`](#kuu-page-http) and
+[`archive`](#kuu-page-archive), and carries its own `kuu.exe` directly in the
 project root, copied in by hand. Nothing is shared between projects, and there is no lock: the agent
 knows what a project needs, and kuu gives it the means.
+
+<a id="kuu-page-toolchain-what-tools-holds"></a>
 
 ### What `.tools` holds
 
@@ -6447,8 +7151,16 @@ prints nothing. The `Makefile` sets the path itself and runs its recipes under
 .tools\msys2\ucrt64\bin\mingw32-make.exe test
 ```
 
+Each build checks the complete embedded Lua/manual file set, including added
+and deleted files. The C generator writes a temporary payload and replaces
+the previous output only after successful reads and writes. Identical output
+keeps its timestamp, avoiding unnecessary recompilation; a failed generation
+is retried on the next build.
+
 Target triple `x86_64-w64-mingw32`; C runtime UCRT, which every supported
 Windows carries as `ucrtbase.dll`, so the executable has no redistributable.
+
+<a id="kuu-page-toolchain-the-ucrt64-pins"></a>
 
 #### The UCRT64 pins
 
@@ -6499,6 +7211,8 @@ not run package scripts. The first check is
 | tzdata | 2026c-1 | `b6af6fd6acb676b9bb0761b75b1d8330b89abd4c8d467fda35cee8925b170db9` |
 | libiconv | 1.19-1 | `9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16` |
 
+<a id="kuu-page-toolchain-populating-tools"></a>
+
 ### Populating `.tools`
 
 From the pinned archives, as above: 18 downloads, 70 MB, verified, unpacked
@@ -6508,6 +7222,8 @@ kuu's own compiler is not fetched by kuu, by the owner's decision: kuu does not
 build or bootstrap itself, and there is no tool in the repository that fetches
 or verifies these archives — the table is the record, `certutil` is the
 check. Only verification targets run the built executable.
+
+<a id="kuu-page-toolchain-verification"></a>
 
 ### Verification
 
@@ -6554,6 +7270,8 @@ A native crash or deadline failure identifies the worker and seed; rerun
 that seed, reducing `FUZZ` to narrow the failing prefix if needed. The gates
 are bounded regression tools, not coverage-guided fuzzing.
 
+<a id="kuu-page-toolchain-addresssanitizer"></a>
+
 ### AddressSanitizer
 
 GCC remains the production compiler. `make asan` builds a separate
@@ -6578,6 +7296,8 @@ must reach ASAN's exception reporter instead of kuu's production handler.
 The production suite continues to require kuu's diagnostic and exit code 3.
 ASAN detects memory access errors on exercised paths. It does not establish
 race freedom, correct Win32 handle ownership, or coverage of unexecuted paths.
+
+<a id="kuu-page-toolchain-the-clang64-pins"></a>
 
 #### The CLANG64 pins
 
@@ -6619,6 +7339,8 @@ must report 22.1.8 and target `x86_64-w64-windows-gnu`.
 | libunwind | 22.1.8-1 | `1427583ab43306045b06df71e4a31686d5848bddabba628ea1b8068f38dbd5fd` |
 | libiconv | 1.19-1 | `26c4ac9f2023eecdfffb291cab40c60585a0cd0f72539ca03c5558f3ecd309ec` |
 
+<a id="kuu-page-toolchain-releasing"></a>
+
 ### Releasing
 
 A release is make, cmd recipes, and two plain C tools, never kuu. Every build
@@ -6652,8 +7374,8 @@ at the top of its `manifest.lua`.
 Before publishing a release:
 
 1. Run `make gate` on the final sources and review every stage's result.
-2. Run `make asan` on those same sources and resolve every sanitizer finding.
-   It is a separate required release check, not part of the everyday gate.
+2. Resolve every sanitizer finding from the gate's ASAN stage. `make asan`
+   also runs that stage independently when investigating a failure.
 3. Commit and push the tested tree. Run `make publish GH=<gh.exe>`; it repeats
    the production gate before signing and publishing that commit.
 4. Verify the release tag, signed executable, and SHA-256 sidecar, then run
@@ -6661,7 +7383,211 @@ Before publishing a release:
 
 ---
 
+<a id="kuu-page-upgrading-011"></a>
+
+<a id="kuu-page-upgrading-011-upgrading-to-011"></a>
+
+## Upgrading to 0.11
+
+0.11 corrects defects found in two reviews of 0.10.0 and makes the first
+encounter with the executable more useful. It keeps the same Windows baseline
+and Lua version. Most projects need only replace their executable, run
+`kuu check`, and run their tasks. Programs that read streams or consume the
+capabilities descriptor should read the changes below before replacing it.
+Version text has two components again, so programs that parse it must also
+read the version migration below.
+
+Verify the replacement's signature and SHA-256 against the release. If a
+project depends on a correction described here, use
+`rt.version_at_least(0, 11)` for its minimum-version guard. For the earlier
+manifest, task-report and checker changes, read
+[upgrading to 0.10](#kuu-page-upgrading-010).
+
+<a id="kuu-page-upgrading-011-versions-are-two-numbers"></a>
+
+### Versions are two numbers
+
+Published versions now have the form `N.N`: two nonnegative integers,
+compared numerically. `0.11` follows `0.10`. The numbers identify and order
+releases; they do not encode semantic-version compatibility categories.
+Read the upgrading notes for contract changes and test the executable a
+project adopts. The explicit interface commitments in [stability](#kuu-page-stability)
+continue to apply independently of the numbering choice.
+
+`rt.version` and the executable's displayed version are `"0.11"`.
+Windows' numeric file and product versions are `0,11,0,0`; their string values
+are `"0.11"`. The extra numeric fields belong to the Windows resource format,
+not to the public version.
+
+A guard that parses three components, such as
+`rt.version:match("^(%d+)%.(%d+)%.(%d+)$")`, no longer matches. Replace it
+with a numeric minimum-version check:
+
+```lua
+global none
+global <const> require, assert
+local rt = require "rt"
+assert(rt.version_at_least(0, 11),
+  "this project requires kuu 0.11 or later; found " .. rt.version)
+```
+
+Existing calls with a third argument remain accepted for old guards. They
+compare the running release as `(0, 11, 0)`, so a guard for an older
+three-component release still works; new guards should use two components.
+Historical references to 0.9.0 and 0.10.0 describe those releases as published.
+
+The deprecated `tasks.lua` fallback also remains supported in 0.11, with its
+warning and no scheduled removal. `manifest.lua` takes precedence when both
+files exist. Renaming the old file is still recommended and requires no
+change to its contents; the earlier announced removal in 0.11 does not apply.
+
+<a id="kuu-page-upgrading-011-find-an-api-and-use-it-immediately"></a>
+
+### Find an API and use it immediately
+
+The entry help and [agent guide](#kuu-page-agent) now demonstrate `kuu -e`: all kuu
+modules are available to an inline script, without creating a script file or
+manifest. Print the result explicitly; use `json.encode` when the result
+should be structured. Repeated project operations belong in named tasks.
+
+```text
+kuu docs
+kuu docs search fs.read
+kuu docs fs reading-and-writing
+kuu -e "print(assert(require('hash').file('sha256', 'README.md')))"
+```
+
+The first command lists the available pages. Search finds matching lines and,
+in plain output, gives commands for retrieving their surrounding sections.
+An API name need not be a section heading: `fs.read` is documented under
+`reading-and-writing`. `kuu docs agent` explains the project workflow.
+Page and verb inventories sort their exposed names correctly even when one
+name is a prefix of another; the shorter name comes first.
+
+<a id="kuu-page-upgrading-011-streaming-reads-keep-their-memory-bound"></a>
+
+### Streaming reads keep their memory bound
+
+For `proc.start { stream = true, ... }`, `maxout` is the maximum unread
+buffer for each output stream. Previously, a whole-output or unfinished-line
+read could fill that buffer and wait forever: the child could not write more
+until the same reader consumed something. It now returns `nil, PROC toobig`.
+No bytes are consumed by the error; drain with numeric reads or `read("some")`,
+or start the child with a larger `maxout`.
+
+The boundary is exact. Even output exactly `maxout` bytes long can produce
+`toobig` if EOF has not yet been observed. `lines()` and `err_lines()` raise
+read errors, including this one, instead of silently ending iteration.
+Stream `maxout = 0` is rejected because it cannot make progress. Captured
+`proc.run` output still uses `truncated` to report discarded output; check it
+before interpreting a captured result as complete.
+
+Numeric reads now return **up to** the requested count once any bytes are
+available, as documented. Code needing an exact count must accumulate it
+across reads and handle EOF. A waiting reader retains its reservation until
+it resumes; a competing reader gets `PROC busy`, and closing the child wakes
+the waiting reader with `PROC closed`.
+
+Pending stdin writes now own stable storage, consumed queue space is reused,
+and aggregate waiters keep their allocations until cleanup. These correct
+invalid buffer lifetimes and memory retention under sustained process activity.
+`inherit_stdin = true` also works with streamed output, and JSON task
+execution preserves inherited input and EOF. See [proc](#kuu-page-proc).
+
+Concurrent [filesystem-watch](#kuu-page-fs) readers receive complete batches in
+the order they began waiting. Each batch goes to one reader; callers needing
+several observers must distribute it themselves.
+
+<a id="kuu-page-upgrading-011-incomplete-inspection-is-visible"></a>
+
+### Incomplete inspection is visible
+
+`check` reports unreadable directories and incomplete listings as `read`
+findings. Its module inventory follows the runtime's resolution rules,
+including Unicode names and modules hidden by bundled names. Consumers of
+the provisional capabilities descriptor should handle these additions:
+
+- `check.modules(root)` returns `complete` and `errors` alongside its existing
+  fields. Each error has `path`, `message`, and an optional `win32` code.
+- `capabilities` exposes these as `project.modules_complete` and
+  `project.module_errors`. A partial inventory is useful, but not proof that
+  an omitted module is absent.
+- `project.ledger.records` is optional: it is present only when verification
+  establishes a count. An unreadable history sets `intact = false` and
+  `unreadable`; corrupt content is described by `broken`. Missing history
+  remains distinguishable from a failed read.
+
+The ledger refuses to append behind an unreadable predecessor. Read, write
+and close failures warn and appear in the task report's notes while preserving
+the task's outcome. Record shape is checked, and broken history is reported
+even when no recent record is readable. See [capabilities](#kuu-page-capabilities),
+[check](#kuu-page-check), and [ledger](#kuu-page-ledger).
+
+The global fixer leaves initialized or unsupported declarations unchanged
+instead of rewriting their meaning. Checker inference also handles reassigned
+tool bindings and escaped or shadowed export tables conservatively; each check
+operation reads current tool declarations. Task help works before dependency
+argument validation. Dry-run and other JSON reports repair invalid UTF-8
+without dropping entries whose repaired keys collide.
+
+<a id="kuu-page-upgrading-011-malformed-helper-inputs-are-refused"></a>
+
+### Malformed helper inputs are refused
+
+Several helpers previously accepted input whose meaning could not survive a
+round trip, or silently ignored part of it. These cases now fail explicitly:
+
+- Task dependencies and tool lists, archive entry lists, and marked JSON
+  containers require the documented contiguous array shapes. Ordered JSON
+  objects reject duplicate names.
+- CSV header mode and record encoding reject duplicate column names. Array
+  mode remains available when repeated header text is intentional.
+- INI writers reject unrepresentable keys and section names containing line
+  endings. Valid spaces and brackets inside section names are preserved.
+- CLI specifications reserve the normalized `help` key, require finite numeric
+  bounds, and enforce required rest arguments. Help still waives missing
+  required values. Overflowing size text is rejected.
+
+Logging failures return false and increment `dropped`. In JSON mode an
+unencodable record is dropped whole, so a consumer never receives a plain-text
+fallback in its JSON stream. Text logging preserves values associated with
+numeric field keys. See [log](#kuu-page-log) and the individual helper pages.
+
+<a id="kuu-page-upgrading-011-destinations-and-builds-survive-failure"></a>
+
+### Destinations and builds survive failure
+
+Archive packing stages its output beside the destination and replaces the
+previous archive only after success. Packing into the input tree excludes
+the exact output and staging file, and filenames beginning with `@` are
+literal operands. Such entries may retain a leading `./` in their archived
+names. Atomic file writes and HTTP downloads use compact sibling names so
+long destination basenames remain usable.
+
+HTTP downloads retain their absolute destination across waits, reject NUL
+output paths before opening a file, and clean up construction allocations
+and staging files when validation or a Lua accessor raises. Long explicit
+executable paths and PATH entries also resolve correctly.
+
+For people building kuu, every payload build now observes added and removed
+files. Generation checks input and output failures and replaces the generated
+file only when complete; unchanged bytes keep their timestamp, and a failed
+generation is retried on the next build. Windows version resources validate
+the two published components and fill their unused numeric fields with zero.
+The bundled manual has explicit, validated section links,
+and the cookbook's NDJSON wrapper rejects truncated captures before parsing.
+
+---
+
+<a id="kuu-page-upgrading-010"></a>
+
+<a id="kuu-page-upgrading-010-upgrading-to-010"></a>
+
 ## Upgrading to 0.10
+
+This page records the historical 0.10.0 release. [Upgrading to 0.11](#kuu-page-upgrading-011)
+describes the current N.N version format, review corrections, and continued
+support for the deprecated `tasks.lua` fallback.
 
 0.10.0 is the release after the pre-freeze correction. It adds, and it
 corrects one convention: an unknown option is refused everywhere, where
@@ -6687,7 +7613,7 @@ breakage — they were there before, and nothing said so.
 One thing here can break a working program rather than only turn a build red:
 `kuu check --json` documents its error kinds as a closed set, and that set
 grew. If anything of yours reads that report, go to
-[`CheckError.kind`](#checkerrorkind-has-three-more-members) first.
+[`CheckError.kind`](#kuu-page-upgrading-010-checkerrorkind-has-three-more-members) first.
 
 Copy the new executable into the repository root, verify its signature and
 SHA-256 against the release, run `kuu check` and read what is new, then run
@@ -6716,8 +7642,10 @@ fails at the call rather than at the guard, which is the failure the guard
 exists to prevent.
 
 For earlier releases, read
-[upgrading to 0.9](#upgrading-09), [to 0.8](#upgrading-08),
-[to 0.7](#upgrading-07), and the [0.6 duration migration](#upgrading-06).
+[upgrading to 0.9](#kuu-page-upgrading-09), [to 0.8](#kuu-page-upgrading-08),
+[to 0.7](#kuu-page-upgrading-07), and the [0.6 duration migration](#kuu-page-upgrading-06).
+
+<a id="kuu-page-upgrading-010-taskslua-is-manifestlua"></a>
 
 ### `tasks.lua` is `manifest.lua`
 
@@ -6730,25 +7658,30 @@ the name changes, because the file describes more than tasks now.
 `tasks.lua` where no `manifest.lua` is, read it as the manifest, and write
 one line to standard error each time saying to rename it; `capabilities
 --json` reports which name it found as `project.file`. A directory holding
-both is read from `manifest.lua` without a word. 0.11 will not look for the
-old name.
+both is read from `manifest.lua` without a word. The announced plan was to
+remove the old name in 0.11; that plan was withdrawn, and 0.11 retains the
+deprecated fallback.
 
 ```text
 git mv tasks.lua manifest.lua
 ```
+
+<a id="kuu-page-upgrading-010-tools-are-declared-in-the-manifest"></a>
 
 ### Tools are declared in the manifest
 
 A program a task calls — built by the project or fetched by hash into its
 root — is declared beside the tasks, `task.tool "name" { exe = ..., args =
 ..., output = ... }`, and called with `task.exec { tool = "name", ... }` or
-resolved with `task.command`. [Tools](#tools) is the page. Nothing existing
+resolved with `task.command`. [Tools](#kuu-page-tools) is the page. Nothing existing
 breaks: `task.exec { "gcc", ... }` runs as it did. It gains one thing, a
 `tool` warning from `kuu check`, because nothing describes what it runs;
 declaring the tool ends the warning and starts the checking — an argument the
 declaration does not name is found without running, and `kuu capabilities`
 lists the tool. `CheckWarning.kind` gains `tool` for this, so a reader of
 warnings needs the same default branch a reader of errors does.
+
+<a id="kuu-page-upgrading-010-the-door-keeps-a-ledger"></a>
 
 ### The door keeps a ledger
 
@@ -6758,7 +7691,9 @@ hash and kept ninety days, with the tree delta since the previous run on the
 first record. Nothing asks for it and nothing depends on it: a ledger that
 cannot be written is one line on standard error and the run goes on. Add
 `.kuu/` to the repository's `.gitignore` if it is not there already for
-`mem`. [The ledger](#ledger) is the page.
+`mem`. [The ledger](#kuu-page-ledger) is the page.
+
+<a id="kuu-page-upgrading-010-kuu-run---json-is-a-stream"></a>
 
 ### `kuu run --json` is a stream
 
@@ -6768,13 +7703,15 @@ each task as it starts and finishes, each child a task runs through the door
 — and the envelope it used to print is the last line, unchanged. A reader
 that decoded the whole of standard output as one document breaks: take the
 last line for what you had, or read each line for what you did not.
-[Tasks](#task) has the events. `--dry-run --json` and every failure
+[Tasks](#kuu-page-task) has the events. `--dry-run --json` and every failure
 before the run are still one envelope.
+
+<a id="kuu-page-upgrading-010-the-executable-explains-itself"></a>
 
 ### The executable explains itself
 
 Nothing here moves a call; it is what kuu says to an agent that arrives.
-[For the agent](#agent), `kuu docs agent`, states what is expected of an
+[For the agent](#kuu-page-agent), `kuu docs agent`, states what is expected of an
 agent in a project that runs through kuu, as instructions in the order they
 are met, and asks it to report back in the project's `kuu-eval.md`;
 `kuu --help`, the `kuu docs` footer and both forms of `kuu capabilities`
@@ -6789,6 +7726,8 @@ and, for `--json` readers, as `notes` on the `run`, `list`, `check` and
 it stands, before the manifest runs. `kuu run TASK --help`
 prints the task's usage and exits 0, as every `--help` does; a `TASK
 failed` error carries `status` and `limit` so a task branches on fields.
+
+<a id="kuu-page-upgrading-010-check-reports-four-mistakes-it-used-to-pass"></a>
 
 ### `check` reports four mistakes it used to pass
 
@@ -6826,6 +7765,8 @@ reached through a local binding, so `require("rt").version == "0.5"` is
 reported and so is `require("proc").run { cwdd = "x" }`. The two dead branches
 above are of that shape, and upgrading is what found them. A computed
 `require(name)` is still left alone.
+
+<a id="kuu-page-upgrading-010-check-reads-a-projects-own-modules-too"></a>
 
 ### `check` reads a project's own modules too
 
@@ -6867,6 +7808,8 @@ off checking of that module, so every real typo through it goes quiet too. If
 `check.exports` returns nil, the module is already unchecked and the finding
 came from somewhere else.
 
+<a id="kuu-page-upgrading-010-checkerrorkind-has-three-more-members"></a>
+
 ### `CheckError.kind` has three more members
 
 This is the one change that can break a program. `kuu check --json` documents
@@ -6879,12 +7822,14 @@ kind: "read" | "syntax" | "name" | "code" | "option" | "value"
 `code`, `option` and `value` are new; `value` carries both the closed-set
 comparison and `rt.version` compared by text. A consumer that switches on
 `kind` and has no default branch now falls through on a real finding. Warning
-kinds gain `tool`, for the two things [Tools](#tools) describes; a reader
+kinds gain `tool`, for the two things [Tools](#kuu-page-tools) describes; a reader
 of warnings needs the same default branch.
 
 With `--fix`, the report gains `fixed` and `unfixed` arrays. They are absent
 otherwise, so nothing that does not ask for fixing sees them. See
-[check](#check) for the full schema.
+[check](#kuu-page-check) for the full schema.
+
+<a id="kuu-page-upgrading-010-kuu-check---fix-writes-the-global-declaration"></a>
 
 ### `kuu check --fix` writes the global declaration
 
@@ -6914,6 +7859,8 @@ nil; such a file is reported as not fixed, with the reason, and left alone
 with its error intact. A file with no global declaration at all is untouched
 unless `--adopt` is given.
 
+<a id="kuu-page-upgrading-010-kuu-capabilities-says-what-is-here"></a>
+
 ### `kuu capabilities` says what is here
 
 New, and **provisional**: it sits outside the planned 1.0 freeze until a
@@ -6933,7 +7880,9 @@ because kuu keeps no manifest of it.
 **It runs `manifest.lua`** to read the tasks, exactly as `kuu run` and `kuu list`
 do. The module half is read from text and never executed, but the task half is
 project code running. That matters if you point it at a checkout you do not
-know. See [capabilities](#capabilities).
+know. See [capabilities](#kuu-page-capabilities).
+
+<a id="kuu-page-upgrading-010-texttrim-and-the-pattern-it-replaces"></a>
 
 ### `text.trim`, and the pattern it replaces
 
@@ -6956,12 +7905,14 @@ trimming a 278 KB document 200 times, 3.2 seconds against 26 ms.
 Worth grepping your own code for `$")` — the shape is a trap wherever it
 appears, not only in a trim. `s:find("%.lua$")` is a scan where
 `s:sub(-4) == ".lua"` is a comparison. The result is the same either way; only
-the cost differs. [Pitfalls](#pitfalls) carries the entry.
+the cost differs. [Pitfalls](#kuu-page-pitfalls) carries the entry.
 
 Inside kuu the same fix took `csv.encode` from 303 ms to 183 on 50,000 rows
 and `ini.decode` from 171 ms to 88 on 20,000 keys, with the quoting and
 trimming decisions unchanged. `ini.decode` reached 69 once it called `trim`
 itself; `csv.encode` still uses its own byte test.
+
+<a id="kuu-page-upgrading-010-rtverbs-and-rtpages"></a>
 
 ### `rt.verbs` and `rt.pages`
 
@@ -6977,6 +7928,8 @@ returns `{ root, files, modules }`, where `files` counts every `.lua` file
 below the root and `modules` lists only those whose exports were bounded, each
 as `{ name, path, exports }` with `exports` a sorted array.
 
+<a id="kuu-page-upgrading-010-what-checks-require-listing-is-not-evidence-of"></a>
+
 ### What `check`'s require listing is not evidence of
 
 Not a change, but newly written down, and it bears on a tool this release
@@ -6991,7 +7944,9 @@ with `"requires":[]`, no errors and no warnings.
 The `require` gate holds for a program that does not reach around it. If you
 are reading a file's requires as evidence about an unfamiliar program, treat a
 `_ENV` reference as disqualifying. See
-[observed shortcomings](#shortcomings).
+[observed shortcomings](#kuu-page-shortcomings).
+
+<a id="kuu-page-upgrading-010-an-unknown-option-is-refused-everywhere"></a>
 
 ### An unknown option is refused everywhere
 
@@ -7012,9 +7967,11 @@ A program that never misspelt an option sees nothing. One that did has been
 running with that option silently dropped, and now stops at the line; the
 message names the key.
 
+<a id="kuu-page-upgrading-010-the-raise-or-return-rule-applied"></a>
+
 ### The raise-or-return rule, applied
 
-[err](#err) now states where the line falls: a function whose job is to
+[err](#kuu-page-err) now states where the line falls: a function whose job is to
 validate or convert input returns for input that fails; one that assumes its
 input is well formed raises. A sweep of every module against that line found
 these on the wrong side of it.
@@ -7059,7 +8016,15 @@ whether bytes are text. The rule explains both.
 
 ---
 
+<a id="kuu-page-upgrading-09"></a>
+
+<a id="kuu-page-upgrading-09-upgrading-to-09"></a>
+
 ## Upgrading to 0.9
+
+This page records the historical 0.9.0 release. From 0.11, published versions
+use two components again; [upgrading to 0.11](#kuu-page-upgrading-011) describes
+the current format and compatible numeric guards.
 
 0.9.0 is the last release before the 1.0 freeze, and it exists to correct
 contracts while correcting them is still allowed. It carries one breaking
@@ -7069,8 +8034,10 @@ one defect fix that removes an intermittent failure from every atomic write.
 Copy the new executable into the repository root, verify its signature and
 SHA-256 against the release, **replace the minimum-version guard as described
 below**, run `kuu check`, and run the project's tasks. For earlier releases,
-read [upgrading to 0.8](#upgrading-08), [to 0.7](#upgrading-07), and the
-[0.6 duration migration](#upgrading-06).
+read [upgrading to 0.8](#kuu-page-upgrading-08), [to 0.7](#kuu-page-upgrading-07), and the
+[0.6 duration migration](#kuu-page-upgrading-06).
+
+<a id="kuu-page-upgrading-09-the-version-is-majorminorpatch"></a>
 
 ### The version is Major.Minor.Patch
 
@@ -7119,6 +8086,8 @@ local recent = rt.version_at_least ~= nil
 `rt` is inside the planned 1.0 freeze, which is why `version_at_least`
 arrives now rather than after it.
 
+<a id="kuu-page-upgrading-09-atomic-writes-no-longer-fail-transiently"></a>
+
 ### Atomic writes no longer fail transiently
 
 `fs.write` renames a temporary over its target, and that rename failed
@@ -7141,8 +8110,10 @@ writes failed none. Nothing else moved:
 - A caller that measured the timing of a failing write will see it take longer
   to fail. Success timing is unaffected in the common case.
 
-See [fs](#fs) for the contract and
-[observed shortcomings](#shortcomings) for the evidence.
+See [fs](#kuu-page-fs) for the contract and
+[observed shortcomings](#kuu-page-shortcomings) for the evidence.
+
+<a id="kuu-page-upgrading-09-a-pruned-directory-leaves-fsdirss-paths"></a>
 
 ### A pruned directory leaves `fs.dirs`'s `paths`
 
@@ -7173,6 +8144,8 @@ directory stopped by the `depth` cap, or a link not followed, is unaffected
 and stays in `paths`: those are the frontier the walk was asked to stop at,
 not names it was asked to exclude.
 
+<a id="kuu-page-upgrading-09-jsonobject-gives-an-object-a-decided-key-order"></a>
+
 ### `json.object` gives an object a decided key order
 
 New, and nothing changes for code that does not use it. A Lua table has no key
@@ -7196,6 +8169,8 @@ two-element `{ key, value }` pair with a string key; anything else raises
 `JSON badvalue` naming the entry. Decoding is untouched — order is a property
 of writing, not of the value — so a document read back is an ordinary table.
 
+<a id="kuu-page-upgrading-09-schedclock-resolves-below-a-microsecond"></a>
+
 ### `sched.clock` resolves below a microsecond
 
 It read the event loop's millisecond tick, so the smallest difference two
@@ -7209,6 +8184,8 @@ only differences mean anything — so this is precision rather than a new
 contract. Code that rounded a reading to whole milliseconds will now see
 fractions.
 
+<a id="kuu-page-upgrading-09-three-modules-leave-the-planned-freeze"></a>
+
 ### Three modules leave the planned freeze
 
 `svc`, `evt`, and `sys.signature` arrived in 0.7 and have no real-project
@@ -7219,9 +8196,13 @@ the freeze, and are brought in at 1.1 with evidence behind them.
 
 Nothing is removed from the executable and no call changes. Only the
 compatibility promise is withheld; see the
-[stability statement](#stability).
+[stability statement](#kuu-page-stability).
 
 ---
+
+<a id="kuu-page-upgrading-08"></a>
+
+<a id="kuu-page-upgrading-08-upgrading-to-08"></a>
 
 ## Upgrading to 0.8
 
@@ -7234,8 +8215,10 @@ Copy the new executable into the repository root, verify its signature and
 SHA-256 against the release, run `kuu check`, and run the project's tasks.
 Projects using 0.7 features can keep their existing minimum-version guard;
 projects deployed to 23H2 should require 0.8 or later. For earlier releases,
-also read [upgrading to 0.7](#upgrading-07) and the
-[0.6 duration migration](#upgrading-06).
+also read [upgrading to 0.7](#kuu-page-upgrading-07) and the
+[0.6 duration migration](#kuu-page-upgrading-06).
+
+<a id="kuu-page-upgrading-08-windows-11-23h2"></a>
 
 ### Windows 11 23H2
 
@@ -7249,11 +8232,13 @@ Natural close waits for the entire supervised job and preserves final
 output. Explicit close finishes canceled I/O before handing the pipe to a
 native drainer; resize is refused once shutdown can begin. Newer Windows
 versions retain their existing release and asynchronous-close path. See
-[pty](#pty) for the lifetime contract.
+[pty](#kuu-page-pty) for the lifetime contract.
 
 Queued I/O completions also keep a stable dispatch key after their owner is
 released, so a Lua finalizer can run another process during shutdown without
 accessing freed console state.
+
+<a id="kuu-page-upgrading-08-json-diagnostics"></a>
 
 ### JSON diagnostics
 
@@ -7262,11 +8247,15 @@ the key's bytes. Previously it freed those bytes first, causing a use after
 free while constructing the message. Duplicate keys still return
 `nil, err` with domain `JSON` and code `duplicate`.
 
-The [observed shortcomings](#shortcomings) record the compatibility
+The [observed shortcomings](#kuu-page-shortcomings) record the compatibility
 validation and unresolved intermittent file-access and process-tree checks.
 This release does not claim to resolve those separate findings.
 
 ---
+
+<a id="kuu-page-upgrading-07"></a>
+
+<a id="kuu-page-upgrading-07-upgrading-to-07"></a>
 
 ## Upgrading to 0.7
 
@@ -7278,13 +8267,17 @@ automation through `pty`.
 Copy the new executable into the repository root, read the changes below,
 run `kuu check`, and run the project's tasks. Numeric durations remain
 seconds, as in 0.6. A project still on 0.5 also needs the
-[0.6 duration migration](#upgrading-06).
+[0.6 duration migration](#kuu-page-upgrading-06).
+
+<a id="kuu-page-upgrading-07-windows-11-23h2-compatibility"></a>
 
 ### Windows 11 23H2 compatibility
 
 The published, signed 0.7 executable cannot start on Windows 11 23H2 because
-it imports a newer console API. Use [0.8 or later](#upgrading-08) on that
+it imports a newer console API. Use [0.8 or later](#kuu-page-upgrading-08) on that
 OS. The original 0.7 release asset and its checksum have not been replaced.
+
+<a id="kuu-page-upgrading-07-existing-programs-and-reports"></a>
 
 ### Existing programs and reports
 
@@ -7301,13 +8294,13 @@ The checker treats a direct local module binding conservatively. It skips a
 binding reassigned anywhere and follows lexical shadows instead of guessing
 at the value. Dynamic indexing, aliases passed through other variables, and
 project-module exports are not inferred. It checks names, not arity or types.
-See [check](#check) for the exact report schema and limitations.
+See [check](#kuu-page-check) for the exact report schema and limitations.
 
 `task.defaults` currently accepts only `timeout`. A malformed duration or an
 unknown field raises `TASK badvalue` without replacing the preceding default;
 an empty table clears it. It bounds each child of `task.exec`, not the entire
 task or dependency plan. Numeric values are seconds and zero is a valid
-explicit timeout. See [Tasks](#task), including the exact `run --json`,
+explicit timeout. See [Tasks](#kuu-page-task), including the exact `run --json`,
 `run --dry-run --json`, and `list --json` schemas.
 
 The schemas describe the existing output boundaries too: task output under
@@ -7315,6 +8308,8 @@ The schemas describe the existing output boundaries too: task output under
 direct `io.stdout` writes can still mix with the envelope. `list --json`
 requires quiet top-level task declarations. Malformed runner options and
 missing paths can fail before a JSON report exists, as documented per verb.
+
+<a id="kuu-page-upgrading-07-new-capabilities"></a>
 
 ### New capabilities
 
@@ -7325,42 +8320,44 @@ missing paths can fail before a JSON report exists, as documented per verb.
   is breached, a process result has `status = "limit"` and
   `limit = "memory" | "cpu" | "processes"`. If you opt into limits, handle
   that status as a failure regardless of `code`. `task.exec` returns
-  `TASK failed` and names the breached bound. [proc](#proc)
+  `TASK failed` and names the breached bound. [proc](#kuu-page-proc-limits)
 - **Scoped deadlines.** `sched.deadline(duration, fn, ...)` returns the
   function's results unchanged or `nil, SCHED deadline` when its waits
   exhaust the scope. Nested scopes use the earliest deadline. This cannot
   interrupt CPU-only Lua, and spawned tasks do not inherit it. A child is
   not automatically killed by the scope: hold a `proc.start` handle in a
-  `<close>` local when its lifetime must end on unwind. [sched](#sched)
+  `<close>` local when its lifetime must end on unwind. [sched](#kuu-page-sched-deadlines)
 - **Services.** `svc.list`, `status`, `start`, `stop`, `restart`, and `wait`
   inspect and control the Service Control Manager. State transitions poll
   on the event loop. Access failures are explicit and may require elevation;
-  a timeout stops waiting without undoing the request. [svc](#svc)
+  a timeout stops waiting without undoing the request. [svc](#kuu-page-svc)
 - **Signatures.** `sys.signature(path [, options])` distinguishes unsigned
   files, accepted embedded Authenticode signatures, and rejected signatures
   with a reason. Match the signer or pinned certificate thumbprint before
   running an installer. Windows catalog-only signatures report unsigned;
-  revocation/network retrieval are off unless requested. [sys](#sys)
+  revocation/network retrieval are off unless requested. [sys](#kuu-page-sys-syssignature)
 - **Event logs.** `evt.logs` lists channels and `evt.read` returns bounded
   newest-first snapshots filtered by time, level, and provider. A record has
   typed system fields and a rendered message, with raw XML as the fallback.
-  It never writes or clears a log. [evt](#evt)
+  It never writes or clears a log. [evt](#kuu-page-evt)
 - **Interactive consoles.** `pty.spawn` creates a supervised ConPTY child.
   Its handle offers Lua-pattern `expect`, raw reads, a plain-text view,
   writes, resize, wait, kill, and close. The view is a small VT filter rather
   than a terminal screen model. This module remains provisional and outside
-  the future 1.x freeze. [pty](#pty)
+  the future 1.x freeze. [pty](#kuu-page-pty)
 
-The [cookbook](#cookbook) has ten complete programs using these APIs and
+The [cookbook](#kuu-page-cookbook) has ten complete programs using these APIs and
 the existing palette. Its extracted programs are checked by the suite;
 safe fixtures exercise downloads, logs, process control, INI edits, service
-decisions, signatures, and console input. The [PowerShell map](#powershell)
+decisions, signatures, and console input. The [PowerShell map](#kuu-page-powershell)
 includes the new operations.
+
+<a id="kuu-page-upgrading-07-version-guards-and-verification"></a>
 
 ### Version guards and verification
 
-Use the numeric minimum-version guard from [Stability](#stability) or the
-complete [adoption example](#adopting). A guard tests the capabilities
+Use the numeric minimum-version guard from [Stability](#kuu-page-stability) or the
+complete [adoption example](#kuu-page-adopting). A guard tests the capabilities
 required; the project still chooses and verifies its executable explicitly.
 The stability page names the modules and verbs that will freeze at 1.0,
 what a 1.x release may add, and what requires a new major version.
@@ -7375,9 +8372,13 @@ fuzzing, and soak. The fuzz corpus now covers CSV, INI decode and edits,
 JSON, and registry key text. `make asan` uses a separately pinned MSYS2
 CLANG64 toolchain to build and run a test executable with AddressSanitizer.
 It is separate from `gate` and required by the release checklist.
-[Toolchain](#toolchain) records the packages and commands.
+[Toolchain](#kuu-page-toolchain) records the packages and commands.
 
 ---
+
+<a id="kuu-page-upgrading-06"></a>
+
+<a id="kuu-page-upgrading-06-upgrading-to-06"></a>
 
 ## Upgrading to 0.6
 
@@ -7385,6 +8386,8 @@ It is separate from `gate` and required by the release checklist.
 first real repository driven by kuu.
 Keep `kuu.exe` directly in the project root and declare the supported runtime
 version in `tasks.lua`. The previous 0.5 review fixes are included.
+
+<a id="kuu-page-upgrading-06-duration-migration"></a>
 
 ### Duration migration
 
@@ -7406,6 +8409,8 @@ keep the unit-bearing string and pass it directly to the consuming native API.
 Time Actual accepts 0.5 and 0.6 with explicit compatibility branches; its CI
 pins the 0.6 release.
 
+<a id="kuu-page-upgrading-06-other-changes"></a>
+
 ### Other changes
 
 - `kuu version` and `kuu --version` print the same identity and reject extra
@@ -7419,5 +8424,5 @@ pins the 0.6 release.
 - TLS client-key and proxy failures report `HTTP tls` and actionable details.
 
 Windows' Tcl sandbox behavior and tools that construct their own shell commands
-remain external boundaries; see [observed shortcomings](#shortcomings).
+remain external boundaries; see [observed shortcomings](#kuu-page-shortcomings).
 

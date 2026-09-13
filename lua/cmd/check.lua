@@ -7,6 +7,7 @@ local rt = require "rt"
 local cli = require "cli"
 local fs = require "fs"
 local json = require "json"
+local clean = require "_jsonsafe"
 local project = require "project"
 local check = require "check"
 
@@ -30,22 +31,26 @@ if file == project.LEGACY then
   io.stderr:write("kuu: warning: ", project.LEGACY_NOTE, "\n")
 end
 
-local reports = {}
-if #opts.paths == 0 then
-  reports = check.tree(root, root).reports
-else
-  for _, p in ipairs(opts.paths) do
-    local kind = fs.exists(p)
-    if kind == "directory" then
-      for _, r in ipairs(check.tree(p, root).reports) do reports[#reports + 1] = r end
-    elseif kind == "file" then
-      reports[#reports + 1] = check.file(p, root)
-    else
-      io.stderr:write("kuu: CHECK notfound: no file or directory '", p, "'\n")
-      os.exit(2)
+local function collect_reports()
+  local reports = {}
+  if #opts.paths == 0 then
+    reports = check.tree(root, root).reports
+  else
+    for _, p in ipairs(opts.paths) do
+      local kind = fs.exists(p)
+      if kind == "directory" then
+        for _, r in ipairs(check.tree(p, root).reports) do reports[#reports + 1] = r end
+      elseif kind == "file" then
+        reports[#reports + 1] = check.file(p, root)
+      else
+        io.stderr:write("kuu: CHECK notfound: no file or directory '", p, "'\n")
+        os.exit(2)
+      end
     end
   end
+  return reports
 end
+local reports = collect_reports()
 
 -- --fix rewrites the declaration and nothing else, then the files are checked
 -- again, so the report describes what is now on disk rather than what was. A
@@ -55,7 +60,7 @@ local fixed, unfixable = {}, {}
 if opts.fix then
   local fixer = require "_fixglobals"
   local paths = {}
-  for _, r in ipairs(reports) do paths[#paths + 1] = r.path end
+  for _, r in ipairs(reports) do if not r.enumeration then paths[#paths + 1] = r.path end end
   for _, path in ipairs(paths) do
     local result, why = fixer.fix(path, opts.adopt)
     if not result then
@@ -70,8 +75,7 @@ if opts.fix then
     end
   end
   if #fixed > 0 then
-    reports = {}
-    for _, path in ipairs(paths) do reports[#reports + 1] = check.file(path, root) end
+    reports = collect_reports()
   end
 end
 
@@ -135,7 +139,7 @@ if opts.json then
       result.unfixed[#result.unfixed + 1] = { path = shown(u.path), message = u.message }
     end
   end
-  io.write(json.encode { ok = errors == 0, result = result }, "\n")
+  io.write(json.encode(clean { ok = errors == 0, result = result }), "\n")
 else
   if opts.fix then
     io.stderr:write(string.format("kuu: %d files, %d fixed, %d errors, %d warnings\n",

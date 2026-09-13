@@ -26,6 +26,7 @@ if opts.help then
     "  kuu docs PAGE               one page, as kuu docs PAGE.md would be\n",
     "  kuu docs PAGE SECTION       one ## section of it, by its heading or its anchor; PAGE#anchor is the same\n",
     "  kuu docs search TEXT ...    the lines mentioning the words, joined by spaces, matched literally, ignoring case\n",
+    "\nFor example: kuu docs search fs.read, then kuu docs fs reading-and-writing.\n",
     "\nStart with agent, what is expected of you here; then pitfalls, once; index is the map.\n")
   os.exit(0)
 end
@@ -132,13 +133,18 @@ if words[1] == "search" then
   if needle == "" then fail(err.new("ENTRY", "usage", "docs search needs text to look for")) end
   local lowered = needle:lower()
   local hits = json.array {}
+  local locations = {}
   for _, name in ipairs(rt.pages()) do
     local heading = nil
+    local section, section_line = nil, 0
     for _, entry in ipairs(lines_of(rt.page(name) or "")) do
       local h = heading_of(entry, 1)
       if h then heading = h end
+      local s = heading_of(entry, 2)
+      if s then section, section_line = s, entry.line end
       if entry.text:lower():find(lowered, 1, true) then
         hits[#hits + 1] = { page = name, line = entry.line, heading = heading, text = entry.text }
+        locations[#hits] = { section = section, line = section_line }
       end
     end
   end
@@ -147,7 +153,17 @@ if words[1] == "search" then
   elseif #hits == 0 then
     io.write("nothing in the manual mentions '", needle, "'\n")
   else
-    for _, hit in ipairs(hits) do io.write(hit.page, ":", hit.line, ": ", hit.text, "\n") end
+    local previous_page, previous_line
+    for i, hit in ipairs(hits) do
+      local location = locations[i]
+      if hit.page ~= previous_page or location.line ~= previous_line then
+        io.write("  Read: kuu docs ", hit.page)
+        if location.section then io.write(" ", anchor(location.section)) end
+        io.write("\n")
+        previous_page, previous_line = hit.page, location.line
+      end
+      io.write(hit.page, ":", hit.line, ": ", hit.text, "\n")
+    end
   end
   os.exit(0)
 end

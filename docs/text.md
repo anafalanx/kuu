@@ -35,7 +35,7 @@ Lua pattern, so Lua retries the match at every position and the cost grows
 with the whole string rather than with the blanks. Trimming a 15-byte line
 300,000 times measured 300 ms by that pattern and 13 ms through `trim`;
 trimming a 278 KB document 200 times, 3.2 seconds against 26 ms. See
-[Pitfalls](#pitfalls).
+[Pitfalls](pitfalls.md).
 
 Encodings: `utf-8`, `utf-16le`, `utf-16be`, `latin1`, `ansi` (the system code
 page), `oem` (the console code page), and `cpNNN` for any Windows code page

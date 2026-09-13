@@ -64,7 +64,8 @@ return function(T)
   check("check.file reports requires and the unresolved one", #report.requires == 2 and report.requires[1] == "lib.helper" and report.requires[2] == "nothere"
     and #report.warnings == 1 and report.warnings[1].line == 3, tostring(report.warnings[1] and report.warnings[1].message))
   report = checker.file(project .. "/missing.lua", project)
-  check("check.file on a missing file is one error", #report.errors == 1 and contains(report.errors[1].message, "FS notfound"))
+  check("check.file on a missing file is one error and still has a tools array",
+    #report.errors == 1 and contains(report.errors[1].message, "FS notfound") and type(report.tools) == "table" and #report.tools == 0)
   -- Palette names are checked through lexical bindings, never through text
   -- in strings/comments or by executing the project being inspected.
   local names_dir = fs.absolute(T.work .. "/check-names")
@@ -74,6 +75,20 @@ return function(T)
     local path = names_dir .. "/names.lua"
     fs.write(path, source)
     return checker.file(path, names_dir)
+  end
+  do
+    local varargs = inspect('global none\nglobal <const> require\nlocal fs = require "fs"\n'
+      .. 'local function first(... values) return values[1] end\n'
+      .. 'local function shadow(prefix, ... fs) return fs[1].anything(prefix) end\n'
+      .. 'local function loader(... require) return require[1].anything end\n'
+      .. 'return first(7), shadow, loader, fs.exists\n')
+    check("Lua 5.5 named varargs parse and shadow module bindings",
+      #varargs.errors == 0 and #varargs.warnings == 0 and #varargs.requires == 1,
+      json.encode(varargs.errors))
+    r = T.kuu { "check", "--json", names_dir .. "/names.lua" }
+    local named_varargs = json.decode(r.out)
+    check("a named-vararg file has a complete successful JSON check report",
+      r.code == 0 and named_varargs and named_varargs.ok, T.describe(r))
   end
   report = inspect('global none\nglobal <const> require\nlocal files = require "fs"\nfiles.exist("x")\n')
   check("a misspelt export on a local alias is a name error with its source line and suggestion",
@@ -203,6 +218,10 @@ other.custom()
     report = inspect(head .. 'if rt.version == "0.9" then print(1) end\n')
     check("the version compared by text is an error",
       #report.errors == 1 and report.errors[1].kind == "value", first(report))
+    report = inspect(head .. 'if rt.version < "0.9" or "0.11" >= rt.version then print(1) end\n')
+    check("two-component versions still reject lexicographic ordering in either direction",
+      #report.errors == 2 and report.errors[1].kind == "value" and report.errors[2].kind == "value"
+        and contains(first(report), "rt.version_at_least"), first(report))
 
     report = inspect(head .. 'if rt.route == "flie" then print(1) end\n')
     check("a closed set compared with a literal outside it is an error",
@@ -211,6 +230,12 @@ other.custom()
 
     report = inspect(head .. 'if rt.route == "file" then print(1) end\n')
     check("a literal inside it is not", #report.errors == 0, first(report))
+    report = inspect(head .. 'if rt.route < "z" then print(1) end\n')
+    check("ordinary enum ordering does not become a closed-set equality finding",
+      #report.errors == 0, first(report))
+    report = inspect(head .. 'local a, b, c = rt.version:match("^(%d+)%.(%d+)(%d+)$")\nprint(a, b, c)\n')
+    check("three numeric captures are not mistaken for three version components",
+      #report.errors == 0, first(report))
 
     -- Indexed where it is required. A consuming project carried two dead
     -- `require('rt').version == '0.5'` branches that every check above walked
@@ -219,7 +244,7 @@ other.custom()
     report = inspect(bare .. 'if require("rt").version == "0.5" then print(1) end\n')
     check("a module indexed where it is required is checked too",
       #report.errors == 1 and report.errors[1].kind == "value"
-        and contains(report.errors[1].message, 'require("rt").version is Major.Minor.Patch'),
+        and contains(report.errors[1].message, 'require("rt").version is N.N (two natural numbers)'),
       first(report))
 
     report = inspect(bare .. 'print(require("fs").exist("x"))\n')
@@ -360,6 +385,12 @@ other.custom()
       r = T.kuu({ "check", "aliased.lua" }, { cwd = dir })
       check("but a module that lets its table escape near setmetatable is not guessed at",
         r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+      put("tools/mutated.lua",
+        'global none\nlocal M = { first = 1 }\nlocal alias = M\nalias.second = 2\nreturn M\n')
+      put("mutated.lua", 'global none\nglobal <const> require\nlocal m = require "tools.mutated"\nreturn m.second\n')
+      r = T.kuu({ "check", "mutated.lua" }, { cwd = dir })
+      check("an ordinary escaped alias puts the export set out of reach too",
+        checker.exports(dir .. "/tools/mutated.lua") == nil and r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
 
       -- Only the first field after an alias names a module export. Reaching
       -- further asks a value the module returned, which its export set cannot
@@ -453,6 +484,16 @@ other.custom()
       r = T.kuu({ "check", "--json" }, { cwd = dir })
       check("check --json spells a declaration's empty lists as arrays, as capabilities does",
         contains(r.out, '"emits":[]') and not contains(r.out, '"emits":{}'), r.out:sub(1, 400))
+      do
+        put("tool-arguments.lua", 'global none\nglobal <const> require\nlocal task = require "task"\n'
+          .. 'task.command { tool = "report", "--out=value", "--sinc" }\n'
+          .. 'task.command { tool = "report", "--", "--file-name" }\n')
+        r = T.kuu({ "check", "--json", "tool-arguments.lua" }, { cwd = dir })
+        local arguments = json.decode(r.out)
+        local findings = arguments and arguments.result.files[1].errors or {}
+        check("inline option values consume no following token and -- ends option checking",
+          r.code == 1 and #findings == 1 and findings[1].kind == "option" and findings[1].name == "--sinc", r.out)
+      end
       -- The description now names the options of every option-taking call,
       -- so a misspelt one is found in any module, and a declaration's
       -- attribute is held to task.tool's set.
@@ -505,28 +546,62 @@ other.custom()
         every_way = every_way and ok2 and #result.errors == 1
       end
       check("a root spelled any way finds the manifest, and never recurses", every_way)
-      -- The version guard published through 0.8 matches rt.version by
-      -- pattern and refuses every release from 0.9.0 on; check says so
-      -- before the manifest runs, naming the fix and the page.
+      -- Public versions return to two components in 0.11. Those guards
+      -- pass; requiring three components is diagnosed before the manifest
+      -- runs, naming the numeric comparison and the migration page.
       put("guard.lua", 'global none\nglobal <const> require, tonumber, string\nlocal rt = require "rt"\nlocal major, minor = rt.version:match("^(%d+)%.(%d+)$")\n'
         .. 'local again = string.match(rt.version, "^(%d+)%.(%d+)$")\n'
-        .. 'local a, b, c = rt.version:match("^(%d+)%.(%d+)%.(%d+)$")\nlocal first = rt.version:match("^(%d+)")\nlocal spelled = rt.version:gsub("%.", "_")\n'
-        .. 'return tonumber(major), tonumber(minor), again, a, b, c, first, spelled\n')
+        .. 'local a, b, c = rt.version:match("^(%d+)%.(%d+)%.(%d+)$")\nlocal legacy = string.match(rt.version, "^(%d+)%.(%d+)%.(%d+)$")\n'
+        .. 'local first = rt.version:match("^(%d+)")\nlocal spelled = rt.version:gsub("%.", "_")\n'
+        .. 'return tonumber(major), tonumber(minor), again, a, b, c, legacy, first, spelled\n')
       r = T.kuu({ "check", "--json", "guard.lua" }, { cwd = dir })
       local guard = json.decode(r.out)
       local found_guard = {}
       for _, e in ipairs(guard and guard.result.files[1].errors or {}) do found_guard[#found_guard + 1] = e.kind .. "@" .. e.line .. ":" .. tostring(e.name) end
-      check("the two-component guard is a value error naming version_at_least and upgrading-0.9, in both spellings, and a three-component or one-component pattern is left alone",
-        r.code == 1 and table.concat(found_guard, " ") == "value@4:^(%d+)%.(%d+)$ value@5:^(%d+)%.(%d+)$"
-          and contains(guard.result.files[1].errors[1].message, "two components")
-          and contains(guard.result.files[1].errors[1].message, "rt.version_at_least") and contains(guard.result.files[1].errors[1].message, "kuu docs upgrading-0.9"),
+      check("three-component guards name version_at_least and upgrading-0.11 in both spellings, while two-component and partial patterns pass",
+        r.code == 1 and table.concat(found_guard, " ") == "value@6:^(%d+)%.(%d+)%.(%d+)$ value@7:^(%d+)%.(%d+)%.(%d+)$"
+          and contains(guard.result.files[1].errors[1].message, "N.N (two natural numbers)")
+          and contains(guard.result.files[1].errors[1].message, "three components")
+          and contains(guard.result.files[1].errors[1].message, "rt.version_at_least") and contains(guard.result.files[1].errors[1].message, "kuu docs upgrading-0.11"),
         table.concat(found_guard, " ") .. " " .. r.out:sub(1, 300))
+
+      put("guard.lua", 'global none\nglobal <const> require, string\nlocal rt = require "rt"\n'
+        .. 'local a, b = rt.version:match("^(%d+)%.(%d+)$")\nlocal c, d = string.match(rt.version, "^(%d+)%.(%d+)$")\n'
+        .. 'return a, b, c, d, rt.version_at_least(0, 11)\n')
+      r = T.kuu({ "check", "--json", "guard.lua" }, { cwd = dir })
+      guard = json.decode(r.out)
+      check("a two-component version guard and the recommended numeric check pass without findings",
+        r.code == 0 and guard and guard.ok and #guard.result.files[1].errors == 0
+          and #guard.result.files[1].warnings == 0, T.describe(r))
 
       -- A number or a boolean where a literal may stand is not a string, and
       -- nothing downstream may take it for one.
       put("literals.lua", 'global none\nglobal <const> require\nlocal rt = require "rt"\nlocal m = require(42)\nif rt.route == 1 or rt.route == true then return m end\n')
       r = T.kuu({ "check", "literals.lua" }, { cwd = dir })
       check("a number or boolean in a literal's place is passed over, not crashed on", r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+
+      do
+        for _, fields in ipairs {
+          'emits = "rows"', 'emits = { "rows", named = "lost" }',
+          'reach = "all"', 'reach = { read = "files" }',
+          'args = "--all"', 'output = false',
+        } do
+          put("manifest.lua", 'global none\nglobal <const> require\nlocal task = require "task"\n'
+            .. 'task.tool "bad" { exe = "bad.exe", ' .. fields .. ' }\n')
+          r = T.kuu({ "check", "--json", "manifest.lua" }, { cwd = dir })
+          local decoded, malformed = pcall(json.decode, r.out)
+          local file = decoded and malformed and malformed.result.files[1]
+          check("malformed literal tool fields produce findings in a valid JSON envelope",
+            r.code == 1 and file and #file.errors == 1 and file.errors[1].kind == "value" and #file.tools == 0,
+            fields .. ": " .. r.out .. r.err)
+        end
+        put("manifest.lua", 'global none\nglobal <const> require\nlocal task = require "task"\n'
+          .. 'task.tool "bytes" { exe = "bad\\233.exe", args = { ["--bad\\233"] = "flag" } }\n')
+        r = T.kuu({ "check", "--json", "manifest.lua" }, { cwd = dir })
+        local decoded, bytes = pcall(json.decode, r.out)
+        check("non-UTF-8 source literals cannot break the check JSON envelope",
+          decoded and bytes and bytes.result and #bytes.result.files == 1 and r.code == 0, T.describe(r))
+      end
 
       -- A manifest that does not parse declares nothing anyone can read, and
       -- no call is judged against it.
@@ -546,4 +621,84 @@ other.custom()
     end
   end
 
+  do
+    local dir = fs.absolute(T.work .. "/check-review-fixes")
+    fs.remove(dir, { recursive = true })
+    fs.mkdir(dir)
+    local manifest = 'global none\nglobal <const> require\nlocal task = require "task"\n'
+      .. 'task.tool "sample" { exe="sample.exe", args={ ["--good"]="flag" } }\n'
+    fs.write(dir .. "/manifest.lua", (manifest:gsub("global <const> require\n", "")))
+    fs.write(dir .. "/consumer.lua", 'global none\nglobal <const> require\nlocal task=require "task"\nreturn task.exec {tool="sample", "--bad"}\n')
+    local before = checker.file(dir .. "/consumer.lua", dir)
+    fs.write(dir .. "/manifest.lua", manifest)
+    local after = checker.file(dir .. "/consumer.lua", dir)
+    check("independent check.file calls refresh edited manifest declarations",
+      #before.errors == 0 and #after.errors == 1 and after.errors[1].name == "--bad", json.encode(after.errors))
+    fs.write(dir .. "/manifest.lua", (manifest:gsub("global <const> require\n", "")))
+    local fixed = T.kuu({ "check", "--json", "--fix" }, { cwd = dir })
+    local fixed_report = json.decode(fixed.out)
+    local again = T.kuu({ "check", "--json" }, { cwd = dir })
+    local current = json.decode(again.out)
+    check("check --fix uses repaired manifest declarations in its final report",
+      fixed.code == 1 and again.code == 1 and fixed_report and current
+        and fixed_report.result.errors == 1 and current.result.errors == 1 and #fixed_report.result.fixed == 1,
+      T.describe(fixed))
+
+    for _, source in ipairs {
+      'task={tool=function() return function(x) return x end end}; return task.tool "custom" {arbitrary=true}',
+      'task={tool=function(_, x) return x end}; return task.tool("custom", {arbitrary=true})',
+      'local function later() return task.tool "custom" {arbitrary=true} end; task={tool=function() return function(x) return x end end}; return later',
+    } do
+      fs.write(dir .. "/alias.lua", 'global none\nglobal <const> require\nlocal task=require "task"\n' .. source .. '\n')
+      local alias = checker.file(dir .. "/alias.lua", dir)
+      check("reassigned task bindings do not create direct, curried or captured tool declarations",
+        #alias.errors == 0 and #alias.tools == 0, json.encode(alias.errors))
+    end
+    fs.write(dir .. "/factory.lua", 'global none\nlocal M={first=1}\nlocal M={second=2}\nreturn M\n')
+    fs.write(dir .. "/consumer.lua", 'global none\nglobal <const> require\nlocal M=require "factory"\nreturn M.second\n')
+    local shadowed = checker.file(dir .. "/consumer.lua", dir)
+    check("a redeclared export-table local is conservatively left unchecked",
+      checker.exports(dir .. "/factory.lua") == nil and #shadowed.errors == 0, json.encode(shadowed.errors))
+
+    fs.write(dir .. "/café.lua", 'global none\nlocal M={available=true}\nreturn M\n')
+    fs.write(dir .. "/dotted.name.lua", 'global none\nlocal M={unreachable=true}\nreturn M\n')
+    fs.write(dir .. "/consumer.lua", 'global none\nglobal <const> require\nlocal M=require "café"\nreturn M.available\n')
+    local unicode = checker.file(dir .. "/consumer.lua", dir)
+    local modules = checker.modules(dir)
+    local unicode_found, dotted_found = false, false
+    for _, module in ipairs(modules.modules) do
+      if module.name == "café" then unicode_found = true end
+      if module.name == "dotted.name" then dotted_found = true end
+    end
+    local loaded = T.kuu({ "-e", 'local rt=require "rt"; rt.root("."); assert(require("café").available)' }, { cwd = dir })
+    check("module discovery and checking follow runtime Unicode and dotted-path rules",
+      #unicode.errors == 0 and #unicode.warnings == 0 and unicode_found and not dotted_found and modules.complete and loaded.code == 0,
+      json.encode(modules) .. T.describe(loaded))
+
+    local original_dirs, original_list, original_read = fs.dirs, fs.list, fs.read
+    fs.dirs = function() return { paths = {}, errors = { { path = dir .. "/hidden", win32 = 32, reason = "sharing violation" } } } end
+    local walked, tree, inventory = pcall(function() return checker.tree(dir), checker.modules(dir) end)
+    fs.dirs = original_dirs
+    check("unreadable subtrees produce read findings and incomplete module inventories",
+      walked and #tree.reports == 1 and tree.reports[1].errors[1].kind == "read"
+        and tree.reports[1].errors[1].win32 == 32 and not inventory.complete and #inventory.errors == 1,
+      tostring(tree))
+    fs.dirs = function() return { paths = { dir }, errors = {} } end
+    fs.list = function() return { entries = {}, errors = { "the listing stopped early" } } end
+    local listed, partial, partial_modules = pcall(function() return checker.tree(dir), checker.modules(dir) end)
+    fs.dirs, fs.list = original_dirs, original_list
+    check("partial directory listings cannot become successful empty check results",
+      listed and #partial.reports == 1 and contains(partial.reports[1].errors[1].message, "stopped early")
+        and not partial_modules.complete and #partial_modules.errors == 1, tostring(partial))
+    fs.read = function(path, opts)
+      if path == dir .. "/café.lua" then return nil, require("err").new("FS", "access", "module held open") end
+      return original_read(path, opts)
+    end
+    local read, unreadable = pcall(checker.modules, dir)
+    fs.read = original_read
+    check("an unreadable candidate module marks its inventory incomplete",
+      read and not unreadable.complete and #unreadable.errors == 1
+        and unreadable.errors[1].path == dir .. "/café.lua", tostring(unreadable))
+    fs.remove(dir, { recursive = true })
+  end
 end

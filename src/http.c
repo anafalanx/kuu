@@ -52,6 +52,7 @@ typedef struct http_request {
     volatile LONG timed_out;
     /* inputs, owned here, read by the worker */
     wchar_t *method, *host, *path, *headers, *url;
+    char *building_headers; /* owned while validating the request */
     INTERNET_PORT port;
     int secure;
     unsigned char *body;
@@ -61,6 +62,7 @@ typedef struct http_request {
     int redirect_none;
     HANDLE file;        /* streaming target, or NULL */
     wchar_t *temp_path; /* the file's temporary name */
+    wchar_t *final_path; /* absolute destination captured before yielding */
     char *to_utf8;      /* the final path, for the result */
     /* outputs, written by the worker, read after the packet */
     int failed;
@@ -377,9 +379,11 @@ static void request_free(http_request *q)
     free(q->host);
     free(q->path);
     free(q->headers);
+    free(q->building_headers);
     free(q->url);
     free(q->body);
     free(q->temp_path);
+    free(q->final_path);
     free(q->to_utf8);
     free(q->rawheaders);
     free(q->data);
@@ -487,19 +491,9 @@ static int request_push(lua_State *L, ku_waiter *w)
         return n;
     }
     if (q->temp_path != NULL) {
-        ku_wpath final;
-        ku_fail fail;
-        if (ku_wpath_make(q->to_utf8, &final, &fail) != 0) {
-            /* The same path passed this when the request was made; only memory fails here. */
-            DeleteFileW(q->temp_path);
-            int n = ku_err_fail(L, "HTTP", "oserror", "cannot place the download at '%s': %s", q->to_utf8, fail.message);
-            request_free(q);
-            return n;
-        }
         DWORD error = 0;
-        if (ku_fs_replace(q->temp_path, final.text, &error) != 0) {
+        if (ku_fs_replace(q->temp_path, q->final_path, &error) != 0) {
             DeleteFileW(q->temp_path);
-            ku_wpath_free(&final);
             char *text = ku_win_error_message(error);
             int n = ku_err_fail(L, "HTTP", "oserror", "cannot place the download at '%s': %s", q->to_utf8,
                                 text != NULL ? text : "");
@@ -507,7 +501,6 @@ static int request_push(lua_State *L, ku_waiter *w)
             request_free(q);
             return n;
         }
-        ku_wpath_free(&final);
     }
     lua_createtable(L, 0, 6);
     lua_pushinteger(L, (lua_Integer)q->status);
@@ -550,6 +543,30 @@ static wchar_t *wide_or_raise(lua_State *L, const char *utf8, const char *what)
     return w;
 }
 
+/* Lua errors (including an option table's metamethod) unwind native request
+ * construction through this owner. It is disarmed when the worker takes
+ * ownership, before the first yield. */
+typedef struct http_build_guard {
+    http_request *request;
+} http_build_guard;
+
+static int build_close(lua_State *L)
+{
+    http_build_guard *guard = (http_build_guard *)lua_touserdata(L, 1);
+    http_request *q = guard->request;
+    guard->request = NULL;
+    if (q != NULL) {
+        if (q->file != NULL) {
+            CloseHandle(q->file);
+        }
+        if (q->temp_path != NULL) {
+            DeleteFileW(q->temp_path);
+        }
+        request_free(q);
+    }
+    return 0;
+}
+
 /* The request table: method, url, body, headers, type, timeout, maxbody,
  * redirect, to.  Raises HTTP usage | badvalue for mistakes. */
 static int build_request(lua_State *L, int idx)
@@ -571,10 +588,20 @@ static int build_request(lua_State *L, int idx)
             return ku_err_raise(L, "HTTP", "usage", "unknown option '%s'", key);
         }
     }
+    http_build_guard *guard = (http_build_guard *)lua_newuserdatauv(L, sizeof *guard, 0);
+    guard->request = NULL;
+    if (luaL_newmetatable(L, "kuu.http.build")) {
+        lua_pushcfunction(L, build_close);
+        lua_setfield(L, -2, "__close");
+    }
+    lua_setmetatable(L, -2);
+    int guard_index = lua_gettop(L);
+    lua_toclose(L, guard_index);
     http_request *q = (http_request *)calloc(1, sizeof *q);
     if (q == NULL) {
         return ku_err_raise(L, "HTTP", "oserror", "out of memory");
     }
+    guard->request = q;
     q->loop = ku_loop_of(L);
     q->src.kind = KU_SRC_POSTED;
     q->src.owner = q;
@@ -582,10 +609,16 @@ static int build_request(lua_State *L, int idx)
     q->timeout_ms = KU_HTTP_DEFAULT_TIMEOUT_MS;
 
     lua_getfield(L, idx, "method");
-    const char *method = luaL_optstring(L, -1, "GET");
+    if (!lua_isnil(L, -1) && lua_type(L, -1) != LUA_TSTRING) {
+        return ku_err_raise(L, "HTTP", "badvalue", "method must be a string");
+    }
+    size_t method_length = 0;
+    const char *method = lua_isnil(L, -1) ? "GET" : lua_tolstring(L, -1, &method_length);
+    if (method_length != 0 && strlen(method) != method_length) {
+        return ku_err_raise(L, "HTTP", "badvalue", "method must not contain NUL bytes");
+    }
     if (strcmp(method, "GET") != 0 && strcmp(method, "POST") != 0 && strcmp(method, "PUT") != 0 &&
         strcmp(method, "DELETE") != 0 && strcmp(method, "HEAD") != 0 && strcmp(method, "PATCH") != 0) {
-        request_free(q);
         return ku_err_raise(L, "HTTP", "badvalue", "method must be GET, POST, PUT, DELETE, HEAD, or PATCH");
     }
     q->method = ku_utf8_to_wide(method);
@@ -593,17 +626,14 @@ static int build_request(lua_State *L, int idx)
 
     lua_getfield(L, idx, "url");
     if (lua_type(L, -1) != LUA_TSTRING) {
-        request_free(q);
         return ku_err_raise(L, "HTTP", "usage", "a url is required");
     }
     size_t url_length = 0;
     const char *url = lua_tolstring(L, -1, &url_length);
     if (strlen(url) != url_length || has_control(url, url_length) || memchr(url, ' ', url_length) != NULL) {
-        request_free(q);
         return ku_err_raise(L, "HTTP", "badvalue", "the url contains a space, a control character, or NUL");
     }
     q->url = wide_or_raise(L, url, "the url");
-    lua_pop(L, 1);
     /* The OS parser cracks the URL: a URL splitter is a security boundary, and
      * the host is what the certificate is checked against. */
     URL_COMPONENTS parts;
@@ -614,17 +644,15 @@ static int build_request(lua_State *L, int idx)
     parts.dwUrlPathLength = (DWORD)-1;
     parts.dwExtraInfoLength = (DWORD)-1;
     if (!WinHttpCrackUrl(q->url, 0, 0, &parts)) {
-        request_free(q);
         return ku_err_raise(L, "HTTP", "badvalue", "'%s' is not a valid http or https url", url);
     }
     if (parts.nScheme != INTERNET_SCHEME_HTTP && parts.nScheme != INTERNET_SCHEME_HTTPS) {
-        request_free(q);
         return ku_err_raise(L, "HTTP", "badvalue", "only http and https urls are supported");
     }
     if (parts.dwHostNameLength == 0) {
-        request_free(q);
         return ku_err_raise(L, "HTTP", "badvalue", "the url has no host");
     }
+    lua_pop(L, 1); /* keep a metamethod-produced URL rooted through validation */
     q->secure = parts.nScheme == INTERNET_SCHEME_HTTPS;
     q->port = parts.nPort;
     q->host = (wchar_t *)malloc(((size_t)parts.dwHostNameLength + 1) * sizeof(wchar_t));
@@ -643,7 +671,6 @@ static int build_request(lua_State *L, int idx)
     }
     q->path = (wchar_t *)malloc((path_units + extra_units + 2) * sizeof(wchar_t));
     if (q->host == NULL || q->path == NULL || q->method == NULL) {
-        request_free(q);
         return ku_err_raise(L, "HTTP", "oserror", "out of memory");
     }
     if (path_units == 0) {
@@ -658,18 +685,15 @@ static int build_request(lua_State *L, int idx)
     lua_getfield(L, idx, "body");
     if (!lua_isnil(L, -1)) {
         if (lua_type(L, -1) != LUA_TSTRING) {
-            request_free(q);
             return ku_err_raise(L, "HTTP", "badvalue", "body must be a string of bytes");
         }
         size_t n = 0;
         const char *b = lua_tolstring(L, -1, &n);
         if (n > 0xffffffffu) {
-            request_free(q);
             return ku_err_raise(L, "HTTP", "badvalue", "the body is larger than WinHTTP can send at once");
         }
         q->body = (unsigned char *)malloc(n > 0 ? n : 1);
         if (q->body == NULL) {
-            request_free(q);
             return ku_err_raise(L, "HTTP", "oserror", "out of memory");
         }
         memcpy(q->body, b, n);
@@ -681,7 +705,6 @@ static int build_request(lua_State *L, int idx)
     if (!lua_isnil(L, -1)) {
         int64_t ms = 0;
         if (ku_check_duration(L, -1, &ms) != 0 || ms <= 0 || ms > 0x7fffffff) {
-            request_free(q);
             return ku_err_raise(L, "HTTP", "badvalue",
                                 "timeout must be a positive duration such as \"30s\" (WinHTTP reads zero as infinite)");
         }
@@ -693,7 +716,6 @@ static int build_request(lua_State *L, int idx)
     if (!lua_isnil(L, -1)) {
         const char *policy = lua_tostring(L, -1);
         if (policy == NULL || strcmp(policy, "none") != 0) {
-            request_free(q);
             return ku_err_raise(L, "HTTP", "badvalue", "redirect takes exactly \"none\"");
         }
         q->redirect_none = 1;
@@ -704,10 +726,17 @@ static int build_request(lua_State *L, int idx)
     int to_file = !lua_isnil(L, -1);
     if (to_file) {
         if (lua_type(L, -1) != LUA_TSTRING) {
-            request_free(q);
             return ku_err_raise(L, "HTTP", "badvalue", "to must be a path");
         }
-        q->to_utf8 = _strdup(lua_tostring(L, -1));
+        size_t length = 0;
+        const char *path = lua_tolstring(L, -1, &length);
+        if (strlen(path) != length) {
+            return ku_err_raise(L, "HTTP", "badvalue", "to must be a path without NUL bytes");
+        }
+        q->to_utf8 = _strdup(path);
+        if (q->to_utf8 == NULL) {
+            return ku_err_raise(L, "HTTP", "oserror", "out of memory");
+        }
     }
     lua_pop(L, 1);
     q->maxbody = to_file ? KU_HTTP_DEFAULT_MAXFILE : KU_HTTP_DEFAULT_MAXBODY;
@@ -715,7 +744,6 @@ static int build_request(lua_State *L, int idx)
     if (!lua_isnil(L, -1)) {
         int64_t bytes = 0;
         if (ku_check_bytes(L, -1, &bytes) != 0 || bytes <= 0) {
-            request_free(q);
             return ku_err_raise(L, "HTTP", "badvalue", "maxbody must be a positive size such as \"64M\"");
         }
         q->maxbody = (size_t)bytes;
@@ -726,7 +754,6 @@ static int build_request(lua_State *L, int idx)
         size_t hex_length = 0;
         const char *hex = lua_type(L, -1) == LUA_TSTRING ? lua_tolstring(L, -1, &hex_length) : NULL;
         if (hex == NULL || parse_hex(hex, hex_length, q->expected, sizeof q->expected) != 0) {
-            request_free(q);
             return ku_err_raise(L, "HTTP", "badvalue", "sha256 must be 64 hex digits");
         }
         q->want_hash = 1;
@@ -739,7 +766,14 @@ static int build_request(lua_State *L, int idx)
     char *block = NULL;
     size_t block_len = 0;
     lua_getfield(L, idx, "type");
-    const char *content_type = lua_isnil(L, -1) ? NULL : luaL_checkstring(L, -1);
+    if (!lua_isnil(L, -1) && lua_type(L, -1) != LUA_TSTRING) {
+        return ku_err_raise(L, "HTTP", "badvalue", "type must be a string");
+    }
+    size_t type_length = 0;
+    const char *content_type = lua_isnil(L, -1) ? NULL : lua_tolstring(L, -1, &type_length);
+    if (content_type != NULL && strlen(content_type) != type_length) {
+        return ku_err_raise(L, "HTTP", "badvalue", "type must not contain NUL bytes");
+    }
     int caller_typed = 0;
     lua_getfield(L, idx, "headers");
     if (lua_type(L, -1) == LUA_TTABLE) {
@@ -758,14 +792,11 @@ static int build_request(lua_State *L, int idx)
     lua_getfield(L, idx, "headers");
     if (!lua_isnil(L, -1)) {
         if (lua_type(L, -1) != LUA_TTABLE) {
-            request_free(q);
             return ku_err_raise(L, "HTTP", "badvalue", "headers must be a table of name = value");
         }
         lua_pushnil(L);
         while (lua_next(L, -2) != 0) {
             if (lua_type(L, -2) != LUA_TSTRING || (lua_type(L, -1) != LUA_TSTRING && lua_type(L, -1) != LUA_TNUMBER)) {
-                free(block);
-                request_free(q);
                 return ku_err_raise(L, "HTTP", "badvalue", "header names and values must be strings");
             }
             size_t nl = 0, vl = 0;
@@ -773,8 +804,6 @@ static int build_request(lua_State *L, int idx)
             const char *value = lua_tolstring(L, -1, &vl);
             if (nl == 0 || strlen(name) != nl || strlen(value) != vl || has_control(name, nl) || has_control(value, vl) ||
                 memchr(name, ':', nl) != NULL || memchr(name, ' ', nl) != NULL) {
-                free(block);
-                request_free(q);
                 return ku_err_raise(L, "HTTP", "badvalue", "header '%s' has an invalid name or value", name);
             }
             if (content_type != NULL && _stricmp(name, "Content-Type") == 0) {
@@ -784,11 +813,10 @@ static int build_request(lua_State *L, int idx)
             size_t add = nl + 2 + vl + 2;
             char *grown = (char *)realloc(block, block_len + add + 1);
             if (grown == NULL) {
-                free(block);
-                request_free(q);
                 return ku_err_raise(L, "HTTP", "oserror", "out of memory");
             }
             block = grown;
+            q->building_headers = block;
             memcpy(block + block_len, name, nl);
             memcpy(block + block_len + nl, ": ", 2);
             memcpy(block + block_len + nl + 2, value, vl);
@@ -801,26 +829,23 @@ static int build_request(lua_State *L, int idx)
     lua_pop(L, 2);
     if (content_type != NULL) {
         if (has_control(content_type, strlen(content_type))) {
-            free(block);
-            request_free(q);
             return ku_err_raise(L, "HTTP", "badvalue", "type has an invalid value");
         }
         size_t add = 14 + strlen(content_type) + 2;
         char *grown = (char *)realloc(block, block_len + add + 1);
         if (grown == NULL) {
-            free(block);
-            request_free(q);
             return ku_err_raise(L, "HTTP", "oserror", "out of memory");
         }
         block = grown;
+        q->building_headers = block;
         snprintf(block + block_len, add + 1, "Content-Type: %s\r\n", content_type);
         block_len += add;
     }
     if (block != NULL) {
         q->headers = ku_utf8_to_wide(block);
-        free(block);
+        free(q->building_headers);
+        q->building_headers = NULL;
         if (q->headers == NULL) {
-            request_free(q);
             return ku_err_raise(L, "HTTP", "encoding", "a header is not valid UTF-8");
         }
     }
@@ -830,27 +855,15 @@ static int build_request(lua_State *L, int idx)
         ku_wpath target;
         ku_fail fail;
         if (ku_wpath_make(q->to_utf8, &target, &fail) != 0) {
-            request_free(q);
             return ku_err_raise(L, fail.domain, fail.code, "%s", fail.message);
         }
-        wchar_t suffix[48];
-        _snwprintf(suffix, sizeof suffix / sizeof suffix[0], L".kuu-%lu-%llu.tmp", (unsigned long)GetCurrentProcessId(),
-                   (unsigned long long)GetTickCount64());
-        q->temp_path = (wchar_t *)malloc((target.length + wcslen(suffix) + 1) * sizeof(wchar_t));
-        if (q->temp_path == NULL) {
-            ku_wpath_free(&target);
-            request_free(q);
-            return ku_err_raise(L, "HTTP", "oserror", "out of memory");
-        }
-        wcscpy(q->temp_path, target.text);
-        wcscat(q->temp_path, suffix);
-        ku_wpath_free(&target);
-        q->file = CreateFileW(q->temp_path, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+        q->final_path = target.text; /* retain the validated absolute spelling */
+        DWORD error = 0;
+        q->file = ku_fs_sibling_temp(q->final_path, &q->temp_path, &error);
         if (q->file == INVALID_HANDLE_VALUE) {
             /* The machine's answer about the destination, returned as
              * fs.write returns it: a directory that is not there, a place
              * this user may not write, or Windows' own reason. */
-            DWORD error = GetLastError();
             q->file = NULL;
             const char *code = (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) ? "notfound"
                                : error == ERROR_ACCESS_DENIED                                    ? "access"
@@ -859,7 +872,6 @@ static int build_request(lua_State *L, int idx)
             int n = ku_err_fail(L, "HTTP", code, "cannot create the download file beside '%s': %s", q->to_utf8,
                                 text != NULL ? text : "");
             free(text);
-            request_free(q);
             return n;
         }
     }
@@ -867,12 +879,10 @@ static int build_request(lua_State *L, int idx)
     q->session = session_get();
     if (q->session == NULL) {
         DWORD error = GetLastError();
-        request_free(q);
         return ku_err_raise(L, "HTTP", "oserror", "cannot open a WinHTTP session (error %lu)", (unsigned long)error);
     }
     ku_waiter *w = ku_waiter_new(q->loop, q, request_push);
     if (w == NULL) {
-        request_free(q);
         return ku_err_raise(L, "HTTP", "oserror", "out of memory");
     }
     q->waiter = w;
@@ -882,11 +892,12 @@ static int build_request(lua_State *L, int idx)
     if (q->thread == NULL) {
         ku_loop_received(q->loop);
         free(w);
-        request_free(q);
         return ku_err_raise(L, "HTTP", "oserror", "cannot start the request thread");
     }
     ku_timer_arm(q->loop, &q->deadline, q->timeout_ms);
     w->on_abandon = http_abandon;
+    guard->request = NULL;
+    lua_closeslot(L, guard_index);
     return ku_wait(L, w, -1);
 }
 

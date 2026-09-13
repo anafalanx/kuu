@@ -1,5 +1,9 @@
 # Upgrading to 0.9
 
+This page records the historical 0.9.0 release. From 0.11, published versions
+use two components again; [upgrading to 0.11](upgrading-0.11.md) describes
+the current format and compatible numeric guards.
+
 0.9.0 is the last release before the 1.0 freeze, and it exists to correct
 contracts while correcting them is still allowed. It carries one breaking
 change every project must act on — the version now has three components — and

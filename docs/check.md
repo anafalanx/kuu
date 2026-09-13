@@ -19,8 +19,10 @@ Four things are checked:
 
 - **It parses.** Each file goes through Lua 5.5's own compiler, text only, the
   way kuu would load it. A syntax error is reported with its line. Under a
-  global declaration (`global none`, or any `global` statement), the compiler
+  declared-only global scope (for example, after `global none`), the compiler
   also refuses an undeclared global, so the classic typo is an error here.
+  `global *` permits undeclared globals, and a declaration inside a block
+  does not make the rest of the file declared-only.
   A file that does not compile gets that one error, and the missing-`global`
   warning below if that applies, and nothing else: its requires are not
   listed and no other check is made until it parses, since the text they
@@ -56,7 +58,9 @@ only a missed diagnostic; one wrongly excluded is a false positive on correct
 code, which is far more expensive. So when the export set cannot be bounded
 the module is left unchecked entirely rather than guessed at: a computed key
 (`M[name] = ...`), a metatable, a return that is not a plain local, or a local
-that was not built as a table in that file.
+that was not built as a table in that file. Passing or aliasing that table
+also puts its exports out of reach, since another reference can add names.
+Redeclaring the returned local likewise leaves its exports unchecked.
 
 Name checking follows direct local require bindings and lexical scopes.
 Parameters, block locals, and loop variables can shadow an alias. If an
@@ -74,22 +78,24 @@ has no binding to shadow or reassign, so nothing can make it uncertain. The
 module name must be a literal, as it must be everywhere else here; a computed
 `require(name)` says nothing and is left alone.
 
-Four things are checked against kuu's own interface, and all four are
-mistakes that run without complaint today. A code its domain does not have,
+Four things are checked against kuu's own interface before those expressions
+run. A code its domain does not have,
 so `err.is` answers false for every error and the handler it guards is dead:
 `err.is(e, "PROC", "notfund")`. An option a call does not take:
 `proc.run { cwdd = "x" }`, which the runtime raises on, but only if the line
 is reached. A closed set compared with a literal outside it, such as
 `rt.route == "flie"`, which likewise never matches. And `rt.version` compared
-by text, which no project should do since the version grew a third component;
-use `rt.version_at_least`.
+by text: public versions use `N.N`, two natural numbers, and lexical order
+would put `"0.11"` before `"0.9"`. Use `rt.version_at_least(0, 11)` for a
+minimum version.
 
 Error *domains* are not checked, only the codes within a domain kuu owns.
 `err.new` is public and a project names its own domains, so an unfamiliar one
 says nothing about correctness.
 
-Beyond these, no call is type-checked: argument counts, option values, and
-types still belong to runtime validation.
+Beyond these, ordinary calls are not type-checked: argument counts, option
+values, and types still belong to runtime validation. Literal tool
+declarations are checked for the shapes needed to describe them below.
 
 **The manifest's tools are checked the same way.** Each
 `task.tool "name" { ... }` in `manifest.lua` is read as the literal it is —
@@ -103,7 +109,8 @@ any other file and in either spelling: `outputt` is an `option` error with
 `output` suggested, found here rather than when the declaration runs. An
 option name is `-x`, `--long`, or a Windows switch `/x` — not `-` or `--`
 alone, not a negative number, not a path — and `--name=value` is judged by
-its name. The value an option takes is skipped: after `--out`, declared as a
+its name and supplies its own value. `--` ends option checking; subsequent
+arguments are positional. The value an option takes is skipped: after `--out`, declared as a
 `path`, the next argument is its value whatever it looks like. Anything not
 a literal is not judged, and a declaration without `args` leaves its
 arguments undescribed. Under a root that holds a manifest, a `task.exec`
@@ -126,7 +133,15 @@ the report describes what is now on disk.
 It knows nothing about Lua's scoping rules, because the compiler already does.
 Under a global declaration the compiler names each undeclared variable in
 turn, so the needed set is found by compiling and reading the complaint; and a
-declared name is unnecessary exactly when removing it still compiles.
+declared name is unnecessary when removing it still compiles in declared-only
+mode. Removing the final unused name leaves `global none` behind.
+
+The fixer handles plain name lists, optionally with a leading `<const>`, at
+the start of the file after its comments. Initialized declarations and other
+forms it cannot preserve are reported as not fixed and left byte for byte
+unchanged. Initializer expressions are never dropped or executed by fixing.
+Leading long comments, including license headers with `--[=[ ... ]=]`
+delimiters, are kept outside declarations inserted by `--adopt`.
 
 The direction that matters is removal. Forgetting to add a name is a loud
 load-time error and fixes itself; forgetting to remove one when its last use
@@ -162,7 +177,7 @@ bad.lua:1: unexpected symbol near '='
 strict.lua:2: variable 'print' is not declared
 app.lua:12: "notfund" is not a code in PROC, so this never matches; did you mean "notfound"?
 app.lua:19: cwdd is not an option of proc.run; did you mean cwd?
-app.lua:24: rt.version is Major.Minor.Patch and is never compared by text; use rt.version_at_least(...)
+app.lua:24: rt.version is N.N (two natural numbers) and is never compared by text; use rt.version_at_least(...)
 lib/helper.lua: warning: no global declaration: an undeclared global is not an error here; start with `global none`
 ghost.lua:3: warning: require "nothere" names no kuu module and no file under C:/work/app
 kuu: 6 files, 5 errors, 2 warnings
@@ -196,7 +211,7 @@ type CheckReport = {
   };
 };
 type CheckError =
-  | { kind: "read" | "syntax"; line: number; message: string }
+  | { kind: "read" | "syntax" | "analysis"; line: number; message: string }
   | { kind: "name" | "code" | "option" | "value"; line: number; message: string;
       module: string; name: string; suggestion?: string };
 type CheckWarning = {
@@ -211,14 +226,19 @@ type ToolDeclaration = {
 
 Each error and warning carries `line` (0 when it is about the whole file) and
 `message`. The closed set of error kinds is `read` (cannot read the file),
-`syntax` (Lua compilation, including undeclared globals), `name` (an unknown
+`syntax` (Lua compilation, including undeclared globals), `analysis` (a valid
+Lua chunk that the additional static inspection could not process), `name` (an unknown
 palette export), `code` (an error code its domain does not have), `option`
 (an option a call does not take), and `value` (a closed set compared with a
 literal outside it, `rt.version` compared by text or matched to its end by
-a two-component pattern included — that is the guard published through
-0.8, which refuses every release from 0.9.0 on, and this is where a project
-still carrying it is told, naming [upgrading to 0.9](upgrading-0.9.md); a
-pattern that reads three components, or one, is left alone). For `value`,
+a three-component pattern included — public versions have two components
+from 0.11 onward, so that guard cannot match, and the finding names
+[upgrading to 0.11](upgrading-0.11.md). A pattern that reads two components,
+or one, is left alone; `rt.version_at_least` is the recommended minimum
+version check). A malformed
+literal tool declaration is also a `value` finding, with `module` set to
+`task.tool` and `name` to the tool's declared name; it is omitted from `tools`
+and its calls are not judged. For other `value` findings,
 `name` is the literal that was written. Warning kinds
 are `globals` (no declaration), `require` (unresolved module), and `tool` (a
 tool declaration the text does not bound, or a program run through the door
@@ -240,13 +260,22 @@ same finding kinds; `tools` holds the manifest's declarations when the file
 is the manifest, and is empty otherwise. `check.tree(dir, root)` returns
 `{root, reports = {...}}`. Either spelling of `root` — backslashes, a
 trailing slash, a relative path — is taken as `fs.absolute` spells it.
+An unreadable directory or incomplete listing contributes a `read` finding
+at the directory's path, with line 0 and the filesystem diagnostic. The
+remaining readable files are still checked, and the command exits 1.
+Each public call reads the current manifest; a tree check shares its parsed
+declarations only for that operation, including a fresh pass after `--fix`.
 
 The extraction above is reachable on its own. `check.exports(path)` is the set
 of names a module exports, read from its text, or nil when the text does not
 bound them; `check.modules(root)` returns
-`{root, files, modules = {{name, path, exports}, ...}}` -- every `.lua` file
+`{root, files, modules = {{name, path, exports}, ...}, complete, errors}` -- every `.lua` file
 below the root that a `require` name could reach and whose exports it could
-bound, in name order, with `files` counting all of them.
+bound, in name order, with `files` counting all discovered `.lua` files.
+Unicode names follow the loader's rules; a literal dot in a filename is not
+a directory separator, and a project file hidden by a bundled module is not
+advertised. `complete` is false if a listing or candidate file could not be
+read; `errors` is an array of `{path, message, win32?}` describing each failure.
 [capabilities](capabilities.md) reports what it returns. `check.tools(root)`
 is the manifest's tool declarations as the checker reads them, in declaration
 order, only those the text bounds; `capabilities` lists the same tools from
@@ -257,5 +286,5 @@ the registry the manifest filled, and the suite holds the two readings equal.
 The command's complete `CHECK` code set is `notfound`, for an explicitly
 named path that is neither a file nor a directory. Invalid command arguments
 use `CLI usage`. The checking module returns findings rather than `nil, err`;
-a file-read failure is a `read` finding containing the underlying `FS`
+a file-read or directory-enumeration failure is a `read` finding containing the underlying `FS`
 diagnostic. Filesystem argument errors retain their original domain and code.

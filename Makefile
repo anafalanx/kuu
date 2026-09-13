@@ -56,7 +56,7 @@ LINK_LIBS  := -lbcrypt -lwinhttp -liphlpapi -lws2_32 -ladvapi32 -lwintrust -lcry
 
 # Test fixtures: small C programs the suite drives as children.
 FIXTURE_SRC := test/fixtures
-FIXTURES    := $(BUILD)/test/http_fixture.exe $(BUILD)/test/reg_fixture.exe $(BUILD)/test/http_error_fixture.exe $(BUILD)/test/limits_fixture.exe $(BUILD)/test/pty_fixture.exe $(BUILD)/test/loop_orphan_fixture.exe
+FIXTURES    := $(BUILD)/test/http_fixture.exe $(BUILD)/test/reg_fixture.exe $(BUILD)/test/http_error_fixture.exe $(BUILD)/test/limits_fixture.exe $(BUILD)/test/pty_fixture.exe $(BUILD)/test/loop_orphan_fixture.exe $(BUILD)/test/proc_waiter_fixture.exe $(BUILD)/test/proc_stdin_fixture.exe $(BUILD)/test/lock_fixture.exe $(BUILD)/test/versionrc_fixture.exe
 
 LUA_C    := $(filter-out $(LUA_SRC)/lua.c $(LUA_SRC)/luac.c,$(wildcard $(LUA_SRC)/*.c))
 LUA_O    := $(patsubst $(LUA_SRC)/%.c,$(BUILD)/obj/lua/%.o,$(LUA_C))
@@ -123,7 +123,12 @@ analyze: $(ANALYZE_O)
 $(EMBED): tools/embed.c | $(BUILD)
 	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -o $@ $<
 
-$(PAYLOAD_C): $(EMBED) $(PAYLOAD_IN) | $(BUILD)/gen
+# Check the complete file set on every invocation, including deletions. The
+# generator preserves the output timestamp when its bytes are unchanged.
+.PHONY: FORCE_PAYLOAD
+FORCE_PAYLOAD:
+
+$(PAYLOAD_C): $(EMBED) $(PAYLOAD_IN) FORCE_PAYLOAD | $(BUILD)/gen
 	$(subst /,\,$(EMBED)) $@ $(PAYLOAD_DIRS)
 
 $(PAYLOAD_O): $(PAYLOAD_C) $(HOST_SRC)/payload.h | $(BUILD)/obj/gen
@@ -148,6 +153,15 @@ $(BUILD) $(BUILD)/analyze $(BUILD)/gen $(BUILD)/test $(BUILD)/obj/lua $(BUILD)/o
 
 .PHONY: fixtures
 fixtures: $(FIXTURES)
+
+$(BUILD)/test/proc_waiter_fixture.exe: $(FIXTURE_SRC)/proc_waiter_fixture.c $(HOST_SRC)/proc.c $(HOST_SRC)/loop.h | $(BUILD)/test
+	$(CC) $(HOST_FLAGS) -flto -static -Wl,--gc-sections -o $@ $<
+
+$(BUILD)/test/proc_stdin_fixture.exe: $(FIXTURE_SRC)/proc_stdin_fixture.c $(HOST_SRC)/proc.c $(HOST_SRC)/loop.h | $(BUILD)/test
+	$(CC) $(HOST_FLAGS) -flto -static -Wl,--gc-sections -o $@ $<
+
+$(BUILD)/test/versionrc_fixture.exe: $(FIXTURE_SRC)/versionrc_fixture.c tools/versionrc.c | $(BUILD)/test
+	$(CC) $(HOST_FLAGS) -static -o $@ $<
 
 test: $(OUT) $(FIXTURES)
 	$(subst /,\,$(OUT)) test\run.lua
@@ -225,7 +239,7 @@ $(ASAN_YYJSON_O): $(YYJSON_SRC)/yyjson.c $(YYJSON_SRC)/yyjson.h | $(ASAN_DIR)/ob
 $(ASAN_DIR)/obj/pcre2/%.o: $(PCRE2_SRC)/%.c | $(ASAN_DIR)/obj/pcre2
 	$(CLANG) $(ASAN_PCRE2_FLAGS) -MMD -MP -c $< -o $@
 
-$(ASAN_PAYLOAD_C): $(EMBED) $(PAYLOAD_IN) | $(ASAN_DIR)/gen
+$(ASAN_PAYLOAD_C): $(EMBED) $(PAYLOAD_IN) FORCE_PAYLOAD | $(ASAN_DIR)/gen
 	$(subst /,\,$(EMBED)) $@ $(PAYLOAD_DIRS)
 
 $(ASAN_PAYLOAD_O): $(ASAN_PAYLOAD_C) $(HOST_SRC)/payload.h | $(ASAN_DIR)/obj/gen

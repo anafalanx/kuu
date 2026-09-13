@@ -1,5 +1,9 @@
 # Upgrading to 0.10
 
+This page records the historical 0.10.0 release. [Upgrading to 0.11](upgrading-0.11.md)
+describes the current N.N version format, review corrections, and continued
+support for the deprecated `tasks.lua` fallback.
+
 0.10.0 is the release after the pre-freeze correction. It adds, and it
 corrects one convention: an unknown option is refused everywhere, where
 fourteen calls used to ignore it, and three calls now fall on the right side of
@@ -67,8 +71,9 @@ the name changes, because the file describes more than tasks now.
 `tasks.lua` where no `manifest.lua` is, read it as the manifest, and write
 one line to standard error each time saying to rename it; `capabilities
 --json` reports which name it found as `project.file`. A directory holding
-both is read from `manifest.lua` without a word. 0.11 will not look for the
-old name.
+both is read from `manifest.lua` without a word. The announced plan was to
+remove the old name in 0.11; that plan was withdrawn, and 0.11 retains the
+deprecated fallback.
 
 ```text
 git mv tasks.lua manifest.lua

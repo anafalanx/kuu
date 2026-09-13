@@ -31,7 +31,7 @@ Compressed responses (gzip, deflate) are decompressed transparently.
 |---|---|---|
 | `timeout` | `"30s"` | the whole request, from connect to the last byte; `HTTP timeout` when exceeded; zero is refused because WinHTTP reads it as infinite |
 | `maxbody` | `"64M"`, `"8G"` with `to` | the body is refused as `HTTP toobig` beyond this, never truncated |
-| `to` | | stream the body into this file; written beside it as a temporary and renamed into place, with the same retry as [`fs.write`](fs.md) since 0.10.0, so a failed download leaves the previous file untouched |
+| `to` | | stream the body into this file; a relative path is resolved when the request starts. Written beside it as a temporary and renamed into place, with the same retry as [`fs.write`](fs.md) since 0.10.0, so a failed download leaves the previous file untouched |
 | `sha256` | | 64 hex digits the body must hash to, checked as it arrives; otherwise `HTTP mismatch`, and a `to` file is never placed. A non-2xx answer is then `HTTP status`, because specific bytes were asked for |
 | `headers` | | a table of name = value; names and values may not contain control characters, and names no colon or space |
 | `type` | `application/octet-stream` when there is a body | the `Content-Type`; wins over a `Content-Type` header |
@@ -61,13 +61,15 @@ is sent with the next. A caller who wants a cookie sends the `Cookie` header.
 | `toobig` | the body exceeded `maxbody` |
 | `mismatch` | the body did not hash to `sha256`; the message carries both digests |
 | `status` | a non-2xx answer to a request that gave `sha256` |
-| `badvalue` | raised: a malformed url, header, timeout, size, or redirect value |
+| `badvalue` | raised: a malformed url, method, body, content type, header, timeout, size, or redirect value |
 | `encoding` | raised: a URL or header is not valid UTF-8 |
 | `usage` | raised: an unknown option, or no url |
 | `oserror` | anything else, with the Windows message |
 
 A refused download destination path keeps the path helper's `FS` domain
 (`badvalue`, `encoding`, or `oserror`) and is raised before the request starts.
+A destination containing a NUL byte is rejected as `HTTP badvalue` before any
+file is created or request is sent.
 An enclosing `sched.deadline` propagates `SCHED deadline` while cancelling the
 request, independently of the request's own `HTTP timeout`.
 

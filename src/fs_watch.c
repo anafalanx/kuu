@@ -96,6 +96,19 @@ static void wake_all(ku_watch *w)
     }
 }
 
+/* Events belong to the oldest reader. Keep the shared batch reserved until
+ * it resumes; another I/O packet or a newly arriving caller cannot steal it. */
+static void wake_one(ku_watch *w)
+{
+    if (w->waiters != NULL && w->woken == 0) {
+        ku_waiter *waiter = w->waiters;
+        w->waiters = waiter->next;
+        waiter->next = NULL;
+        w->woken++;
+        ku_wake(waiter);
+    }
+}
+
 /* The watch is freed by whoever lets go of it last: the Lua handle, the
  * outstanding read's completion, or the last woken reader. */
 static void watch_maybe_free(ku_watch *w)
@@ -249,8 +262,10 @@ static void watch_on_io(ku_source *src, ku_io *io, DWORD bytes, DWORD error)
     parse_batch(w, io->buf, bytes);
     ku_io_free(io);
     post_read(w);
-    if (w->count > 0 || w->stopped) {
+    if (w->stopped) {
         wake_all(w);
+    } else if (w->count > 0) {
+        wake_one(w);
     }
 }
 
@@ -416,7 +431,7 @@ static int l_watch_read(lua_State *L)
     if (!lua_isnoneornil(L, 2) && ku_check_duration(L, 2, &timeout_ms) != 0) {
         return ku_err_raise(L, "FS", "badvalue", "read timeout must be a duration such as \"30s\"");
     }
-    if (w->count > 0) {
+    if (w->count > 0 && w->woken == 0) {
         drain_events(L, w);
         return 1;
     }
@@ -431,8 +446,11 @@ static int l_watch_read(lua_State *L)
         return ku_err_raise(L, "FS", "oserror", "out of memory");
     }
     waiter->on_timeout = read_timeout;
-    waiter->next = w->waiters;
-    w->waiters = waiter;
+    ku_waiter **tail = &w->waiters;
+    while (*tail != NULL) {
+        tail = &(*tail)->next;
+    }
+    *tail = waiter;
     return ku_wait(L, waiter, timeout_ms);
 }
 

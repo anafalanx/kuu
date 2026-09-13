@@ -149,6 +149,60 @@ return function(T)
   r = T.kuu({ "capabilities" }, { cwd = project })
   check("and says so in its text", contains(r.out, "ledger") and contains(r.out, "verb run failed") and contains(r.out, "the chain is broken"), r.out)
 
+  -- Decoding JSON is only the first step: scalars, arrays and partial
+  -- record objects cannot be indexed as crossings or called an empty book.
+  local corrupt = small_project("ledger-corrupt", ".kuu/\n")
+  fs.mkdir(corrupt .. "/.kuu/ledger")
+  local corrupt_file = corrupt .. "/.kuu/ledger/" .. day .. ".ndjson"
+  for _, line in ipairs { '123', 'false', 'null', '[]', '{}', '{"v":1}', '{"v":1',
+      '{"v":1,"kuu":"0.10.0","root":"x","kind":{},"name":"run","status":"ok","at":1,"seconds":0}',
+      '{"v":1,"kuu":"0.10.0","root":"x","kind":"verb","name":[],"status":"ok","at":1,"seconds":0}' } do
+    fs.write(corrupt_file, line .. "\n")
+    local verified, detail = ledger.verify(corrupt)
+    local recent = ledger.tail(corrupt, 5)
+    check("ledger readers refuse malformed record shape: " .. line,
+      verified == nil and err.is(detail, "LEDGER", "broken") and #recent == 0, tostring(detail))
+  end
+  for _, line in ipairs { '123', '{"v":1' } do
+    fs.write(corrupt_file, line .. "\n")
+    local machine = T.kuu({ "capabilities", "--json" }, { cwd = corrupt })
+    local report = json.decode(machine.out)
+    local book = report and report.result.project.ledger
+    check("a broken first ledger record preserves the JSON descriptor: " .. line,
+      machine.code == 0 and book and book.intact == false and #book.last == 0
+        and contains(book.broken, day .. ".ndjson:1") and #report.result.modules > 20, T.describe(machine))
+    local human = T.kuu({ "capabilities" }, { cwd = corrupt })
+    check("the text descriptor reports corruption even with no readable tail: " .. line,
+      human.code == 0 and contains(human.out, "the chain is broken") and not contains(human.out, "nothing has crossed"), T.describe(human))
+  end
+  fs.remove(corrupt, { recursive = true })
+
+  -- Fault injection at the final write: storage failure does not undo the
+  -- task's success or prevent its envelope. A failed record must not save a
+  -- new tree baseline that would hide those unrecorded changes next time.
+  for _, mode in ipairs { "record-return", "record-raise", "close-return", "close-raise" } do
+    local failed = small_project("ledger-" .. mode, ".kuu/\n")
+    fs.write(failed .. "/manifest.lua", table.concat({
+      'local ledger, fs, err = require "_ledger", require "fs", require "err"',
+      'local record, close = ledger.record, ledger.close',
+      'local mode = ' .. string.format("%q", mode),
+      'local function fail() local e=err.new("FS","oserror","injected final write failure"); if mode:match("raise$") then error(e) end; return nil,e end',
+      'ledger.record=function(book,fields) if mode:match("^record") and fields.kind=="verb" then return fail() end; return record(book,fields) end',
+      'ledger.close=function(book) fs.write("close-called.txt","yes"); if mode:match("^close") then return fail() end; return close(book) end',
+      'local task = require "task"; task "ok" {run=function() fs.write("worked.txt","yes") end}',
+    }, "\n") .. "\n")
+    local finished = T.kuu({ "run", "--json", "ok" }, { cwd = failed })
+    local envelope = last_line(finished.out)
+    check("a final ledger storage failure only warns: " .. mode,
+      finished.code == 0 and envelope and envelope.ok == true and #envelope.result.tasks == 1
+        and #envelope.result.notes == 1 and contains(envelope.result.notes[1], "injected final write failure")
+        and fs.read(failed .. "/worked.txt") == "yes" and not contains(finished.err, "traceback"), T.describe(finished))
+    check("failed final storage does not replace the tree baseline: " .. mode,
+      fs.exists(failed .. "/.kuu/ledger/tree.json") == false
+        and (not mode:match("^record") or fs.exists(failed .. "/close-called.txt") == false), T.describe(finished))
+    fs.remove(failed, { recursive = true })
+  end
+
   -- A run that runs nothing writes nothing: the next real run's delta
   -- still names the edits it ran against.
   local before = fs.read(file)
@@ -241,4 +295,49 @@ return function(T)
   -- A root that cannot be listed is an empty tree, not a raised error.
   local opened, nowhere = pcall(ledger.open, T.work .. "/ledger-nowhere")
   check("opening the ledger of a root that is not there raises nothing", opened and nowhere.delta.added == 0, tostring(nowhere))
+
+  do
+    local blocked = small_project("ledger-unreadable", ".kuu/\n")
+    local seeded = T.kuu({ "run" }, { cwd = blocked })
+    local day_file = blocked .. "/.kuu/ledger/" .. time.iso():sub(1, 10) .. ".ndjson"
+    local before = fs.read(day_file)
+    fs.write(blocked .. "/manifest.lua", table.concat({
+      'global none', 'global <const> require', 'local task,fs,err=require "task",require "fs",require "err"',
+      'local read=fs.read',
+      'fs.read=function(path, opts) if path:match("%.ndjson$") then return nil,err.new("FS","access","day file held open") end return read(path,opts) end',
+      'task "t" {run=function() end}', 'task.default "t"',
+    }, "\n") .. "\n")
+    local machine = T.kuu({ "capabilities", "--json" }, { cwd = blocked })
+    local descriptor = json.decode(machine.out)
+    local shown = descriptor and descriptor.result.project.ledger
+    check("an unreadable ledger cannot be described as verified empty history",
+      seeded.code == 0 and machine.code == 0 and shown and not shown.intact and shown.records == nil
+        and shown.unreadable and contains(shown.unreadable, "day file held open") and #shown.last == 0,
+      T.describe(machine))
+    local plain = T.kuu({ "capabilities" }, { cwd = blocked })
+    check("text capabilities distinguishes an unreadable ledger from an empty or broken one",
+      plain.code == 0 and contains(plain.out, "ledger could not be completely read")
+        and not contains(plain.out, "nothing has crossed") and not contains(plain.out, "chain is broken"), T.describe(plain))
+    local continued = T.kuu({ "run", "--json" }, { cwd = blocked })
+    local envelope = last_line(continued.out)
+    check("a predecessor read failure refuses new records, warns once, and preserves task success",
+      continued.code == 0 and envelope and envelope.ok and #envelope.result.notes == 1
+        and contains(envelope.result.notes[1], "ledger was not written")
+        and fs.read(day_file) == before, T.describe(continued))
+
+    local original_list = fs.list
+    fs.list = function(path)
+      if path == blocked .. "/.kuu/ledger" then return { entries = {}, errors = { "listing stopped early" } } end
+      return original_list(path)
+    end
+    local called, verified, why = pcall(ledger.verify, blocked)
+    local tailed, recent, why_tail = pcall(ledger.tail, blocked, 5)
+    fs.list = original_list
+    check("incomplete ledger directory listings fail verification and tail reading",
+      called and not verified and err.is(why, "FS", "oserror")
+        and tailed and recent == nil and err.is(why_tail, "FS", "oserror"), tostring(why))
+    local empty, count = ledger.verify(blocked .. "/not-created")
+    check("an absent ledger remains a verified empty history", empty == true and count == 0, tostring(count))
+    fs.remove(blocked, { recursive = true })
+  end
 end

@@ -24,6 +24,8 @@ Decoded arrays are marked, so an empty array stays `[]` on the way back and
 `json.is_array(t)` tells. An unmarked table encodes as an array when its keys
 are exactly 1 to n with n above zero, and as an object otherwise: `{}` is an
 object, `json.array{}` is `[]`. `json.array(t)` marks an existing table.
+Marked arrays must also have exactly the keys 1 to n, with no holes or other
+keys; use `json.null` for an explicit null element.
 
 ```lua
 local doc = json.decode('{"ids": [1, null, 3], "empty": {}}')
@@ -59,7 +61,9 @@ json.is_object(v)   -- true for a marked ordered object
 
 It marks the table it is given, exactly as `json.array` does, and nests at any
 depth. Each entry must be a two-element `{ key, value }` table whose key is a
-string; anything else raises `JSON badvalue` naming the entry. Decoding is
+string; the outer list and each pair must have no holes or extra keys.
+Malformed shapes raise `JSON badvalue`; repeated object keys raise
+`JSON duplicate`, matching the decoder's policy. Decoding is
 unchanged: a document read back is an ordinary table, because the order is a
 property of writing, not of the value.
 
@@ -74,7 +78,7 @@ and string keys, non-string keys, strings that are not valid UTF-8, and cycles,
 which surface as `JSON depth`.
 
 The complete code set is `parse`, `duplicate`, and `depth` for decoding;
-`badvalue`, `encoding`, `depth`, `usage`, and `oserror` for encoding. `usage`
+`badvalue`, `duplicate`, `encoding`, `depth`, `usage`, and `oserror` for encoding. `usage`
 is raised for an unknown option; `oserror` means the encoder could not
 allocate its document.
 

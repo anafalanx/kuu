@@ -15,9 +15,10 @@
 -- Private: the verbs write it, capabilities reads it, and a program has
 -- fs.read for the files, which are plain NDJSON.
 global none
-global <const> require, ipairs, pairs, pcall, type, table
+global <const> require, ipairs, pairs, pcall, type, table, tostring
 
 local fs, json, hash, time, rt, sync = require "fs", require "json", require "hash", require "time", require "rt", require "sync"
+local err = require "err"
 
 local ledger = {}
 ledger.VERSION = 1
@@ -29,8 +30,14 @@ local function dir_of(root) return fs.join(root, ".kuu", "ledger") end
 local function day_of(instant) return time.iso(instant):sub(1, 10) end -- the UTC day
 
 local function day_files(dir)
-  local listing = fs.list(dir)
-  if not listing then return {} end
+  local listing, e = fs.list(dir)
+  if not listing then
+    if err.is(e, "FS", "notfound") then return {} end
+    return nil, e
+  end
+  if #listing.errors > 0 then
+    return nil, err.new("FS", "oserror", "cannot completely list '" .. dir .. "': " .. tostring(listing.errors[1]))
+  end
   local names = {}
   for _, e in ipairs(listing.entries) do
     if e.kind == "file" and e.name:match("^%d%d%d%d%-%d%d%-%d%d%.ndjson$") then names[#names + 1] = e.name end
@@ -44,23 +51,25 @@ end
 -- every position and is quadratic in the line, which at a thousand
 -- records of a kilobyte is seconds per record, under the lock.
 local function last_line(dir)
-  local names = day_files(dir)
+  local names, e = day_files(dir)
+  if not names then return nil, e end
   for i = #names, 1, -1 do
-    local text = fs.read(fs.join(dir, names[i]))
-    if text then
-      text = text:gsub("[\r\n]+$", "")
-      local at = 0
-      for p in text:gmatch("()\n") do at = p end
-      local last = text:sub(at + 1)
-      if last ~= "" then return last end
-    end
+    local text, why = fs.read(fs.join(dir, names[i]))
+    if not text then return nil, why end
+    text = text:gsub("[\r\n]+$", "")
+    local at = 0
+    for p in text:gmatch("()\n") do at = p end
+    local last = text:sub(at + 1)
+    if last ~= "" then return last end
   end
   return nil
 end
 
 local function rotate(dir)
   local cutoff = day_of(time.now() - ledger.KEEP_DAYS * 86400)
-  for _, name in ipairs(day_files(dir)) do
+  local names = day_files(dir)
+  if not names then return end -- a rotation failure cannot undo an appended record
+  for _, name in ipairs(names) do
     if name:sub(1, 10) < cutoff then fs.remove(fs.join(dir, name)) end
   end
 end
@@ -217,7 +226,11 @@ function ledger.record(book, fields)
     local info = fs.stat(path)
     if info and info.size == book.last_size then previous = book.last end
   end
-  if previous == nil then previous = last_line(book.dir) end
+  if previous == nil then
+    local why
+    previous, why = last_line(book.dir)
+    if why then return nil, why end
+  end
   if previous then record.prev = hash.sum("sha256", previous) end
   local encoded, line = pcall(json.encode, record)
   if not encoded then return nil, line end
@@ -240,13 +253,31 @@ function ledger.close(book)
   return fs.write(fs.join(book.dir, "tree.json"), text .. "\n")
 end
 
--- ledger.tail(root, n) -> the last n records, oldest first, decoded
+-- JSON syntax alone does not make a ledger record. In particular scalars,
+-- arrays and partially written objects must never reach the descriptor's
+-- field accesses. Check the common fields it displays and chains; extra
+-- fields remain available to readers as the schema grows.
+local function decode_record(line)
+  local record = json.decode(line)
+  if type(record) ~= "table" or record.v ~= ledger.VERSION
+      or type(record.kuu) ~= "string" or type(record.root) ~= "string"
+      or type(record.name) ~= "string" or type(record.status) ~= "string"
+      or type(record.at) ~= "number" or type(record.seconds) ~= "number" then return nil end
+  if record.kind ~= "verb" and record.kind ~= "task" and record.kind ~= "child" then return nil end
+  if record.prev ~= nil and (type(record.prev) ~= "string" or #record.prev ~= 64 or record.prev:find("[^%x]")) then return nil end
+  return record
+end
+
+-- ledger.tail(root, n) -> the last n records, oldest first, decoded | nil, err
+-- Malformed lines are omitted here; verify names the first broken line.
 function ledger.tail(root, n)
   local dir = dir_of(fs.absolute(root))
-  local names = day_files(dir)
+  local names, e = day_files(dir)
+  if not names then return nil, e end
   local lines = {}
   for i = #names, 1, -1 do
-    local text = fs.read(fs.join(dir, names[i])) or ""
+    local text, why = fs.read(fs.join(dir, names[i]))
+    if not text then return nil, why end
     local these = {}
     for line in text:gmatch("[^\n]+") do these[#these + 1] = line end
     for j = #these, 1, -1 do
@@ -257,25 +288,27 @@ function ledger.tail(root, n)
   end
   local records = {}
   for _, line in ipairs(lines) do
-    local record = json.decode(line)
+    local record = decode_record(line)
     if record then records[#records + 1] = record end
   end
   return records
 end
 
--- ledger.verify(root) -> true, count | nil, err (LEDGER broken at a record)
+-- ledger.verify(root) -> true, count | nil, err (LEDGER broken or an FS error)
 -- Walks every record in day order and holds each `prev` to the sha256 of
 -- the line before it.
 function ledger.verify(root)
   local dir = dir_of(fs.absolute(root))
-  local err = require "err"
   local previous, count = nil, 0
-  for _, name in ipairs(day_files(dir)) do
-    local text = fs.read(fs.join(dir, name)) or ""
+  local names, e = day_files(dir)
+  if not names then return nil, e end
+  for _, name in ipairs(names) do
+    local text, why = fs.read(fs.join(dir, name))
+    if not text then return nil, why end
     local number = 0
     for line in text:gmatch("[^\n]+") do
       number = number + 1
-      local record = json.decode(line)
+      local record = decode_record(line)
       if record == nil then return nil, err.new("LEDGER", "broken", name .. ":" .. number .. " is not a record") end
       -- The first record kept may name a line that rotation removed; it is
       -- the anchor, and every record after it is held to its predecessor.

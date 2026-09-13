@@ -1,6 +1,6 @@
 -- run.lua -- `kuu run [--json] [TASK [arg ...]]`: a task from the nearest manifest.lua.
 global none
-global <const> require, ipairs, pairs, tostring, type, pcall, string, table, utf8, io, os,
+global <const> require, ipairs, pairs, tostring, type, pcall, string, table, io, os,
                rawset, _G
 
 local rt = require "rt"
@@ -10,6 +10,7 @@ local sched = require "sched"
 local json = require "json"
 local err = require "err"
 local fs = require "fs"
+local clean = require "_jsonsafe"
 
 -- What the run says on standard error beside the work -- a tasks.lua read
 -- as the manifest, a .kuu/ the repository does not ignore -- is also
@@ -47,29 +48,6 @@ if want_json then
     io.stderr:write(table.concat(parts, "\t"), "\n")
   end)
   task.relay = io.stderr
-end
-
--- What goes on the wire or into the ledger is UTF-8, because JSON is.  A
--- task's error message is whatever the task raised, and on Windows that
--- is often a child's output in the console code page; a byte that is not
--- UTF-8 becomes U+FFFD rather than a raised encoding error in the door's
--- own reporting.  Tables are cleaned in place, their shape kept.
-local function utf8ify(s)
-  local parts, from = {}, 1
-  while true do
-    local n, bad = utf8.len(s, from)
-    if n then parts[#parts + 1] = s:sub(from) break end
-    parts[#parts + 1] = s:sub(from, bad - 1) .. "\u{FFFD}"
-    from = bad + 1
-  end
-  return table.concat(parts)
-end
-local function clean(value)
-  if type(value) == "string" then return utf8ify(value) end
-  if type(value) == "table" then
-    for k, v in pairs(value) do value[k] = clean(v) end
-  end
-  return value
 end
 
 -- Under --json, standard output is a stream: one JSON object per line as
@@ -122,9 +100,9 @@ end
 
 local function crossing(fields)
   if book == nil then return end
-  local ok, e = ledger.record(book, clean(fields))
-  if not ok then
-    io.stderr:write("kuu: warning: the ledger was not written: ", tostring(e), "\n")
+  local called, ok, e = pcall(ledger.record, book, clean(fields))
+  if not called or not ok then
+    note("the ledger was not written: " .. tostring(called and e or ok))
     book = nil
     return
   end
@@ -172,8 +150,12 @@ local function finish(ok, e, extra)
       at = run_at, seconds = sched.clock() - run_began, status = ok and "ok" or "failed",
       code = ok and 0 or exit_code_for(e),
       error = (not ok) and { domain = e.domain, code = e.code, message = e.message } or nil }
-    local closed, e7 = ledger.close(book)
-    if not closed then io.stderr:write("kuu: warning: the ledger's tree was not written: ", tostring(e7), "\n") end
+    -- A failed final record disables the ledger, just as an earlier one
+    -- does. Keep the previous tree so the next run still sees those edits.
+    if book ~= nil then
+      local called, closed, e7 = pcall(ledger.close, book)
+      if not called or not closed then note("the ledger's tree was not written: " .. tostring(called and e7 or closed)) end
+    end
   end
   if want_json then
     local envelope = { ok = ok, result = { tasks = ran, notes = notes } }
@@ -232,16 +214,24 @@ if not plan and defaulted and err.is(e4, "TASK", "unknown") then
 end
 if not plan then finish(false, e4, { root = root }) end
 
--- Every argument is checked before anything runs: the named task's against
--- its spec, each dependency's spec against no arguments.  So --help, a wrong
--- argument, or a dependency that needs an argument exits 2 with nothing
--- started.
+-- Check the selected task first, so its help remains available even when a
+-- dependency requires arguments. Every dependency is still validated before
+-- any task runs.
 local opts_for = {}
 for _, entry in ipairs(plan) do
-  local opts, e5 = task.arguments(entry, entry.name == name and args or {}, "kuu run " .. entry.name)
-  if not opts and e5.help then io.stdout:write(e5.message) os.exit(0) end -- the task's usage, as every --help
-  if not opts then finish(false, e5, { root = root, task = name }) end
-  opts_for[entry.name] = opts
+  if entry.name == name then
+    local opts, e5 = task.arguments(entry, args, "kuu run " .. entry.name)
+    if not opts and e5.help then io.stdout:write(e5.message) os.exit(0) end
+    if not opts then finish(false, e5, { root = root, task = name }) end
+    opts_for[entry.name] = opts
+  end
+end
+for _, entry in ipairs(plan) do
+  if entry.name ~= name then
+    local opts, e5 = task.arguments(entry, {}, "kuu run " .. entry.name)
+    if not opts then finish(false, e5, { root = root, task = name }) end
+    opts_for[entry.name] = opts
+  end
 end
 
 if dry_run then
@@ -251,7 +241,7 @@ if dry_run then
     for _, entry in ipairs(plan) do
       steps[#steps + 1] = { name = entry.name, desc = entry.desc, deps = json.array(entry.deps) }
     end
-    io.stdout:write(json.encode { ok = true, result = { root = root, task = name, plan = steps, notes = notes } }, "\n")
+    io.stdout:write(json.encode(clean { ok = true, result = { root = root, task = name, plan = steps, notes = notes } }), "\n")
   else
     for k, entry in ipairs(plan) do
       io.stdout:write(string.format("%d. %s%s\n", k, entry.name, entry.desc ~= "" and ("  " .. entry.desc) or ""))

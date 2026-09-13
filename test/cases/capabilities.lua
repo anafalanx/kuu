@@ -193,6 +193,23 @@ return function(T)
     r.code == 0 and #broken.project.tasks == 0 and broken.project.note ~= nil
       and #broken.project.modules == 2 and #broken.modules > 20,
     T.describe(r))
+  fs.write(work .. "/manifest.lua", 'error("bad \\233")\n')
+  r = T.kuu({ "capabilities", "--json" }, { cwd = work })
+  local invalid = json.decode(r.out)
+  check("a non-UTF-8 manifest error preserves the JSON descriptor and module inventory",
+    r.code == 0 and invalid and invalid.ok == true and contains(invalid.result.project.note, "bad \u{FFFD}")
+      and #invalid.result.modules > 20 and #invalid.result.project.modules == 2, T.describe(r))
+  fs.write(work .. "/manifest.lua", 'local task = require "task"\n'
+    .. 'task "text" {desc="caf\\233",run=function() end}\n'
+    .. 'task.tool "bytes" {exe="x.exe",args={["--\\233"]="flag",["--\\232"]="path",["--�"]="string"}}\n')
+  r = T.kuu({ "capabilities", "--json" }, { cwd = work })
+  local invalid_keys = json.decode(r.out)
+  local tool = invalid_keys and invalid_keys.result.project.tools[1]
+  local tool_args = tool and tool.args
+  check("JSON discovery repairs descriptions and retains colliding invalid UTF-8 argument names",
+    r.code == 0 and invalid_keys and invalid_keys.result.project.tasks[1].desc == "caf\u{FFFD}"
+      and tool_args and tool_args["--\u{FFFD}"] == "string" and tool_args["--\u{FFFD} [2]"] == "path" and tool_args["--\u{FFFD} [3]"] == "flag",
+    T.describe(r))
 
   local away = fs.tempdir { prefix = "kuu-capabilities-" }
   if away then
@@ -216,6 +233,18 @@ return function(T)
   check("--help exits 0", r.code == 0 and contains(r.out, "usage: kuu capabilities"), T.describe(r))
   r = T.kuu({ "capabilities", "--nope" }, { cwd = work })
   check("an unknown option exits 2", r.code == 2 and contains(r.err, "CLI usage"), T.describe(r))
+
+  fs.write(work .. "/manifest.lua", 'global none\nglobal <const> require\nlocal fs=require "fs"\n'
+    .. 'fs.dirs=function(root) return {paths={},errors={{path=root.."/held",win32=32,reason="sharing violation"}}} end\n')
+  r = T.kuu({ "capabilities", "--json" }, { cwd = work })
+  local incomplete = json.decode(r.out)
+  local inventory = incomplete and incomplete.result.project
+  check("capabilities JSON exposes incomplete module enumeration with its filesystem diagnostic",
+    r.code == 0 and inventory and not inventory.modules_complete and #inventory.module_errors == 1
+      and inventory.module_errors[1].win32 == 32, T.describe(r))
+  r = T.kuu({ "capabilities" }, { cwd = work })
+  check("capabilities text names the incomplete module inventory",
+    r.code == 0 and contains(r.out, "module inventory incomplete") and contains(r.out, "sharing violation"), T.describe(r))
 
   fs.remove(work, { recursive = true })
 end

@@ -17,6 +17,15 @@ return function(T)
   -- identity and usage ------------------------------------------------------
   local r = kuu { "--version" }
   check("version line", r.code == 0 and r.out == VERSION_LINE, describe(r))
+  check("the runtime version has exactly two integer components",
+    VERSION:match("^%d+%.%d+$") ~= nil, VERSION)
+  do
+    local result, problem = require("proc").run {
+      T.root .. "/build/test/versionrc_fixture.exe", T.work .. "/versionrc-fixture.rc"
+    }
+    check("Windows version resources preserve N.N, zero-pad the numeric tuple, and reject malformed versions",
+      result and result.code == 0, result and describe(result) or tostring(problem))
+  end
 
   r = kuu { "--help" }
   check("help exits 0 on stdout", r.code == 0 and contains(r.out, "usage: kuu FILE") and r.err == "", describe(r))

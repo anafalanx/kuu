@@ -2,7 +2,7 @@
 -- headers, bodies, redirects and the zero-request canary, timeouts, limits,
 -- streaming to a file, and concurrency on the loop.
 global none
-global <const> require, ipairs, tostring, tonumber, string, pcall, select, io
+global <const> require, ipairs, tostring, tonumber, string, pcall, select, io, assert
 
 return function(T)
   local check, contains, starts = T.check, T.contains, T.starts
@@ -87,19 +87,89 @@ return function(T)
   ok, e2 = pcall(http.get, base .. "/hello", { insecure = true })
   check("an unknown option is refused", not ok and err.is(e2, "HTTP", "usage"), tostring(e2))
 
+  do
+    -- Catch failures in a separate process so native memory ownership is
+    -- measured without allocations from the surrounding HTTP case. Disable
+    -- ASAN's freed-memory quarantine in this child for the retention measure.
+    local validation = T.kuu({ "-e", [[
+local http,sys,err=require'http',require'sys',require'err'
+local body=string.rep('x',4*1024*1024)
+collectgarbage('collect')
+local before=sys.info().process.private
+for _=1,20 do
+  local ok,e=pcall(http.request,{url='http://127.0.0.1:1/',method='POST',body=body,type={}})
+  assert(not ok and err.is(e,'HTTP','badvalue'),tostring(e))
+end
+collectgarbage('collect')
+local growth=sys.info().process.private-before
+assert(growth<32*1024*1024,'native body leak: '..growth)
+for _,spec in ipairs{{url='http://127.0.0.1:1/',method={}},
+  {url='http://127.0.0.1:1/',method='GET\0POST'},
+  {url='http://127.0.0.1:1/',type='text/plain\0hidden'}} do
+  local ok,e=pcall(http.request,spec)
+  assert(not ok and err.is(e,'HTTP','badvalue'),tostring(e))
+end
+for _=1,20 do
+  local ok,e=pcall(http.request,setmetatable({url='http://127.0.0.1:1/',body=body},
+    {__index=function(_,key) if key=='headers' then error('header accessor failed') end end}))
+  assert(not ok and tostring(e):find('header accessor failed',1,true))
+end
+collectgarbage('collect')
+assert(sys.info().process.private-before<32*1024*1024,'native body leak after accessor failure')
+print('validation ownership ok')
+]] }, { env = { ASAN_OPTIONS = (require("env").get("ASAN_OPTIONS") or "")
+      .. ":quarantine_size_mb=0:thread_local_quarantine_size_kb=0" } })
+    check("HTTP validation and accessor errors release native request allocations", validation.code == 0
+      and contains(validation.out, "validation ownership ok"), T.describe(validation))
+  end
+
   -- streaming to a file ---------------------------------------------------------------------
   local target = T.work .. "/downloaded.bin"
+  do
+    local long = files .. "/" .. string.rep("n", 236) .. ".txt"
+    check("atomic writing supports a 240-character basename", fs.write(long, "previous") == true
+      and fs.read(long) == "previous")
+    local fetched, problem = http.get(base .. "/hello", { to = long })
+    check("HTTP staging supports the same long basename", fetched and fs.read(long) == "hello", tostring(problem))
+    local kept, failure = http.get(base .. "/hello", { to = long, sha256 = string.rep("0", 64) })
+    check("a rejected long-name download preserves previous bytes", not kept and err.is(failure, "HTTP", "mismatch")
+      and fs.read(long) == "hello", tostring(failure))
+    assert(fs.remove(long))
+  end
   if fs.exists(target) then fs.remove(target) end
   r = http.get(base .. "/files/blob.bin", { to = target })
   check("to streams the body into the file and returns its path", r and r.status == 200 and r.body == "" and r.bytes == 16384 and r.path == target
     and fs.read(target) == string.rep("\0\1\2\255", 4096), tostring(e))
   local leftovers = 0
-  for _, entry in ipairs(fs.list(T.work).entries) do if entry.name:find("downloaded.bin.kuu-", 1, true) then leftovers = leftovers + 1 end end
+  for _, entry in ipairs(fs.list(T.work).entries) do if entry.name:match("^%.kuu%-.*%.tmp$") then leftovers = leftovers + 1 end end
   check("no temporary file remains beside the download", leftovers == 0)
   none, e3 = http.get(base .. "/big?n=200000", { to = target, maxbody = "100K" })
   check("a refused download leaves the previous file untouched", none == nil and err.is(e3, "HTTP", "toobig") and #fs.read(target) == 16384, tostring(e3))
   r = http.get(base .. "/files/missing.bin", { to = target })
   check("a 404 download still writes what the server sent", r and r.status == 404 and fs.read(target) == "no such file")
+  ok, e2 = pcall(http.get, base .. "/hello", { to = target .. "\0ignored.txt" })
+  check("a NUL in the destination is refused without replacing its prefix",
+    not ok and err.is(e2, "HTTP", "badvalue") and fs.read(target) == "no such file", tostring(e2))
+  do
+    local a, b = fs.absolute(files .. "/cwd-a"), fs.absolute(files .. "/cwd-b")
+    fs.mkdir(a)
+    fs.mkdir(b)
+    fs.write(a .. "/result.txt", "A-original")
+    fs.write(b .. "/result.txt", "B-original")
+    local cwd = fs.cwd()
+    local worked, downloaded, problem = pcall(function()
+      fs.chdir(a)
+      local fetch = sched.spawn(function() return http.get(base .. "/slow?ms=200", { to = "result.txt" }) end)
+      sched.sleep("30ms")
+      fs.chdir(b)
+      return fetch:join("5s")
+    end)
+    fs.chdir(cwd)
+    check("a relative download stays in its starting directory across a yield",
+      worked and downloaded and downloaded.status == 200 and downloaded.path == "result.txt"
+      and fs.read(a .. "/result.txt") == "slow" and fs.read(b .. "/result.txt") == "B-original",
+      tostring(problem or (not worked and downloaded)))
+  end
 
   -- The rename into place is retried the way fs.write's is (fs.lua has the
   -- account).  A target held open for the whole window still fails, after
@@ -113,7 +183,7 @@ return function(T)
       held == nil and err.is(e4, "HTTP", "oserror") and elapsed >= 10 and fs.read(target) == "no such file",
       tostring(e4) .. string.format(" after %.0f ms", elapsed))
     leftovers = 0
-    for _, entry in ipairs(fs.list(T.work).entries) do if entry.name:find("downloaded.bin.kuu-", 1, true) then leftovers = leftovers + 1 end end
+    for _, entry in ipairs(fs.list(T.work).entries) do if entry.name:match("^%.kuu%-.*%.tmp$") then leftovers = leftovers + 1 end end
     check("no temporary file remains after a refused placement", leftovers == 0)
   end
   do
@@ -144,7 +214,7 @@ return function(T)
     sched.sleep("10ms")
     partials = 0
     for _, entry in ipairs(fs.list(files).entries) do
-      if entry.name:find("deadline-kept-", 1, true) and entry.name:find(".kuu-", 1, true) then partials = partials + 1 end
+      if entry.name:match("^%.kuu%-.*%.tmp$") then partials = partials + 1 end
     end
   until partials == 0 or sched.clock() >= cleanup_until
   local preserved = true
@@ -159,7 +229,7 @@ return function(T)
   check("a download that hashes as asked lands", r and r.status == 200 and fs.read(files .. "/verified.txt") == "hello", tostring(e))
   r, e = http.get(base .. "/hello", { to = files .. "/wrong.txt", sha256 = string.rep("0", 64) })
   local leftovers = 0
-  for _, entry in ipairs(fs.list(files).entries) do if entry.name:sub(1, 9) == "wrong.txt" then leftovers = leftovers + 1 end end
+  for _, entry in ipairs(fs.list(files).entries) do if entry.name:sub(1, 9) == "wrong.txt" or entry.name:match("^%.kuu%-.*%.tmp$") then leftovers = leftovers + 1 end end
   check("a download that hashes otherwise is HTTP mismatch, names both digests, and leaves no file", r == nil and err.is(e, "HTTP", "mismatch")
     and contains(e.message, hello_sha) and leftovers == 0, tostring(e))
   r, e = http.get(base .. "/status/404", { to = files .. "/missing.txt", sha256 = hello_sha })

@@ -109,6 +109,19 @@ local function sorted_keys(t)
   return keys
 end
 
+local function check_key(key)
+  if type(key) ~= "string" or key == "" or key ~= trim(key) or
+    key:find("[=\r\n]") or key:find("^%s*[%[;#]") then
+    error(err.new("INI", "badvalue", "a key must be non-empty, unpadded, and not a comment, section, or assignment"), 3)
+  end
+end
+
+local function check_section(section)
+  if type(section) ~= "string" or section:find("[\r\n]") then
+    error(err.new("INI", "badvalue", "a section name must be a string without line endings"), 3)
+  end
+end
+
 -- ini.encode(sections [, { newline = "\n" }]) -> text
 function ini.encode(sections, opts)
   if type(sections) ~= "table" then error(err.new("INI", "badvalue", "encode wants a table of sections"), 2) end
@@ -117,6 +130,7 @@ function ini.encode(sections, opts)
   local out = {}
   local names = sorted_keys(sections)
   for _, name in ipairs(names) do
+    check_section(name)
     local body = sections[name]
     if type(body) ~= "table" then error(err.new("INI", "badvalue", "section '" .. name .. "' is not a table"), 2) end
     if name ~= "" then
@@ -124,7 +138,7 @@ function ini.encode(sections, opts)
       out[#out + 1] = "[" .. name .. "]"
     end
     for _, key in ipairs(sorted_keys(body)) do
-      if key:find("[=\r\n]") or key:find("^%s*[%[;#]") then error(err.new("INI", "badvalue", "'" .. key .. "' cannot be a key"), 2) end
+      check_key(key)
       out[#out + 1] = key .. "=" .. value_text(body[key])
     end
   end
@@ -173,7 +187,9 @@ end
 -- ini.set(text, section, key, value) -> text
 function ini.set(text, section, key, value)
   if type(text) ~= "string" then error(err.new("INI", "badvalue", "set wants the file's text"), 2) end
-  if type(key) ~= "string" or key == "" or key:find("[=\r\n]") then error(err.new("INI", "badvalue", "a key must be a non-empty string without ="), 2) end
+  if section == nil then section = "" end
+  check_section(section)
+  check_key(key)
   local rendered = value_text(value)
   local lines, newline, had_final, bom = lines_of(text)
   local ranges = locate(lines, section)

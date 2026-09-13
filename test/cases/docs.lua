@@ -61,7 +61,7 @@ return function(T)
   local anchors = {}
   for _, s in ipairs(agent and agent.result.sections or {}) do anchors[#anchors + 1] = s.anchor end
   check("and is not listed among the page's sections",
-    table.concat(anchors, " ") == "arriving running writing reporting-back the-short-form", table.concat(anchors, " "))
+    table.concat(anchors, " ") == "arriving try-an-inline-command running writing reporting-back the-short-form", table.concat(anchors, " "))
   -- GitHub's anchor spelling: punctuation dropped
   r = T.kuu { "docs", "proc", "proclist-procfind-proctree" }
   check("an anchor drops punctuation the way the manual's links do", r.code == 0 and contains(r.out, "## proc.list, proc.find, proc.tree"), T.describe(r))
@@ -78,6 +78,27 @@ return function(T)
   -- search: every word, literally, ignoring case
   r = T.kuu { "docs", "search", "decided lifetimes" }
   check("search takes all its words and finds the line", r.code == 0 and contains(r.out, "proc:3: Children with decided lifetimes."), T.describe(r))
+  check("a hit before the first section points to the page, not its top-level title",
+    contains(r.out, "  Read: kuu docs proc\n") and not contains(r.out, "  Read: kuu docs proc proc"), T.describe(r))
+  r = T.kuu { "docs", "search", "fs.read" }
+  local reading_hint = "  Read: kuu docs fs reading-and-writing\n"
+  local hint_count = 0
+  for line in r.out:gmatch("[^\n]+") do
+    if line == "  Read: kuu docs fs reading-and-writing" then hint_count = hint_count + 1 end
+  end
+  check("search gives one retrieval command for repeated hits in a section",
+    r.code == 0 and contains(r.out, reading_hint) and hint_count == 1
+      and r.out:match("fs:%d+: local bytes = fs.read") ~= nil, T.describe(r))
+  local hint_page, hint_section = r.out:match("  Read: kuu docs (fs) (reading%-and%-writing)\n")
+  local retrieved = hint_page and T.kuu { "docs", hint_page, hint_section } or nil
+  check("the fs.read search command retrieves its enclosing explanation",
+    retrieved ~= nil and retrieved.code == 0 and retrieved.out:match("^## Reading and writing\n") ~= nil
+      and contains(retrieved.out, "fs.read(") and not contains(retrieved.out, "## Facts about a path"),
+    retrieved and T.describe(retrieved) or T.describe(r))
+  r = T.kuu { "docs", "search", "## 2026-09-13" }
+  check("a matching heading inside a fence points to its real enclosing section",
+    r.code == 0 and contains(r.out, "  Read: kuu docs agent reporting-back\n")
+      and not contains(r.out, "  Read: kuu docs agent 2026-09-13"), T.describe(r))
   r = T.kuu { "docs", "search", "DECIDED LIFETIMES" }
   check("search ignores case", r.code == 0 and contains(r.out, "proc:3:"), T.describe(r))
   r = T.kuu { "docs", "search", "task.exec {" }

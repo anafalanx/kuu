@@ -69,19 +69,22 @@ local function timestamp(now)
   return os.date("%Y-%m-%dT%H:%M:%S", whole) .. string.format(".%03d", ms)
 end
 
-local function sorted_keys(fields)
-  local keys = {}
-  for k in pairs(fields) do keys[#keys + 1] = tostring(k) end
-  table.sort(keys)
-  return keys
+local function sorted_fields(fields)
+  local entries = {}
+  for k, v in pairs(fields) do entries[#entries + 1] = { name = tostring(k), value = v, kind = type(k) } end
+  table.sort(entries, function(a, b)
+    if a.name == b.name then return a.kind < b.kind end
+    return a.name < b.name
+  end)
+  return entries
 end
 
 local function format_text(level, message, fields, now)
   local parts = { timestamp(now), string.format("%-5s", level:upper()), message }
   local line = table.concat(parts, " ")
   if fields ~= nil then
-    for _, k in ipairs(sorted_keys(fields)) do
-      line = line .. " " .. k .. "=" .. quote(render_value(fields[k]))
+    for _, field in ipairs(sorted_fields(fields)) do
+      line = line .. " " .. field.name .. "=" .. quote(render_value(field.value))
     end
   end
   return line
@@ -105,37 +108,45 @@ local function format_json(level, message, fields, now)
       end
     end
   end
-  local ok, encoded = pcall(json.encode, record)
-  if ok then return encoded end
-  -- an unencodable field: fall back to text inside the JSON record
-  return json.encode { ts = record.ts, level = level, msg = message, fields = format_text(level, "", fields, now) }
+  return json.encode(record)
 end
 
 local function emit(line)
   if state.sink ~= nil then
-    local ok = pcall(state.sink, line)
-    return ok
+    local ok, written, why = pcall(state.sink, line)
+    -- A callback with no return is successful; explicit failure is not.
+    return ok and written ~= false and not (written == nil and why ~= nil)
   end
   local handle = state.handle
   if handle ~= nil then
-    local ok = pcall(function() handle:write(line, "\n"); handle:flush() end)
-    return ok
+    local ok, written = pcall(function()
+      if not handle:write(line, "\n") then return false end
+      return handle:flush()
+    end)
+    return ok and written ~= nil and written ~= false
   end
-  local ok = pcall(function() io.stderr:write(line, "\n") end)
-  return ok
+  local ok, written = pcall(function() return io.stderr:write(line, "\n") end)
+  return ok and written ~= nil and written ~= false
 end
 
 local function write(level, message, fields)
   if LEVELS[level] < state.level then return false end
-  if type(message) ~= "string" then message = render_value(message) end
+  if type(message) ~= "string" then
+    local rendered, value = pcall(render_value, message)
+    if not rendered then
+      state.dropped = state.dropped + 1
+      return false
+    end
+    message = value
+  end
   if fields ~= nil and type(fields) ~= "table" then
     fields = { value = fields }
   end
   local now = sched.now()
-  local line
   local ok, produced = pcall(state.json and format_json or format_text, level, message, fields, now)
-  if ok then line = produced else line = format_text(level, message, nil, now) .. " fields=?" end
-  if emit(line) then return true end
+  -- A failed formatter must not change the selected format or raise while
+  -- attempting a second rendering. Count the entire record as dropped.
+  if ok and emit(produced) then return true end
   state.dropped = state.dropped + 1
   return false
 end

@@ -49,6 +49,23 @@ return function(T)
   check("and every call in it is held to the declaration", r.code == 0 and contains(r.err, "0 errors, 0 warnings"), T.describe(r))
   -- the wrapper module, over a tool that is a script printing two records
   assert(fs.copy(paths[12], door .. "/tools/report.lua"))
+  do
+    -- Execute the published wrapper unchanged against a simulated capture
+    -- result whose valid first row conceals discarded trailing output.
+    local driver = root .. "/truncated-report.lua"
+    assert(fs.write(driver, [[local fs,proc,task,err=require'fs',require'proc',require'task',require'err'
+local path=...
+local source=assert(fs.read(path))
+task.command=function()return {'simulated-report'}end
+proc.run=function()return {status='exit',code=0,out='{"row":1}\n',truncated=true}end
+local rows,e=assert(load(source,'@'..path,'t'))().rows('today')
+assert(rows==nil and err.is(e,'REPORT','toobig'),tostring(e))
+print('truncated report refused')
+]]))
+    local bounded = T.kuu { driver, paths[12] }
+    check("the NDJSON wrapper refuses a valid but truncated capture", bounded.code == 0
+      and contains(bounded.out, "truncated report refused"), T.describe(bounded))
+  end
   assert(fs.write(door .. "/tools/report.cmd", "@echo {\"row\":1}\r\n@echo {\"row\":2}\r\n"))
   assert(fs.write(door .. "/manifest.lua", 'global none\nglobal <const> require, assert, print\nlocal task = require "task"\n'
     .. 'task.tool "report" { exe = "tools/report.cmd", args = { ["--out"] = "path", ["--since"] = "string" }, output = "ndjson" }\n'
@@ -203,17 +220,23 @@ assert(starts == (initial == "running" and 0 or 1))
 global <const> require, print, tostring, ipairs, table
 local rt = require "rt"
 local out = {}
-for _, want in ipairs { {0}, {0, 9}, {0, 9, 0}, {0, 9, 1}, {0, 10}, {1}, {1, 0} } do
+for _, want in ipairs { {0}, {0, 9}, {0, 9, 0}, {0, 9, 1}, {0, 10}, {0, 10, 99},
+  {0, 11}, {0, 11, 0}, {0, 11, 1}, {0, 12}, {1}, {1, 0}, {0, 100} } do
   out[#out + 1] = tostring(rt.version_at_least(table.unpack(want)))
 end
 print(table.concat(out, ","))
 ]]))
     r = T.kuu { probe }
-    check("version_at_least compares components numerically, so 0.10 follows 0.9",
-      r.code == 0 and r.out == "true,true,true,true,true,false,false\n", T.describe(r))
+    check("version_at_least orders integer pairs and preserves legacy three-argument guards",
+      r.code == 0 and r.out == "true,true,true,true,true,true,true,true,false,false,false,false,false\n", T.describe(r))
 
     local bad = T.kuu { "-e", 'global none global <const> require require("rt").version_at_least("0.9")' }
     check("a version component that is not a number raises RT badvalue",
       bad.code == 1 and contains(bad.err, "RT badvalue"), T.describe(bad))
+    for _, call in ipairs { "()", "(-1)", "(0, -1)", "(0, 1.5)", "(0, 11, -1)", "(0, 11, '0')" } do
+      bad = T.kuu { "-e", 'require("rt").version_at_least' .. call }
+      check("invalid version guard " .. call .. " raises RT badvalue",
+        bad.code == 1 and contains(bad.err, "RT badvalue"), T.describe(bad))
+    end
   end
 end

@@ -80,6 +80,7 @@ typedef struct ku_stream {
 typedef struct read_request {
     int mode;
     size_t n;
+    int iterator;         /* iterator errors must raise, not look like EOF */
 } read_request;
 
 struct ku_child {
@@ -280,13 +281,13 @@ static int request_ready(const ku_stream *s, const read_request *r)
     }
     switch (r->mode) {
     case READ_LINE:
-        return memchr(s->data + s->start, '\n', available) != NULL;
+        return available >= s->limit ||
+               (available > 0 && memchr(s->data + s->start, '\n', available) != NULL);
     case READ_BYTES:
-        return available >= r->n;
     case READ_SOME:
         return available > 0;
     default:
-        return 0; /* READ_ALL waits for EOF */
+        return available >= s->limit; /* READ_ALL: EOF or a full bounded window */
     }
 }
 
@@ -302,15 +303,18 @@ static void stream_consume(ku_child *c, ku_stream *s, size_t n)
     }
 }
 
-/* Answer a ready request: pushes one value (a string, or nil at EOF). */
+/* Answer a ready request. A bounded read failure leaves every byte buffered. */
 static int request_take(lua_State *L, ku_child *c, ku_stream *s, const read_request *r)
 {
     size_t available = stream_available(s);
-    const unsigned char *p = s->data + s->start;
+    const unsigned char *p = s->data != NULL ? s->data + s->start : NULL;
     switch (r->mode) {
     case READ_LINE: {
         const unsigned char *newline = available > 0 ? (const unsigned char *)memchr(p, '\n', available) : NULL;
         if (newline == NULL) {
+            if (!s->eof && available >= s->limit) {
+                return ku_err_fail(L, "PROC", "toobig", "the line filled maxout before its ending; buffered bytes remain readable");
+            }
             if (available == 0) {
                 lua_pushnil(L); /* EOF */
                 return 1;
@@ -329,6 +333,9 @@ static int request_take(lua_State *L, ku_child *c, ku_stream *s, const read_requ
         return 1;
     }
     case READ_ALL:
+        if (!s->eof && available >= s->limit) {
+            return ku_err_fail(L, "PROC", "toobig", "the output filled maxout before EOF; buffered bytes remain readable");
+        }
         lua_pushlstring(L, (const char *)p, available);
         stream_consume(c, s, available);
         return 1;
@@ -353,8 +360,9 @@ static int request_take(lua_State *L, ku_child *c, ku_stream *s, const read_requ
 static void stream_notify(ku_child *c, ku_stream *s)
 {
     ku_waiter *w = s->reader;
-    if (w != NULL && request_ready(s, (const read_request *)w->data)) {
-        s->reader = NULL;
+    if (w != NULL && !w->done && request_ready(s, (const read_request *)w->data)) {
+        /* Keep the reservation until read_push consumes the data. Other
+         * ready tasks can run before this reader's continuation resumes. */
         c->woken++;
         ku_wake(w);
     }
@@ -376,11 +384,15 @@ static ku_io *child_io_new(ku_child *c, HANDLE handle, DWORD cap)
 
 static int stream_post_read(ku_child *c, ku_stream *s)
 {
+    DWORD chunk = KU_READ_CHUNK;
     if (c->stream && stream_available(s) >= s->limit) {
         s->paused = 1; /* backpressure: the child blocks until the program reads */
         return 0;
     }
-    ku_io *io = child_io_new(c, s->handle, KU_READ_CHUNK);
+    if (c->stream && s->limit - stream_available(s) < chunk) {
+        chunk = (DWORD)(s->limit - stream_available(s));
+    }
+    ku_io *io = child_io_new(c, s->handle, chunk);
     if (io == NULL) {
         stream_finish(s, ERROR_NOT_ENOUGH_MEMORY);
         return -1;
@@ -425,16 +437,19 @@ static void stdin_post(ku_child *c)
         }
         return;
     }
-    ku_io *io = child_io_new(c, c->in_handle, 0);
+    size_t remaining = c->in_len - c->in_off;
+    DWORD chunk = remaining > KU_WRITE_CHUNK ? KU_WRITE_CHUNK : (DWORD)remaining;
+    ku_io *io = child_io_new(c, c->in_handle, chunk);
     if (io == NULL) {
         stdin_finish(c, ERROR_NOT_ENOUGH_MEMORY);
         return;
     }
     io->kind = IO_IN;
     c->in_io = io;
-    size_t remaining = c->in_len - c->in_off;
-    DWORD chunk = remaining > KU_WRITE_CHUNK ? KU_WRITE_CHUNK : (DWORD)remaining;
-    if (!WriteFile(c->in_handle, c->in_data + c->in_off, chunk, NULL, &io->ov)) {
+    /* Windows owns this immutable copy until completion. The producer may
+     * append to or compact the queue while that overlapped write is pending. */
+    memcpy(io->buf, c->in_data + c->in_off, chunk);
+    if (!WriteFile(c->in_handle, io->buf, chunk, NULL, &io->ov)) {
         DWORD error = GetLastError();
         if (error != ERROR_IO_PENDING) {
             c->in_io = NULL;
@@ -448,13 +463,13 @@ static void stdin_post(ku_child *c)
 
 static int stdin_queue(ku_child *c, const unsigned char *bytes, size_t n)
 {
-    if (c->in_off > 0 && c->in_io == NULL) {
+    if (n > KU_STDIN_QUEUE_MAX - (c->in_len - c->in_off)) {
+        return -1;
+    }
+    if (c->in_off > 0 && (c->in_len + n > c->in_cap || c->in_off >= c->in_cap / 2)) {
         memmove(c->in_data, c->in_data + c->in_off, c->in_len - c->in_off);
         c->in_len -= c->in_off;
         c->in_off = 0;
-    }
-    if (c->in_len - c->in_off + n > KU_STDIN_QUEUE_MAX) {
-        return -1;
     }
     if (c->in_len + n > c->in_cap) {
         size_t cap = c->in_cap ? c->in_cap : 65536;
@@ -774,8 +789,10 @@ static void wake_reader_closed(ku_child *c, ku_stream *s)
     if (w != NULL) {
         s->reader = NULL;
         ((read_request *)w->data)->mode = READ_CLOSED; /* the push must not touch c */
-        c->woken++;
-        ku_wake(w);
+        if (!w->done) {
+            c->woken++;
+            ku_wake(w);
+        }
     }
 }
 
@@ -832,6 +849,7 @@ typedef struct ku_spec {
     int has_stdin;
     int stream;
     int inherit;
+    int inherit_stdin;
     size_t maxout;
     int has_maxout;
     ku_limits limits;
@@ -974,7 +992,8 @@ static void parse_spec(lua_State *L, ku_spec *spec, int allow_options)
             } else {
                 spec->dimensions.Y = (SHORT)lua_tointeger(L, -1);
             }
-        } else if (spec->console && (strcmp(key, "stdin") == 0 || strcmp(key, "stream") == 0 || strcmp(key, "inherit") == 0)) {
+        } else if (spec->console && (strcmp(key, "stdin") == 0 || strcmp(key, "stream") == 0 ||
+                                     strcmp(key, "inherit") == 0 || strcmp(key, "inherit_stdin") == 0)) {
             ku_err_raise(L, "PTY", "badvalue", "a pseudoconsole does not accept %s", key);
         } else if (strcmp(key, "cwd") == 0) {
             size_t len = 0;
@@ -1013,6 +1032,11 @@ static void parse_spec(lua_State *L, ku_spec *spec, int allow_options)
             spec->stream = lua_toboolean(L, -1);
         } else if (strcmp(key, "inherit") == 0) {
             spec->inherit = lua_toboolean(L, -1);
+        } else if (strcmp(key, "inherit_stdin") == 0) {
+            if (!lua_isboolean(L, -1)) {
+                ku_err_raise(L, "PROC", "badvalue", "inherit_stdin must be a boolean");
+            }
+            spec->inherit_stdin = lua_toboolean(L, -1);
         } else if (strcmp(key, "stdin") == 0) {
             if (lua_type(L, -1) != LUA_TSTRING) {
                 ku_err_raise(L, "PROC", "badvalue", "stdin must be a string of bytes");
@@ -1093,8 +1117,14 @@ static void parse_spec(lua_State *L, ku_spec *spec, int allow_options)
     if (spec->stream && spec->inherit) {
         ku_err_raise(L, "PROC", "usage", "stream and inherit cannot both be set");
     }
+    if (spec->stream && spec->maxout == 0) {
+        ku_err_raise(L, "PROC", "badvalue", "maxout must be positive in stream mode");
+    }
     if (spec->inherit && spec->has_stdin) {
         ku_err_raise(L, "PROC", "usage", "inherit gives the child kuu's own stdin; a stdin string cannot be combined with it");
+    }
+    if (spec->inherit_stdin && (spec->inherit || spec->has_stdin)) {
+        ku_err_raise(L, "PROC", "usage", "inherit_stdin cannot be combined with inherit or a stdin string");
     }
     if (spec->stream && spec->has_stdin) {
         ku_err_raise(L, "PROC", "usage", "in stream mode write to stdin with child:write(); a stdin string cannot be combined with it");
@@ -1139,7 +1169,8 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
     char *exe = NULL;
     int resolved = ku_resolve_exe(spec->argv[0], &exe);
     if (resolved == 1) {
-        return ku_fail_set(fail, "PROC", "notfound", "cannot find '%s' on PATH", spec->argv[0]);
+        return ku_fail_set(fail, "PROC", "notfound", "cannot find executable '%s'%s", spec->argv[0],
+                           strpbrk(spec->argv[0], "/\\") == NULL ? " on PATH" : "");
     }
     if (resolved == 2) {
         return ku_fail_set(fail, "PROC", "encoding", "the command name is not valid UTF-8");
@@ -1230,7 +1261,29 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
         if (make_pipe(1, &c->out.handle, &their_out, fail) != 0 || make_pipe(1, &c->err.handle, &their_err, fail) != 0) {
             goto fail;
         }
-        if (spec->has_stdin || c->stream) {
+        if (spec->inherit_stdin) {
+            HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+            if (input != NULL && input != INVALID_HANDLE_VALUE &&
+                !DuplicateHandle(GetCurrentProcess(), input, GetCurrentProcess(), &their_in,
+                                 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+                DWORD error = GetLastError();
+                their_in = NULL;
+                if (error != ERROR_INVALID_HANDLE) {
+                    ku_fail_set(fail, "PROC", "oserror", "cannot duplicate stdin (error %lu)",
+                                (unsigned long)error);
+                    goto fail;
+                }
+            }
+            if (their_in == NULL) {
+                nul = ku_open_nul(0);
+                if (nul == NULL) {
+                    ku_fail_set(fail, "PROC", "oserror", "cannot open the null device");
+                    goto fail;
+                }
+                their_in = nul;
+            }
+            c->in_done = 1; /* no writer owned by kuu can hold EOF open */
+        } else if (spec->has_stdin || c->stream) {
             if (make_pipe(0, &c->in_handle, &their_in, fail) != 0) {
                 goto fail;
             }
@@ -1497,7 +1550,7 @@ typedef struct multi_wait {
     int need_all;
     int remaining;     /* children not yet complete */
     int winner;        /* wait_any: the first index that completed, else -1 */
-    ku_waiter **subs;  /* per child: a sub-waiter in its list, or NULL when not needed */
+    ku_waiter **subs;  /* owned until cleanup, including already-woken waiters */
     ku_child **children;
     ku_result **results; /* snapshots, filled as children complete */
 } multi_wait;
@@ -1518,7 +1571,9 @@ static void multi_sub_woken(ku_waiter *sub)
     }
     m->results[index] = (ku_result *)sub->data; /* the child's snapshot, already referenced */
     sub->data = NULL;
-    m->subs[index] = NULL;
+    /* The child has unlinked this waiter. Keep its allocation until cleanup:
+     * ku_wake still reads it after this callback returns. */
+    m->children[index] = NULL;
     m->remaining--;
     if (m->winner < 0) {
         m->winner = index;
@@ -1531,15 +1586,17 @@ static void multi_sub_woken(ku_waiter *sub)
 static void multi_cleanup(multi_wait *m)
 {
     for (int i = 0; i < m->count; i++) {
-        ku_waiter *sub = m->subs[i];
+        ku_waiter *sub = m->subs != NULL ? m->subs[i] : NULL;
         if (sub != NULL) {
-            if (m->children[i] != NULL) {
+            if (m->children != NULL && m->children[i] != NULL) {
                 unlink_waiter(&m->children[i]->waiters, sub);
             }
             result_unref((ku_result *)sub->data);
             free(sub);
         }
-        result_unref(m->results[i]);
+        if (m->results != NULL) {
+            result_unref(m->results[i]);
+        }
     }
     free(m->subs);
     free(m->children);
@@ -1671,13 +1728,15 @@ static int l_proc_detach(lua_State *L)
 {
     ku_spec spec;
     parse_spec(L, &spec, 1);
-    if (spec.has_stdin || spec.timeout_ms >= 0 || spec.stream || spec.inherit || spec.has_limits || spec.has_maxout) {
+    if (spec.has_stdin || spec.timeout_ms >= 0 || spec.stream || spec.inherit || spec.inherit_stdin ||
+        spec.has_limits || spec.has_maxout) {
         return ku_err_raise(L, "PROC", "usage", "detach accepts only cwd and env options");
     }
     char *exe = NULL;
     int resolved = ku_resolve_exe(spec.argv[0], &exe);
     if (resolved == 1) {
-        return ku_err_fail(L, "PROC", "notfound", "cannot find '%s' on PATH", spec.argv[0]);
+        return ku_err_fail(L, "PROC", "notfound", "cannot find executable '%s'%s", spec.argv[0],
+                           strpbrk(spec.argv[0], "/\\") == NULL ? " on PATH" : "");
     }
     if (resolved == 2) {
         return ku_err_raise(L, "PROC", "encoding", "the command name is not valid UTF-8");
@@ -1812,7 +1871,13 @@ static int read_push(lua_State *L, ku_waiter *w)
     } else {
         c->woken--;
         ku_stream *s = (ku_stream *)w->tag;
+        s->reader = NULL;
         n = request_take(L, c, s, request);
+    }
+    if (request->iterator && n == 2) {
+        lua_remove(L, -2); /* keep only the error, not the EOF-shaped nil */
+        w->raise = 1;
+        n = 1;
     }
     free(request);
     return n;
@@ -1835,12 +1900,12 @@ static void read_abandon(ku_waiter *w)
     w->data = NULL;
 }
 
-static int stream_read(lua_State *L, ku_child *c, ku_stream *s, int what_index, int timeout_index)
+static int stream_read(lua_State *L, ku_child *c, ku_stream *s, int what_index, int timeout_index, int iterator)
 {
     if (!c->stream) {
         return ku_err_raise(L, "PROC", "usage", "reading needs proc.start{ ..., stream = true }");
     }
-    read_request request = {READ_LINE, 0};
+    read_request request = {READ_LINE, 0, iterator};
     if (!lua_isnoneornil(L, what_index)) {
         if (lua_type(L, what_index) == LUA_TNUMBER) {
             lua_Integer n = luaL_checkinteger(L, what_index);
@@ -1870,7 +1935,12 @@ static int stream_read(lua_State *L, ku_child *c, ku_stream *s, int what_index, 
         return ku_err_raise(L, "PROC", "busy", "another task is already reading this stream");
     }
     if (request_ready(s, &request)) {
-        return request_take(L, c, s, &request);
+        int n = request_take(L, c, s, &request);
+        if (iterator && n == 2) {
+            lua_remove(L, -2);
+            return lua_error(L);
+        }
+        return n;
     }
     read_request *heap = (read_request *)malloc(sizeof *heap);
     ku_waiter *w = ku_waiter_new(c->loop, c, read_push);
@@ -1891,13 +1961,13 @@ static int stream_read(lua_State *L, ku_child *c, ku_stream *s, int what_index, 
 static int l_child_read(lua_State *L)
 {
     ku_child *c = check_child(L, 1);
-    return stream_read(L, c, &c->out, 2, 3);
+    return stream_read(L, c, &c->out, 2, 3, 0);
 }
 
 static int l_child_read_err(lua_State *L)
 {
     ku_child *c = check_child(L, 1);
-    return stream_read(L, c, &c->err, 2, 3);
+    return stream_read(L, c, &c->err, 2, 3, 0);
 }
 
 /* The iterator behind child:lines() / child:err_lines(): reads one line. */
@@ -1908,7 +1978,7 @@ static int lines_step(lua_State *L)
     ku_child *c = check_child(L, 1);
     ku_stream *s = lua_toboolean(L, lua_upvalueindex(2)) ? &c->err : &c->out;
     lua_pushliteral(L, "line");
-    return stream_read(L, c, s, 2, 3);
+    return stream_read(L, c, s, 2, 3, 1);
 }
 
 static int l_child_lines(lua_State *L)

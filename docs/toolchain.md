@@ -37,6 +37,12 @@ prints nothing. The `Makefile` sets the path itself and runs its recipes under
 .tools\msys2\ucrt64\bin\mingw32-make.exe test
 ```
 
+Each build checks the complete embedded Lua/manual file set, including added
+and deleted files. The C generator writes a temporary payload and replaces
+the previous output only after successful reads and writes. Identical output
+keeps its timestamp, avoiding unnecessary recompilation; a failed generation
+is retried on the next build.
+
 Target triple `x86_64-w64-mingw32`; C runtime UCRT, which every supported
 Windows carries as `ucrtbase.dll`, so the executable has no redistributable.
 
@@ -242,8 +248,8 @@ at the top of its `manifest.lua`.
 Before publishing a release:
 
 1. Run `make gate` on the final sources and review every stage's result.
-2. Run `make asan` on those same sources and resolve every sanitizer finding.
-   It is a separate required release check, not part of the everyday gate.
+2. Resolve every sanitizer finding from the gate's ASAN stage. `make asan`
+   also runs that stage independently when investigating a failure.
 3. Commit and push the tested tree. Run `make publish GH=<gh.exe>`; it repeats
    the production gate before signing and publishing that commit.
 4. Verify the release tag, signed executable, and SHA-256 sidecar, then run

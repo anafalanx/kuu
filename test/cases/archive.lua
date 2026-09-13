@@ -1,7 +1,7 @@
 -- archive.lua -- pack, list, and unpack through Windows' tar.exe: zip and the
 -- tar family, strip, replacement, and the refusals.
 global none
-global <const> require, ipairs, tostring, string, table, pcall
+global <const> require, ipairs, pairs, tostring, string, table, pcall
 
 return function(T)
   local check, contains = T.check, T.contains
@@ -29,6 +29,64 @@ return function(T)
 
   local ok, e = archive.pack(work .. "/out/tool.zip", work .. "/src", { "tool-1.0" })
   check("pack writes a zip of the named entries, creating the parent", ok == true and fs.exists(work .. "/out/tool.zip") == "file", tostring(e))
+  do
+    local target = work .. "/out/tool.zip"
+    local previous = fs.read(target)
+    local accepted, failure = pcall(archive.pack, target, work .. "/src", { "tool-1.0" }, { timeout = "nonsense" })
+    check("invalid pack options preserve the existing archive", not accepted and err.is(failure, "PROC", "badvalue")
+      and fs.read(target) == previous, tostring(failure))
+    local packed, problem = archive.pack(target, work .. "/src", { "missing-entry" })
+    check("a failed tar invocation preserves the existing archive", packed == nil and err.is(problem, "ARCHIVE", "failed")
+      and fs.read(target) == previous, tostring(problem))
+    packed, problem = archive.pack(target, work .. "/src", { "tool-1.0" }, { timeout = "0ms" })
+    check("a timed out pack preserves the existing archive", packed == nil and err.is(problem, "ARCHIVE", "timeout")
+      and fs.read(target) == previous, tostring(problem))
+    check("failed packing removes its temporary archive", #fs.glob(work .. "/out/.kuu-*") == 0)
+    fs.write(work .. "/src/replacement.txt", "replacement")
+    packed, problem = archive.pack(target, work .. "/src", { "replacement.txt" })
+    local replaced = packed and archive.list(target)
+    check("successful packing promotes the complete replacement", replaced and #replaced == 1
+      and replaced[1] == "replacement.txt", tostring(problem))
+    archive.pack(target, work .. "/src", { "tool-1.0" })
+  end
+  do
+    -- Keeping the old archive intact also keeps it visible to traversal.
+    -- Exclude that exact output and the temporary, including through an
+    -- ancestor entry, without hiding unrelated files with the same name.
+    local dir = work .. "/self"
+    fs.mkdir(dir .. "/sub/out[1]")
+    fs.mkdir(dir .. "/out[1]")
+    fs.mkdir(dir .. "/out1")
+    fs.write(dir .. "/source.txt", "source")
+    fs.write(dir .. "/out1/archive$.zip", "unrelated glob lookalike")
+    fs.write(dir .. "/sub/out[1]/archive$.zip", "unrelated same suffix")
+    local target = dir .. "/out[1]/archive$.zip"
+    local function listed()
+      local paths = archive.list(target)
+      local names = {}
+      for _, path in ipairs(paths or {}) do names[path:gsub("^%./", "")] = true end
+      for path in pairs(names) do
+        if path:find(".kuu-", 1, true) then return nil end
+      end
+      return names
+    end
+    local first, first_error = archive.pack(target, dir)
+    local second, second_error = archive.pack(target, dir, { "." })
+    local names = second and listed()
+    check("packing beneath the input tree excludes both archives and preserves unrelated matching names",
+      first and names and names["source.txt"] and names["out1/archive$.zip"]
+        and names["sub/out[1]/archive$.zip"] and not names["out[1]/archive$.zip"],
+      tostring(first_error or second_error))
+    fs.write(dir .. "/out[1]/source.txt", "nested source")
+    local nested, nested_error = archive.pack(target, dir, { "out[1]" })
+    names = nested and listed()
+    check("an explicit ancestor still excludes its previous output and temporary",
+      names and names["out[1]/source.txt"] and not names["out[1]/archive$.zip"], tostring(nested_error))
+    local long_target = work .. "/out/" .. string.rep("a", 234) .. ".zip"
+    local long, long_error = archive.pack(long_target, work .. "/src", { "tool-1.0" })
+    check("a valid long output basename fits because only its format suffix is copied to the temporary",
+      long and fs.exists(long_target) == "file", tostring(long_error))
+  end
   local entries = archive.list(work .. "/out/tool.zip")
   check("list shows the entries", entries and #entries >= 3 and table.concat(entries, " "):find("tool-1.0/sub/b.txt", 1, true) ~= nil, entries and table.concat(entries, " "))
   ok, e = archive.unpack(work .. "/out/tool.zip", work .. "/one")
@@ -54,6 +112,53 @@ return function(T)
   check("an entry named like an option is packed as an entry", ok == true and dash and dash[1] == "--help", tostring(e))
   ok, e = archive.unpack(work .. "/out/dash.zip", work .. "/dash")
   check("and unpacks", ok == true and fs.read(work .. "/dash/--help") == "an entry, not an option\n", tostring(e))
+
+  do
+    local source = work .. "/at-src"
+    fs.mkdir(source .. "/@folder")
+    fs.write(source .. "/@notes.txt", "literal file")
+    fs.write(source .. "/@folder/inside.txt", "literal folder")
+    for _, ext in ipairs { "zip", "tar" } do
+      for _, mode in ipairs { "explicit", "all" } do
+        local target = work .. "/out/at-" .. mode .. "." .. ext
+        local unpacked = work .. "/at-" .. mode .. "-" .. ext
+        local packed, pe = archive.pack(target, source, mode == "explicit" and { "@notes.txt", "@folder" } or nil)
+        local extracted, ue = packed and archive.unpack(target, unpacked)
+        local names = packed and archive.list(target)
+        local listed = {}
+        for _, name in ipairs(names or {}) do listed[name:gsub("^%./", "")] = true end
+        check("@ names are literal files and folders in " .. mode .. " " .. ext .. " packing",
+          extracted and listed["@notes.txt"] and listed["@folder/inside.txt"]
+          and fs.read(unpacked .. "/@notes.txt") == "literal file"
+          and fs.read(unpacked .. "/@folder/inside.txt") == "literal folder", tostring(pe or ue))
+      end
+    end
+    local target = source .. "/@out.zip"
+    archive.pack(target, source)
+    local packed, pe = archive.pack(target, source)
+    local clean = packed
+    for _, name in ipairs(packed and archive.list(target) or {}) do
+      if name:gsub("^%./", "") == "@out.zip" or name:find(".kuu-", 1, true) then clean = false end
+    end
+    check("literal @ operands still exclude the old destination and its temporary", clean, tostring(pe))
+  end
+
+  do
+    local target = work .. "/out/tool.zip"
+    local previous = fs.read(target)
+    for _, entries in ipairs {
+      { [1] = "loose.txt", [3] = "replacement.txt" }, { "loose.txt", extra = "replacement.txt" },
+      { [0] = "loose.txt" }, { [1.5] = "loose.txt" }, false, "loose.txt",
+    } do
+      local accepted, failure = pcall(archive.pack, target, work .. "/src", entries)
+      check("a malformed archive entry list is refused without replacing its destination",
+        not accepted and err.is(failure, "ARCHIVE", "badvalue") and fs.read(target) == previous, tostring(failure))
+    end
+    local parent = work .. "/not-staged"
+    local accepted, failure = pcall(archive.pack, parent .. "/out.zip", work .. "/src", { [1] = "loose.txt", [3] = "replacement.txt" })
+    check("entry-list validation happens before creating the destination directory",
+      not accepted and err.is(failure, "ARCHIVE", "badvalue") and not fs.exists(parent), tostring(failure))
+  end
 
   local none
   none, e = archive.unpack(work .. "/out/absent.zip", work .. "/three")

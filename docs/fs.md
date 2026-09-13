@@ -28,7 +28,7 @@ fs.write(path, data, { atomic = false })             -- plain overwrite
 ```
 
 An atomic write leaves either the old bytes or all of the new ones, never a
-torn file. It creates `name.kuu-<pid>-<tick>.tmp` in the same directory and
+torn file. It creates `.kuu-<32 random hex digits>.tmp` in the same directory and
 renames it over the target, which a watcher sees as an added temporary file
 and a rename.
 
@@ -106,7 +106,8 @@ be read is an `errors` row with the raw Windows code, and the counts add up.
 use `*` and `?`, match base names, and ignore case; at most 64 are accepted.
 
 **A pruned directory is not in `paths`.** It was excluded by name, so it is
-reported in `skipped` and `pruned` instead, and the plain walk below reads
+reported in `skipped` and `pruned` instead, including at the depth limit
+(where pruning takes precedence over `depthlimited`), and the plain walk below reads
 nothing the prune was asked to exclude:
 
 ```lua
@@ -141,6 +142,11 @@ precedence removed, added, renamed, modified, unless `raw = true` asks for
 every notification. The watch is armed before `fs.watch` returns. When
 `overflow` appears or `dropped` grows, the system could not describe every
 change: reconcile from `fs.list` or `fs.dirs`.
+
+Concurrent readers compete for batches in the order they started waiting.
+One reader receives each batch; the others remain parked for later changes
+or their own timeout. Events are not broadcast. Closing the watch wakes all
+waiting readers with `FS closed`.
 
 ## Paths as strings
 
