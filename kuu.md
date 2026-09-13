@@ -77,6 +77,13 @@ kuu run [--dry-run] [TASK]     a task from the nearest manifest.lua
 kuu list                       those tasks
 ```
 
+kuu is the front door of a project. Everything that runs in the project runs
+through `kuu.exe` — a task, a build, a test, a fetch, a tool — and gets a
+job, a deadline, limits, and a record. If something cannot be done from
+here, the project builds a tool for it, in any technology, declares it in
+`manifest.lua`, and calls it through the door. Editing is yours; running is
+the door's.
+
 Building and verifying kuu itself, from the repository root:
 
 ```text
@@ -614,7 +621,13 @@ the registry, the environment, services, event logs, signature verification,
 and the network as seen from here. The provisional `pty` drives interactive
 console programs; `check` verifies names exported by the palette. It is the
 tool an agent holds on a Windows machine instead of PowerShell; the
-[From PowerShell](#powershell) page maps one to the other. The
+[From PowerShell](#powershell) page maps one to the other.
+
+kuu is the front door of a project: everything that runs in the project runs
+through `kuu.exe`, and gets a job, a deadline, limits, and a record. If
+something cannot be done from here, build a [tool](#tools) for it, in any
+technology, and call it through the door. Editing is yours; running is the
+door's. The
 [roadmap](#roadmap) records what is planned and why, and
 [inheritance](#inheritance) records what kuu learned from its predecessors.
 
@@ -752,6 +765,10 @@ Failures kuu detects before the program runs are spelled
   [mem](#mem), [archive](#archive), [log](#log), [cli](#cli),
   [err](#err): the modules.
 - [Tasks](#task): `manifest.lua`, `kuu run`, `kuu list`, and the exit codes.
+- [Tools](#tools): the programs a project builds or fetches, declared in the
+  manifest and called through the door.
+- [Confined tools](#confined): what a tool that confines itself must
+  provide, and the junction every lexical sandbox has to be told about.
 - [check](#check): what `kuu check` finds without running a file.
 - [Toolchain](#toolchain): what kuu's own `.tools` holds and where it comes
   from.
@@ -953,10 +970,12 @@ Nothing is reported that kuu cannot know.
   over-approximates, and a module whose exports the text does not bound is
   counted rather than named. A program is not a module, and from the text
   alone the two do not differ.
-- **Tasks are declared by running `manifest.lua`**, which is project code. `kuu
-  run` and `kuu list` already do that, and this does no more. A `manifest.lua`
-  that does not load costs the task list and nothing else: the reason is
-  reported and the rest of the descriptor still stands.
+- **Tasks and tools are declared by running `manifest.lua`**, which is project
+  code. `kuu run` and `kuu list` already do that, and this does no more. A
+  `manifest.lua` that does not load costs the task and tool lists and nothing
+  else: the reason is reported and the rest of the descriptor still stands.
+  The tools listed are the executed reading; [check](#check) reads the
+  same declarations from the text, and the suite holds the two equal.
 - **What a task installs under `.tools` is not reported at all.** kuu keeps no
   manifest of it, and a guess about a toolchain is worse than saying nothing.
 
@@ -984,12 +1003,16 @@ modules
 project C:/work/app
   tasks      build, test*, fmt
              * the default. kuu run TASK; kuu list describes them
+  tools      report (ndjson), signtool (lines)
+             declared in the manifest; task.exec { tool = NAME } runs one
   modules    2 of the 4 .lua files below the root bound their exports
     lib.util      VERSION, slug, titlecase
     tools.report  render, write
 
-Whatever a task installs under .tools is not listed: kuu keeps no manifest
-of it, and a guess would be worse than the silence.
+Whatever a task installs under .tools and never declares is not listed: kuu
+keeps no manifest of it, and a guess would be worse than the silence.
+Everything that runs in this project runs through kuu.exe; if something cannot
+be done from here, build a tool for it and call it through the door (kuu docs tools).
 Read kuu docs pitfalls first; it is where kuu differs from the Lua you know.
 ```
 
@@ -1022,6 +1045,8 @@ type CapabilityReport = {
       root: string; // absolute path of the directory holding manifest.lua
       file: string; // "manifest.lua", or "tasks.lua" from a project that has not renamed yet
       tasks: { name: string; desc: string }[]; // hidden tasks omitted
+      tools: { name: string; exe: string; output: string; args?: { [name: string]: string };
+               emits: string[]; timeout?: number | string; reach: { [kind: string]: string[] } }[];
       default?: string; // the task kuu run alone runs
       note?: string; // why manifest.lua did not load; tasks is then empty
       modules: { name: string; path: string; names: string[] }[];
@@ -1131,12 +1156,15 @@ local PACKAGES = {
   { url = "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
     sha256 = "9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16" },
 }
-local MAKE = ".tools/msys2/ucrt64/bin/mingw32-make.exe"
+-- The tools this repository calls through the door, declared beside the
+-- tasks that call them: where each is and what it emits.  See Tools.
+task.tool "make" { exe = ".tools/msys2/ucrt64/bin/mingw32-make.exe", output = "lines", timeout = "30m" }
+task.tool "tests" { exe = "build/tests.exe", output = "lines" }
 
 task "prereqs" {
   desc = "fetch the tools by hash into .tools",
   run = function()
-    if fs.exists(MAKE) == "file" then return end
+    if fs.exists(task.tool_get("make").exe) == "file" then return end
     fs.mkdir(".tools/downloads")
     for _, p in ipairs(PACKAGES) do
       local to = ".tools/downloads/" .. fs.basename(p.url)
@@ -1153,13 +1181,13 @@ task "prereqs" {
 task "build" {
   desc = "build with the fetched make",
   deps = { "prereqs" },
-  run = function() return task.exec { MAKE, "-j8" } end,
+  run = function() return task.exec { tool = "make", "-j8" } end,
 }
 
 task "test" {
   desc = "run the tests",
   deps = { "build" },
-  run = function() return task.exec { "build/tests.exe" } end,
+  run = function() return task.exec { tool = "tests" } end,
 }
 
 task "clean" {
@@ -1245,7 +1273,8 @@ in step.
 A repository declares its tasks once, in a `manifest.lua` at its root, and runs
 them with `kuu run`. There is no second file to keep in step: the task list,
 each task's description, its dependencies, and its arguments live in the
-declaration, and `kuu list` reads them back from there.
+declaration, and `kuu list` reads them back from there. The same file
+declares the [tools](#tools) the tasks call.
 
 ```lua
 -- manifest.lua
@@ -1462,14 +1491,20 @@ task.default_task()        -- the default's name, or nil
 task.plan("test")             -- the entries to run, in order | nil, err
 task.arguments(entry, args)   -- the arguments parsed against its spec: opts | nil, err
 task.execute(entry, opts)     -- run it with parsed arguments: true | nil, err
+task.tools()                  -- the declared tools, in declaration order
+task.tool_get("report")       -- one: name, exe, args, output, emits, timeout, reach
+task.command { tool = "report", "--out", p }   -- the table task.exec would run, resolved
 ```
+
+The tools a manifest declares with `task.tool "name" { ... }`, and
+`task.exec { tool = "name", ... }`, are on their own page: [Tools](#tools).
 
 | code | meaning |
 |---|---|
 | `TASK noproject` | no `manifest.lua` here or above |
 | `TASK badvalue` | a bad declaration, or `manifest.lua` failed to load |
 | `TASK usage` | no task or default was selected, a runner option is unknown, or a declaration holds an attribute or option that is not known |
-| `TASK unknown`, `TASK cycle` | the dependency graph |
+| `TASK unknown`, `TASK cycle` | the dependency graph; `unknown` also a tool the manifest does not declare |
 | `CLI usage` | wrong arguments for a task, or `--help` |
 | `TASK failed` | a task raised something that is not an `err`, or its child did not exit normally |
 | `TASK exit` | a `task.exec` child exited non-zero; `err.exit` is the code |
@@ -1477,6 +1512,244 @@ task.execute(entry, opts)     -- run it with parsed arguments: true | nil, err
 Errors returned or raised by `proc` while starting a child keep their
 original domain and code; [proc](#proc) lists them. A job limit produces
 `TASK failed` with its kind in the message, such as `limit (memory)`.
+
+---
+
+## Tools
+
+Everything that runs in a project runs through `kuu.exe`: a task, a build, a
+test, a fetch, and every program a task calls. If the project needs something
+kuu cannot do, it builds a tool for it — in whatever technology suits — or
+fetches one by hash into its own root, and calls it through the door. Editing
+is yours; running is the door's.
+
+A tool is declared in `manifest.lua`, beside the tasks that call it, in the
+same shape a task is:
+
+```lua
+local task = require "task"
+
+task.tool "report" {
+  exe     = "tools/report/report.exe",          -- relative to the project root
+  args    = { ["--out"] = "path", ["--since"] = "string", ["--verbose"] = "flag" },
+  output  = "ndjson",                           -- ndjson | json | lines | none
+  emits   = { "rows", "path" },                 -- the fields its records carry
+  timeout = "5m",                               -- unless the call gives one
+  reach   = { read = { "src", "build" }, write = { "build" }, net = {} },
+}
+
+task.tool "signtool" {
+  exe    = ".tools/sdk/signtool.exe",
+  args   = { sign = "flag", ["/sha1"] = "string", ["/tr"] = "string" },
+  output = "lines",
+}
+
+task "report" {
+  desc = "the weekly report",
+  run = function() return task.exec { tool = "report", "--out", "build/report.json", "--since", "2026-09-01" } end,
+}
+```
+
+| attribute | |
+|---|---|
+| `exe` | the program's path, relative to the project root; the one required attribute |
+| `args` | the arguments the tool takes, name = type; the types are `flag`, `string`, `path`, `int`, `number`, `duration`, `size`. Absent, the arguments are not described and `check` does not judge them; `{}` says the tool takes none |
+| `output` | what the tool writes on standard output: `ndjson`, `json`, `lines`, or `none` (the default) |
+| `emits` | the fields its records carry; descriptive, listed by `capabilities`, verified by nothing |
+| `timeout` | the child timeout when the call gives none; the default from `task.defaults` after that |
+| `reach` | what the tool touches — `read`, `write` and `net` lists; declared and shown, never enforced, since whether a tool can be confined is its own technology's business. [Confined tools](#confined) says what a tool that confines itself must provide |
+
+A name the declaration cannot hold raises `TASK usage`; a value of the wrong
+shape raises `TASK badvalue`; a name declared twice, `TASK badvalue`.
+
+### Calling one
+
+```lua
+task.exec { tool = "signtool", "sign", "/sha1", thumb, "/tr", "http://ts.example", "build/app.exe" }
+task.exec { tool = "report", "--out", "build/r.json", cwd = "build", timeout = "20m" }
+
+local spec = task.command { tool = "report", "--out", "build/r.json" }   -- the same table, resolved
+local r, e = proc.run(spec)                                              -- for the output rather than the console
+```
+
+`task.exec { tool = "name", ... }` is `task.exec` as before, with the
+declaration filling in what the call leaves out: the declared `exe` goes
+first, resolved against the `require` root — the project root under `kuu
+run`, `kuu list` and `kuu capabilities`, and a program's own directory when
+a program loads the manifest itself — and the declared `timeout` applies
+unless the call gives one. An `exe` the resolver refuses — a component ending
+in a dot or a space, a device path — is refused at the declaration, as
+`TASK badvalue`. Everything else — `cwd`, `env`, `limits`,
+`maxout` — is the call's. The child runs on kuu's console, its output
+streams through, and a non-zero exit is `TASK exit` with the code, as for any
+`task.exec`.
+
+`task.command` does the resolving and stops there: it returns the table
+`task.exec` would run, for a program that wants the tool's output rather than
+its console — a wrapper module, say, that hands the table to `proc.run` and
+decodes what comes back. A tool the manifest does not declare is
+`TASK unknown` from either.
+
+### What the door does, and does not
+
+Every tool called this way gets what every child of kuu gets: a job, so its
+whole tree dies with kuu; the deadline; the limits it was given; a working
+directory; the streams read by kuu and nothing else. That is the whole
+contract for a fetched tool — `git`, `signtool`, a compiler — which the door
+calls as it is and declares as it is. kuu imposes no format on a tool's
+output: the declaration says what shape it produces, and the task reads that
+shape.
+
+For a tool the project writes, one shape is recommended, for a measured
+reason and not as a rule: NDJSON on standard output, one complete record per
+line. A tool killed at its deadline then leaves a readable prefix rather than
+a truncated document, and kuu's stream reads already deliver lines with
+backpressure, so a task can act on each record as it arrives. Arguments
+arrive as argv, or as one JSON object on standard input if the tool prefers;
+diagnostics go to standard error; failure is a non-zero exit. Nothing here
+is required. A tool that writes YAML, or nothing, is declared with the
+output it has.
+
+kuu owns exactly one wire: its own output. Every `--json` verb speaks JSON,
+and the ledger and `kuu run --json` speak NDJSON. kuu never reads a tool's
+protocol, and no tool needs to know kuu's.
+
+### A tool that reads like a module
+
+A tool that wants to be called like a module is wrapped by an ordinary
+project module, which is a thing `check` already reads:
+
+```lua
+-- tools/yaml.lua
+global none
+global <const> require
+local task, proc, json = require "task", require "proc", require "json"
+local M = {}
+
+function M.decode(path)
+  local r, e = proc.run(task.command { tool = "yaml", "--json", path })
+  if not r then return nil, e end
+  if r.code ~= 0 then return nil, require("err").new("YAML", "failed", r.err) end
+  return json.decode(r.out)
+end
+
+return M
+```
+
+`require "tools.yaml"` then reads like any module, `yaml.decode(path)` is
+checked as an export of that module, and the call inside is checked against
+the `yaml` declaration. No plugin system is needed, and none exists.
+
+### What `check` and `capabilities` see
+
+`kuu check` reads the manifest as text — nothing runs — and takes each
+`task.tool` declaration as the literal it is. Then, in every file, a
+`task.exec` or `task.command` written with a literal `tool = "name"` is held
+to it: a name the manifest does not declare is an error, with the nearest
+declared name suggested; an argument that reads as an option name — `-x`,
+`--long`, a Windows switch `/x`, or the name in `--name=value` — and is not
+in `args` is an error of the same kind as an option a palette call does not
+take. Values are not judged: the argument after an option that takes one, a
+negative number, a path, `-` and `--` alone. Nor is anything that is not a
+literal — a table in a variable, a name computed at run time. Where the
+root holds a manifest, a `task.exec` whose table names no `tool` at all is a
+warning: the door still runs it, but nothing describes it. A declaration
+with a part the text does not show — a computed key, a value built by an
+expression — or a name declared more than once is reported and its calls
+are not judged, the way a module whose exports cannot be bounded is left
+alone. [check](#check) has the details; `check.tools(root)` is the reading
+it uses.
+
+`kuu capabilities` lists the tools from the registry the manifest filled when
+it ran — the executed reading — with `exe`, `output`, `args`, `emits`,
+`timeout` and `reach`. The suite holds the two readings equal, so the manual
+can say the checker and the descriptor agree.
+
+Whatever a task installs under `.tools` and never declares is not seen by
+either. Declare it, and it is.
+
+---
+
+## Confined tools
+
+A tool the project builds can confine itself: refuse by default what it was
+not granted, and fail rather than ask. kuu names no technology for that and
+recommends none; this page says what such a tool must provide, so that a
+project choosing one knows what to look for, and it records the one Windows
+fact any of them has to deal with.
+
+A confined tool is still called through the door, declared in the manifest
+like any other, with `reach` saying what it was granted. The door records
+`reach`; it does not enforce it, because it cannot see inside a process it
+did not write. Enforcement is the tool's own, and these are its terms.
+
+### What a confined tool must provide
+
+- **Refusal by default.** Nothing is readable, writable, or reachable unless
+  granted, and a grant names the thing — a directory, a host — not a class
+  of things.
+- **Failure, never a prompt.** A tool that stops to ask is a tool that hangs
+  under a deadline. Whatever it was not granted, it refuses with an exit code
+  and a line on standard error, and runs on or stops, but never waits.
+- **No way to spawn.** The door's lifetime law is a job around the tool and
+  everything it starts. A tool that can start processes is a second door one
+  level down, without the job's guarantees inside; a confined tool has that
+  ability turned off, or is declared with it and treated as unconfined.
+- **Nothing fetched at run time.** Its dependencies are vendored into the
+  repository and pinned, the way the project pins everything it fetches by
+  hash. A tool that resolves and downloads on first use is not confined, and
+  not reproducible either.
+- **Its own file access, not the shell's.** A confined tool opens files
+  through its own permission check, which brings the fact below into play.
+
+### The junction
+
+A lexical path sandbox — an allow list of directories, a deny list, or
+both — decides by the spelling of a path. Windows decides by what the path
+resolves to, and the two disagree at a junction or a directory symlink:
+
+```text
+C:\work\app\build            granted
+C:\work\app\build\shared  ->  D:\elsewhere            a junction inside the grant
+C:\work\app\build\shared\secrets.txt                  spelled inside, resolves outside
+```
+
+Every path under the grant is allowed by its spelling, so the tool reads
+`D:\elsewhere\secrets.txt` with the sandbox's blessing, and a deny list does
+not help, because the spelling never names `D:\elsewhere`. This was
+established on 2026-09-12, against a runtime whose permission model is
+lexical, and it is a property of the model, not of the runtime.
+
+So a project grants a directory only after looking at what it contains, and
+the door supplies the look. `fs.dirs` reports every reparse point under a
+directory without entering it:
+
+```lua
+local fs = require "fs"
+local walk = fs.dirs("build")
+for _, link in ipairs(walk.links) do
+  -- link.path, link.type ("junction" | "directory symlink"), link.target
+  print(link.path, "->", link.target)
+end
+if #walk.links > 0 then
+  return nil, require("err").new("PROJECT", "reach", "build holds a link out of itself; refusing to grant it")
+end
+```
+
+`walk.links` is empty when the directory holds no junction, symlink, or mount
+point, which is the only state in which a lexical grant means what it says.
+A directory that legitimately holds one is granted with that named, or not
+at all. The preflight is the project's to run, before the grant, every time:
+a junction can be made after the check as easily as before it, which is one
+more reason `reach` is a declaration and not a promise.
+
+### What the record says
+
+The evidence for the figures a confined runtime costs — startup, footprint,
+the round trip of a call — was measured once, on one runtime, and lives in
+the repository's notes rather than here, because a number for one technology
+is not a fact about confinement. The manual names no runtime; a project that
+chooses one owns the choice and the measurement.
 
 ---
 
@@ -1567,6 +1840,29 @@ says nothing about correctness.
 Beyond these, no call is type-checked: argument counts, option values, and
 types still belong to runtime validation.
 
+**The manifest's tools are checked the same way.** Each
+`task.tool "name" { ... }` in `manifest.lua` is read as the literal it is —
+nothing runs — and every `task.exec` or `task.command` written with a
+literal `tool = "name"`, in any file under the root, is held to it: a name
+the manifest does not declare is a `name` error with the nearest declared
+name suggested, and an argument that reads as an option name and is not in
+the declaration's `args` is an `option` error, as for a palette call. An
+option name is `-x`, `--long`, or a Windows switch `/x` — not `-` or `--`
+alone, not a negative number, not a path — and `--name=value` is judged by
+its name. The value an option takes is skipped: after `--out`, declared as a
+`path`, the next argument is its value whatever it looks like. Anything not
+a literal is not judged, and a declaration without `args` leaves its
+arguments undescribed. Under a root that holds a manifest, a `task.exec`
+whose table names no `tool` at all is a `tool` warning: the door still runs
+it, but nothing describes it; a table the checker cannot see into, or a
+`tool` whose value is not a literal, is neither warned about nor judged. A
+declaration with a part the text does not show — a computed key, a value an
+expression builds — and a name declared more than once are `tool` warnings
+too, and their calls are not judged, the way a module whose exports cannot
+be bounded is left alone. A manifest that does not parse is one syntax
+error, and no call anywhere is judged against it. [Tools](#tools) has the
+declaration.
+
 ### Fixing the declaration
 
 `--fix` writes each file's global declaration: it adds the standard names the
@@ -1638,6 +1934,7 @@ type CheckReport = {
       errors: CheckError[];
       warnings: CheckWarning[];
       requires: string[]; // unique, sorted literal module names
+      tools: ToolDeclaration[]; // the manifest's declarations the text bounds; empty in every other file
     }[];
     errors: number; // total error count
     warnings: number; // total warning count
@@ -1648,7 +1945,12 @@ type CheckError =
   | { kind: "name" | "code" | "option" | "value"; line: number; message: string;
       module: string; name: string; suggestion?: string };
 type CheckWarning = {
-  kind: "globals" | "require"; line: number; message: string;
+  kind: "globals" | "require" | "tool"; line: number; message: string;
+};
+type ToolDeclaration = {
+  name: string; line: number; exe: string; output: string;
+  args?: { [name: string]: string }; emits: string[]; timeout?: number | string;
+  reach: { [kind: string]: string[] };
 };
 ```
 
@@ -1658,7 +1960,9 @@ Each error and warning carries `line` (0 when it is about the whole file) and
 palette export), `code` (an error code its domain does not have), `option`
 (an option a call does not take), and `value` (a closed set compared with a
 literal outside it, `rt.version` compared by text included). Warning kinds
-are `globals` (no declaration) and `require` (unresolved module). For `name`,
+are `globals` (no declaration), `require` (unresolved module), and `tool` (a
+tool declaration the text does not bound, or a program run through the door
+with no declaration). For `name`,
 `code`, `option` and `value`, `module` and `name` identify what was written
 and `suggestion` is the nearest real spelling, omitted when none is close.
 
@@ -1671,8 +1975,11 @@ before a report is available and print a diagnostic on stderr, even with
 `--json`; `--help` prints usage and exits 0.
 
 In a program, `require("check").file(path, root)` returns
-`{path, errors, warnings, requires}` with an absolute `path` and the same
-finding kinds. `check.tree(dir, root)` returns `{root, reports = {...}}`.
+`{path, errors, warnings, requires, tools}` with an absolute `path` and the
+same finding kinds; `tools` holds the manifest's declarations when the file
+is the manifest, and is empty otherwise. `check.tree(dir, root)` returns
+`{root, reports = {...}}`. Either spelling of `root` — backslashes, a
+trailing slash, a relative path — is taken as `fs.absolute` spells it.
 
 The extraction above is reachable on its own. `check.exports(path)` is the set
 of names a module exports, read from its text, or nil when the text does not
@@ -1680,7 +1987,10 @@ bound them; `check.modules(root)` returns
 `{root, files, modules = {{name, path, exports}, ...}}` -- every `.lua` file
 below the root that a `require` name could reach and whose exports it could
 bound, in name order, with `files` counting all of them.
-[capabilities](#capabilities) reports what it returns.
+[capabilities](#capabilities) reports what it returns. `check.tools(root)`
+is the manifest's tool declarations as the checker reads them, in declaration
+order, only those the text bounds; `capabilities` lists the same tools from
+the registry the manifest filled, and the suite holds the two readings equal.
 
 ### Errors
 
@@ -5150,15 +5460,18 @@ Observations, none of them a kuu defect:
   complete production suite then passed all 1,044 checks. No change to
   process-tree enumeration was made.
 - **Evidence:** [dated validation record](notes/validation-23h2-2026-09-11_094612.md).
-- **Status:** isolated 2026-09-13, closed in 0.10.0. The snapshot's parent
-  id is the number the parent had when the child started, and Windows hands
-  a dead process's id to the next one that needs it; a process orphaned by
-  an earlier test, whose parent's id a chain node later received, appears as
-  that node's second child. `tree` now lists a child only when it began no
-  earlier than its parent. The 23H2 instance itself was not reproduced: 40
-  attempts to provoke id reuse on the owner's machine produced none, so the
-  fix removes the one mechanism the evidence admits, not a reproduced
-  instance.
+- **Status:** one mechanism closed 2026-09-13, the observation open. The
+  snapshot's parent id is the number the parent had when the child started,
+  and Windows hands a dead process's id to the next one that needs it; a
+  process orphaned by an earlier test, whose parent's id a chain node later
+  received, would appear as that node's second child, and `tree` now lists
+  a child only when it began no earlier than its parent. That did not end
+  it: the same assertion failed once more the same day, under the sanitizer
+  build inside the full suite, and not in 24 isolated rounds of the chain
+  under either build. The assertion now names every child it sees — pid,
+  name, parent, start time — so the next failure says what the second
+  child is. It is tolerated in no sense but that: the suite fails when it
+  happens.
 
 ### Orphaned I/O completion during console shutdown — 2026-09-11
 
@@ -5682,9 +5995,8 @@ For earlier releases, read
 
 The file at a project's root that declares its prerequisites and tasks is
 `manifest.lua`. It is the same file: `task "build" { ... }` reads as it did,
-and the `tool "name" { ... }` declarations that join it later in this release
-sit beside the tasks. Only the name changes, because the file describes more
-than tasks now.
+and the `task.tool "name" { ... }` declarations sit beside the tasks. Only
+the name changes, because the file describes more than tasks now.
 
 `kuu run`, `kuu list`, `kuu check` and `kuu capabilities` still find a
 `tasks.lua` where no `manifest.lua` is, read it as the manifest, and write
@@ -5696,6 +6008,19 @@ old name.
 ```text
 git mv tasks.lua manifest.lua
 ```
+
+### Tools are declared in the manifest
+
+A program a task calls — built by the project or fetched by hash into its
+root — is declared beside the tasks, `task.tool "name" { exe = ..., args =
+..., output = ... }`, and called with `task.exec { tool = "name", ... }` or
+resolved with `task.command`. [Tools](#tools) is the page. Nothing existing
+breaks: `task.exec { "gcc", ... }` runs as it did. It gains one thing, a
+`tool` warning from `kuu check`, because nothing describes what it runs;
+declaring the tool ends the warning and starts the checking — an argument the
+declaration does not name is found without running, and `kuu capabilities`
+lists the tool. `CheckWarning.kind` gains `tool` for this, so a reader of
+warnings needs the same default branch a reader of errors does.
 
 ### `check` reports four mistakes it used to pass
 
@@ -5786,7 +6111,8 @@ kind: "read" | "syntax" | "name" | "code" | "option" | "value"
 `code`, `option` and `value` are new; `value` carries both the closed-set
 comparison and `rt.version` compared by text. A consumer that switches on
 `kind` and has no default branch now falls through on a real finding. Warning
-kinds are unchanged: `globals` and `require`.
+kinds gain `tool`, for the two things [Tools](#tools) describes; a reader
+of warnings needs the same default branch.
 
 With `--fix`, the report gains `fixed` and `unfixed` arrays. They are absent
 otherwise, so nothing that does not ask for fixing sees them. See

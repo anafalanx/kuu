@@ -1,7 +1,7 @@
 -- check.lua -- `kuu check [--json] [--fix] [PATH ...]`: parse, global
 -- declarations, requires, palette names and contracts.
 global none
-global <const> require, ipairs, tostring, string, io, os, table
+global <const> require, ipairs, pairs, tostring, string, io, os, table
 
 local rt = require "rt"
 local cli = require "cli"
@@ -104,7 +104,17 @@ end
 if opts.json then
   local files = json.array {}
   for _, r in ipairs(reports) do
-    files[#files + 1] = { path = shown(r.path), errors = json.array(r.errors), warnings = json.array(r.warnings), requires = json.array(r.requires) }
+    -- The lists inside a declaration are arrays on the wire, empty or not,
+    -- as capabilities spells the same declaration.
+    local tools = json.array {}
+    for _, t in ipairs(r.tools or {}) do
+      local reach = {}
+      for k, list in pairs(t.reach) do reach[k] = json.array(list) end
+      tools[#tools + 1] = { name = t.name, line = t.line, exe = t.exe, args = t.args, output = t.output,
+        emits = json.array(t.emits), timeout = t.timeout, reach = reach }
+    end
+    files[#files + 1] = { path = shown(r.path), errors = json.array(r.errors), warnings = json.array(r.warnings),
+      requires = json.array(r.requires), tools = tools }
   end
   local result = { root = root, files = files, errors = errors, warnings = warnings }
   if opts.fix then

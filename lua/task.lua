@@ -18,16 +18,22 @@
 -- registry is the module itself, so manifest.lua and the runner share it.
 global none
 global <const> require, ipairs, pairs, tostring, type, error, setmetatable,
-               pcall
+               pcall, table
 
 local err = require "err"
 local proc = require "proc"
 local sched = require "sched"
+local fs = require "fs"
+local rt = require "rt"
 
-local registry = { order = {}, byname = {}, default_name = nil }
+local registry = { order = {}, byname = {}, default_name = nil, tools = { order = {}, byname = {} } }
 local default_timeout
 
 local ATTRIBUTES = { desc = true, deps = true, args = true, run = true, hidden = true }
+local TOOL_ATTRIBUTES = { exe = true, args = true, output = true, emits = true, timeout = true, reach = true }
+local OUTPUTS = { ndjson = true, json = true, lines = true, none = true }
+local ARG_TYPES = { flag = true, string = true, path = true, int = true, number = true, duration = true, size = true }
+local REACH = { read = true, write = true, net = true }
 
 local function bad(message)
   error(err.new("TASK", "badvalue", message), 3)
@@ -77,12 +83,93 @@ local function declare(name, spec)
   return entry
 end
 
+-- A tool the project built or fetched into its own root, declared beside the
+-- tasks that call it: where it is, the arguments it takes, the shape it
+-- emits.  The declaration is read by `check` from the manifest's text and
+-- by `capabilities` from this registry, and resolved by task.exec { tool =
+-- "name" }.  It gates nothing at run time; `reach` is recorded, not
+-- enforced, since whether a tool can be confined is the tool's own
+-- technology's business.
+local function declare_tool(name, spec)
+  if type(name) ~= "string" or not name:match("^[%w][%w%._%-]*$") then
+    bad("a tool name must be a plain word, got " .. tostring(name))
+  end
+  local where = "tool '" .. name .. "'"
+  if type(spec) ~= "table" then bad(where .. " needs a declaration table") end
+  for k in pairs(spec) do
+    if not TOOL_ATTRIBUTES[k] then unknown(where .. ": unknown attribute '" .. tostring(k) .. "'") end
+  end
+  if type(spec.exe) ~= "string" or spec.exe == "" then
+    bad(where .. ": exe must be the program's path, relative to the project root")
+  end
+  -- Refused now, in the declaration's own domain, rather than at the call
+  -- from fs: a path the resolver will not take is a mistake in the manifest.
+  local resolvable, why = pcall(fs.absolute, fs.join(rt.root(), spec.exe))
+  if not resolvable then bad(where .. ": exe " .. (err.is(why) and why.message or tostring(why))) end
+  local function list_of(value, what)
+    if type(value) ~= "table" then bad(where .. ": " .. what .. " must be an array of strings") end
+    local count = 0
+    for _ in pairs(value) do count = count + 1 end
+    if count ~= #value then bad(where .. ": " .. what .. " must be an array, not a table of names") end
+    local out = {}
+    for i, item in ipairs(value) do
+      if type(item) ~= "string" then bad(where .. ": " .. what .. " must be strings") end
+      out[i] = item
+    end
+    return out
+  end
+  -- `args` absent: the arguments are not described and check does not judge
+  -- them; `args = {}`: the tool takes none.
+  local args = spec.args ~= nil and {} or nil
+  if spec.args ~= nil then
+    if type(spec.args) ~= "table" then bad(where .. ": args must be a table of argument name = type") end
+    for arg, kind in pairs(spec.args) do
+      if type(arg) ~= "string" then bad(where .. ": argument names must be strings") end
+      if not ARG_TYPES[kind] then
+        bad(where .. ": argument '" .. arg .. "' has type " .. tostring(kind) .. "; the types are flag, string, path, int, number, duration, size")
+      end
+      args[arg] = kind
+    end
+  end
+  local output = spec.output == nil and "none" or spec.output
+  if not OUTPUTS[output] then bad(where .. ": output is ndjson, json, lines, or none, not " .. tostring(spec.output)) end
+  local emits = spec.emits ~= nil and list_of(spec.emits, "emits") or {}
+  if spec.timeout ~= nil and require("cli").duration(spec.timeout) == nil then
+    bad(where .. ": timeout must be a duration such as 5m, or seconds")
+  end
+  local reach = {}
+  if spec.reach ~= nil then
+    if type(spec.reach) ~= "table" then bad(where .. ": reach must be a table of read, write and net lists") end
+    for k, list in pairs(spec.reach) do
+      if not REACH[k] then unknown(where .. ": reach: unknown option '" .. tostring(k) .. "'") end
+      reach[k] = list_of(list, "reach." .. tostring(k))
+    end
+  end
+  if registry.tools.byname[name] ~= nil then bad(where .. " is declared twice") end
+  local entry = { name = name, exe = spec.exe, args = args, output = output, emits = emits,
+                  timeout = spec.timeout, reach = reach }
+  registry.tools.byname[name] = entry
+  registry.tools.order[#registry.tools.order + 1] = entry
+  return entry
+end
+
 local task = setmetatable({}, {
   __call = function(_, name, spec)
     if spec ~= nil then return declare(name, spec) end
     return function(spec2) return declare(name, spec2) end -- task "name" { ... }
   end,
 })
+
+-- task.tool "name" { exe = , args = , output = , emits = , timeout = , reach = }
+function task.tool(name, spec)
+  if spec ~= nil then return declare_tool(name, spec) end
+  return function(spec2) return declare_tool(name, spec2) end
+end
+function task.tools() return registry.tools.order end
+function task.tool_get(name)
+  if type(name) ~= "string" then bad("a tool name must be a string, got " .. type(name)) end
+  return registry.tools.byname[name]
+end
 
 function task.default(name)
   if type(name) ~= "string" then bad("the default must be a task name") end
@@ -202,20 +289,44 @@ local function relay_exec(spec, relay)
   return r, e2
 end
 
+-- task.command { tool = "name", "--out", path, ... } -> a proc table
+-- The door's spelling of a tool call: the declared exe first, resolved
+-- against the project root, the declared timeout unless the call gives one,
+-- and the default timeout after that.  What task.exec runs is this; a
+-- program that wants the output rather than the console gives the table to
+-- proc.run or proc.start.  A table without `tool` comes back copied, with
+-- the default timeout applied.  A tool the manifest does not declare is
+-- TASK unknown.
+function task.command(spec)
+  if type(spec) ~= "table" then error(err.new("TASK", "badvalue", "task.command needs a table"), 2) end
+  local copied = {}
+  for name, value in pairs(spec) do copied[name] = value end
+  if copied.tool ~= nil then
+    if type(copied.tool) ~= "string" then error(err.new("TASK", "badvalue", "tool must be a tool's name"), 2) end
+    local decl = registry.tools.byname[copied.tool]
+    if decl == nil then
+      error(err.new("TASK", "unknown", "no tool '" .. copied.tool .. "' is declared in the manifest"), 2)
+    end
+    table.insert(copied, 1, fs.absolute(fs.join(rt.root(), decl.exe)))
+    if copied.timeout == nil then copied.timeout = decl.timeout end
+    copied.tool = nil
+  end
+  if copied.timeout == nil then copied.timeout = default_timeout end
+  return copied
+end
+
 -- task.exec { "gcc", ..., cwd = , env = , timeout = } -> true | nil, err
+-- task.exec { tool = "name", ... }: the same, through a declaration
 -- Runs a child on kuu's own console, so its output streams through.  A
 -- non-zero exit is TASK exit with `exit` set to the code, which `kuu run`
 -- passes through as its own exit code.
 function task.exec(spec)
-  if type(spec) ~= "table" or type(spec[1]) ~= "string" then
-    error(err.new("TASK", "badvalue", "task.exec needs an argv table"), 2)
+  if type(spec) ~= "table" or (spec.tool == nil and type(spec[1]) ~= "string") then
+    error(err.new("TASK", "badvalue", "task.exec needs an argv table, or a tool"), 2)
   end
   -- Both console and relay setup change options. Own those changes instead
   -- of changing the caller's reusable table, and let its timeout win.
-  local copied = {}
-  for name, value in pairs(spec) do copied[name] = value end
-  spec = copied
-  if spec.timeout == nil then spec.timeout = default_timeout end
+  spec = task.command(spec)
   local r, e
   if task.relay ~= nil then
     r, e = relay_exec(spec, task.relay)

@@ -87,7 +87,7 @@ table.sort(sets, function(a, b) return a.name < b.name end)
 local here = nil
 local root, file = project.find()
 if root then
-  here = { root = root, file = file, tasks = json.array {}, modules = json.array {}, files = 0 }
+  here = { root = root, file = file, tasks = json.array {}, tools = json.array {}, modules = json.array {}, files = 0 }
 
   -- Tasks are declared by running manifest.lua, which is project code; `kuu
   -- list` and `kuu run` already do that. A failure costs the task list and
@@ -104,6 +104,15 @@ if root then
       end
     end
     here.default = task.default_task()
+    -- The tools the manifest declares, from the registry the declaration
+    -- filled: the executed reading, which the suite holds equal to the one
+    -- check takes from the text.
+    for _, t in ipairs(task.tools()) do
+      local reach = {}
+      for k, list in pairs(t.reach) do reach[k] = json.array(list) end
+      here.tools[#here.tools + 1] = { name = t.name, exe = t.exe, args = t.args, output = t.output,
+        emits = json.array(t.emits), timeout = t.timeout, reach = reach }
+    end
   else
     here.note = "manifest.lua did not load: " .. tostring(why)
   end
@@ -206,12 +215,20 @@ else
       here.default and "* the default. kuu run TASK; kuu list describes them\n"
         or "kuu run TASK; kuu list describes them\n")
   end
+  if #here.tools > 0 then
+    local names = {}
+    for _, t in ipairs(here.tools) do names[#names + 1] = t.name .. " (" .. t.output .. ")" end
+    listing(LABEL, 2, "tools", names)
+    io.write(string.rep(" ", LABEL), "declared in the manifest; task.exec { tool = NAME } runs one\n")
+  end
   io.write(string.format("  %-" .. (LABEL - 2) .. "s%d of the %d .lua files below the root bound their exports\n",
     "modules", #here.modules, here.files))
   local column = column_for(here.modules, 4, LABEL)
   for _, module in ipairs(here.modules) do listing(column, 4, module.name, module.names) end
 end
 
-io.write("\nWhatever a task installs under .tools is not listed: kuu keeps no manifest\n",
-  "of it, and a guess would be worse than the silence.\n",
+io.write("\nWhatever a task installs under .tools and never declares is not listed: kuu\n",
+  "keeps no manifest of it, and a guess would be worse than the silence.\n",
+  "Everything that runs in this project runs through kuu.exe; if something cannot\n",
+  "be done from here, build a tool for it and call it through the door (kuu docs tools).\n",
   "Read kuu docs pitfalls first; it is where kuu differs from the Lua you know.\n")

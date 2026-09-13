@@ -24,7 +24,7 @@ local MARKER = "# Part III — the complete manual"
 -- project going, the palette, the recipes, and finally the record.
 local ORDER = {
   "index", "pitfalls", "capabilities",
-  "adopting", "task", "check", "cli",
+  "adopting", "task", "tools", "confined", "check", "cli",
   "proc", "fs", "http", "net", "sched", "json", "csv", "ini",
   "hash", "text", "re", "time", "archive", "log", "err",
   "mem", "sync", "sys", "reg", "env", "svc", "evt", "pty",

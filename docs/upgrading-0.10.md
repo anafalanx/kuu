@@ -56,9 +56,8 @@ For earlier releases, read
 
 The file at a project's root that declares its prerequisites and tasks is
 `manifest.lua`. It is the same file: `task "build" { ... }` reads as it did,
-and the `tool "name" { ... }` declarations that join it later in this release
-sit beside the tasks. Only the name changes, because the file describes more
-than tasks now.
+and the `task.tool "name" { ... }` declarations sit beside the tasks. Only
+the name changes, because the file describes more than tasks now.
 
 `kuu run`, `kuu list`, `kuu check` and `kuu capabilities` still find a
 `tasks.lua` where no `manifest.lua` is, read it as the manifest, and write
@@ -70,6 +69,19 @@ old name.
 ```text
 git mv tasks.lua manifest.lua
 ```
+
+## Tools are declared in the manifest
+
+A program a task calls — built by the project or fetched by hash into its
+root — is declared beside the tasks, `task.tool "name" { exe = ..., args =
+..., output = ... }`, and called with `task.exec { tool = "name", ... }` or
+resolved with `task.command`. [Tools](tools.md) is the page. Nothing existing
+breaks: `task.exec { "gcc", ... }` runs as it did. It gains one thing, a
+`tool` warning from `kuu check`, because nothing describes what it runs;
+declaring the tool ends the warning and starts the checking — an argument the
+declaration does not name is found without running, and `kuu capabilities`
+lists the tool. `CheckWarning.kind` gains `tool` for this, so a reader of
+warnings needs the same default branch a reader of errors does.
 
 ## `check` reports four mistakes it used to pass
 
@@ -160,7 +172,8 @@ kind: "read" | "syntax" | "name" | "code" | "option" | "value"
 `code`, `option` and `value` are new; `value` carries both the closed-set
 comparison and `rt.version` compared by text. A consumer that switches on
 `kind` and has no default branch now falls through on a real finding. Warning
-kinds are unchanged: `globals` and `require`.
+kinds gain `tool`, for the two things [Tools](tools.md) describes; a reader
+of warnings needs the same default branch.
 
 With `--fix`, the report gains `fixed` and `unfixed` arrays. They are absent
 otherwise, so nothing that does not ask for fixing sees them. See

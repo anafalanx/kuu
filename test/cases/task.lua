@@ -256,6 +256,48 @@ task.default "build"
   check("task.get with a non-string is TASK badvalue", not ok and err.is(raised, "TASK", "badvalue"), tostring(raised))
   ok, raised = pcall(task.plan, nil)
   check("task.plan with nil is TASK badvalue, not an unknown task", not ok and err.is(raised, "TASK", "badvalue"), tostring(raised))
+
+  -- Tools: declared beside the tasks, resolved by task.command and task.exec.
+  do
+    local exe = require("rt").exe
+    local decl = task.tool "kuu-self" { exe = exe, args = { ["-e"] = "string", ["--bogus"] = "flag" }, output = "lines",
+      emits = { "line" }, timeout = "20s", reach = { read = { "." } } }
+    check("a tool declaration is registered with its attributes", decl.name == "kuu-self" and decl.exe == exe
+      and decl.args["-e"] == "string" and decl.output == "lines" and decl.emits[1] == "line" and decl.timeout == "20s"
+      and decl.reach.read[1] == ".")
+    check("task.tools lists it and task.tool_get finds it",
+      task.tools()[#task.tools()] == decl and task.tool_get("kuu-self") == decl and task.tool_get("nope") == nil)
+    local spec = task.command { tool = "kuu-self", "-e", "io.write('through the door')", cwd = T.work }
+    check("task.command puts the declared exe first, keeps the call's options, and applies the declared timeout",
+      spec[1] == fs.absolute(exe) and spec[2] == "-e" and spec.cwd == T.work and spec.timeout == "20s" and spec.tool == nil,
+      tostring(spec[1]) .. " " .. tostring(spec.timeout))
+    local r = require("proc").run(spec)
+    check("the resolved table runs through proc.run", r and r.status == "exit" and r.code == 0 and r.out == "through the door",
+      r and r.err or "no result")
+    local ran, why = task.exec { tool = "kuu-self", "-e", "os.exit(3)", timeout = "5s" }
+    check("task.exec through a declaration passes the exit code through", ran == nil and err.is(why, "TASK", "exit") and why.exit == 3, tostring(why))
+    -- spelled so that kuu check, which reads this file too, does not judge
+    -- the name: a computed name is not a literal
+    ok, raised = pcall(task.exec, { tool = "un" .. "declared" })
+    check("an undeclared tool is TASK unknown", not ok and err.is(raised, "TASK", "unknown"), tostring(raised))
+    ok, raised = pcall(task.tool("bad-attr"), { exe = "x", exee = "y" })
+    check("an attribute a tool declaration cannot hold is TASK usage", not ok and err.is(raised, "TASK", "usage"), tostring(raised))
+    ok, raised = pcall(task.tool("bad-output"), { exe = "x", output = "xml" })
+    check("an output the declaration cannot describe is TASK badvalue", not ok and err.is(raised, "TASK", "badvalue"), tostring(raised))
+    ok, raised = pcall(task.tool("bad-type"), { exe = "x", args = { ["--n"] = "count" } })
+    check("an argument type outside the seven is TASK badvalue", not ok and err.is(raised, "TASK", "badvalue"), tostring(raised))
+    ok, raised = pcall(task.tool("kuu-self"), { exe = "x" })
+    check("a tool declared twice is refused", not ok and err.is(raised, "TASK", "badvalue") and contains(raised.message, "twice"), tostring(raised))
+    local plain = task.tool "plain" { exe = "x" }
+    check("a declaration without args or output leaves the arguments undescribed and the output none",
+      plain.args == nil and plain.output == "none" and #plain.emits == 0)
+    ok, raised = pcall(task.tool("map-emits"), { exe = "x", emits = { rows = "string" } })
+    check("emits spelled as a table of names is TASK badvalue, not an empty list", not ok and err.is(raised, "TASK", "badvalue") and contains(raised.message, "array"), tostring(raised))
+    ok, raised = pcall(task.tool("map-reach"), { exe = "x", reach = { read = { a = "x" } } })
+    check("a reach list spelled as a table is TASK badvalue", not ok and err.is(raised, "TASK", "badvalue"), tostring(raised))
+    ok, raised = pcall(task.tool("bad-exe"), { exe = "tools/kuu.exe " })
+    check("an exe the resolver refuses is refused at the declaration, in TASK's words", not ok and err.is(raised, "TASK", "badvalue") and contains(raised.message, "exe"), tostring(raised))
+  end
   ran, timed = task.exec(slow)
   check("a rejected defaults declaration preserves the preceding default",
     ran == nil and err.is(timed, "TASK", "failed") and contains(timed.message, "timeout"), tostring(timed))

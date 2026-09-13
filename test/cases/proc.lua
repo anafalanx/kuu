@@ -336,7 +336,14 @@ return function(T)
       local pids = {}
       while node do
         pids[#pids + 1] = node.pid
-        assert(#node.children <= 1)
+        if #node.children > 1 then
+          -- name every child, so an intermittent here explains itself
+          local shown = {}
+          for _, c in ipairs(node.children) do
+            shown[#shown + 1] = string.format("%d %s parent %d started %s", c.pid, tostring(c.name), c.parent, tostring(c.started))
+          end
+          error(string.format("node %d (%s, started %s) has %d children: %s", node.pid, tostring(node.name), tostring(node.started), #node.children, table.concat(shown, "; ")))
+        end
         local child = node.children[1]
         if child and node.started and child.started then
           -- a listed child began no earlier than its parent: the law that keeps

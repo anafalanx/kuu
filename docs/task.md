@@ -3,7 +3,8 @@
 A repository declares its tasks once, in a `manifest.lua` at its root, and runs
 them with `kuu run`. There is no second file to keep in step: the task list,
 each task's description, its dependencies, and its arguments live in the
-declaration, and `kuu list` reads them back from there.
+declaration, and `kuu list` reads them back from there. The same file
+declares the [tools](tools.md) the tasks call.
 
 ```lua
 -- manifest.lua
@@ -220,14 +221,20 @@ task.default_task()        -- the default's name, or nil
 task.plan("test")             -- the entries to run, in order | nil, err
 task.arguments(entry, args)   -- the arguments parsed against its spec: opts | nil, err
 task.execute(entry, opts)     -- run it with parsed arguments: true | nil, err
+task.tools()                  -- the declared tools, in declaration order
+task.tool_get("report")       -- one: name, exe, args, output, emits, timeout, reach
+task.command { tool = "report", "--out", p }   -- the table task.exec would run, resolved
 ```
+
+The tools a manifest declares with `task.tool "name" { ... }`, and
+`task.exec { tool = "name", ... }`, are on their own page: [Tools](tools.md).
 
 | code | meaning |
 |---|---|
 | `TASK noproject` | no `manifest.lua` here or above |
 | `TASK badvalue` | a bad declaration, or `manifest.lua` failed to load |
 | `TASK usage` | no task or default was selected, a runner option is unknown, or a declaration holds an attribute or option that is not known |
-| `TASK unknown`, `TASK cycle` | the dependency graph |
+| `TASK unknown`, `TASK cycle` | the dependency graph; `unknown` also a tool the manifest does not declare |
 | `CLI usage` | wrong arguments for a task, or `--help` |
 | `TASK failed` | a task raised something that is not an `err`, or its child did not exit normally |
 | `TASK exit` | a `task.exec` child exited non-zero; `err.exit` is the code |

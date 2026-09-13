@@ -31,10 +31,12 @@ Nothing is reported that kuu cannot know.
   over-approximates, and a module whose exports the text does not bound is
   counted rather than named. A program is not a module, and from the text
   alone the two do not differ.
-- **Tasks are declared by running `manifest.lua`**, which is project code. `kuu
-  run` and `kuu list` already do that, and this does no more. A `manifest.lua`
-  that does not load costs the task list and nothing else: the reason is
-  reported and the rest of the descriptor still stands.
+- **Tasks and tools are declared by running `manifest.lua`**, which is project
+  code. `kuu run` and `kuu list` already do that, and this does no more. A
+  `manifest.lua` that does not load costs the task and tool lists and nothing
+  else: the reason is reported and the rest of the descriptor still stands.
+  The tools listed are the executed reading; [check](check.md) reads the
+  same declarations from the text, and the suite holds the two equal.
 - **What a task installs under `.tools` is not reported at all.** kuu keeps no
   manifest of it, and a guess about a toolchain is worse than saying nothing.
 
@@ -62,12 +64,16 @@ modules
 project C:/work/app
   tasks      build, test*, fmt
              * the default. kuu run TASK; kuu list describes them
+  tools      report (ndjson), signtool (lines)
+             declared in the manifest; task.exec { tool = NAME } runs one
   modules    2 of the 4 .lua files below the root bound their exports
     lib.util      VERSION, slug, titlecase
     tools.report  render, write
 
-Whatever a task installs under .tools is not listed: kuu keeps no manifest
-of it, and a guess would be worse than the silence.
+Whatever a task installs under .tools and never declares is not listed: kuu
+keeps no manifest of it, and a guess would be worse than the silence.
+Everything that runs in this project runs through kuu.exe; if something cannot
+be done from here, build a tool for it and call it through the door (kuu docs tools).
 Read kuu docs pitfalls first; it is where kuu differs from the Lua you know.
 ```
 
@@ -100,6 +106,8 @@ type CapabilityReport = {
       root: string; // absolute path of the directory holding manifest.lua
       file: string; // "manifest.lua", or "tasks.lua" from a project that has not renamed yet
       tasks: { name: string; desc: string }[]; // hidden tasks omitted
+      tools: { name: string; exe: string; output: string; args?: { [name: string]: string };
+               emits: string[]; timeout?: number | string; reach: { [kind: string]: string[] } }[];
       default?: string; // the task kuu run alone runs
       note?: string; // why manifest.lua did not load; tasks is then empty
       modules: { name: string; path: string; names: string[] }[];

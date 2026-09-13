@@ -358,13 +358,158 @@ local function contract_findings(contracts, report)
   end
 end
 
+-- The literal a constructor node spells: a string, a number, a boolean, or a
+-- table of those and of tables; nil where any part is not a literal, since
+-- a computed key or a value the text does not show puts the whole out of
+-- reach, exactly as it does for a module's exports.
+local function literal_of(node)
+  if node.literal ~= nil then return node.literal end
+  if node.keys == nil or node.computed then return nil end
+  local out = {}
+  for _, key in ipairs(node.keys) do
+    local value = literal_of(key.value)
+    if value == nil then return nil end
+    out[key.name] = value
+  end
+  for i, item in ipairs(node.items) do
+    local value = literal_of(item)
+    if value == nil then return nil end
+    out[i] = value
+  end
+  return out
+end
+
+-- The tools a file declares, read as literals, and the calls it makes
+-- through the door checked against the declarations -- its own when the
+-- file is the manifest, the manifest's otherwise. A declaration with a part
+-- the text does not show is reported and its calls are not judged. A call
+-- with `tool = "x"` names a declaration, and its literal arguments that look
+-- like options must be ones the declaration names: the same kind of finding
+-- as an option a palette call does not take. A call with no `tool` at all
+-- is a warning: the door still runs it, but nothing describes it.
+local function tool_findings(contracts, declared, context, report)
+  -- A file's own declarations serve its own calls, wherever it is; the
+  -- manifest's serve every file under the root. Only the manifest is told
+  -- when a declaration is out of reach, and only the manifest's are reported,
+  -- since that is the file the door reads.
+  local known = {}
+  report.tools = {}
+  for _, t in ipairs(declared) do
+    local decl = literal_of(t.node)
+    if known[t.name] ~= nil then
+      -- Declared more than once -- one arm of an `if` each, say -- the text
+      -- cannot tell which one runs, so neither is held to.
+      if context.is_manifest then
+        report.warnings[#report.warnings + 1] = { kind = "tool", line = t.line,
+          message = "tool '" .. t.name .. "' is declared more than once, so its arguments are not checked" }
+        for i = #report.tools, 1, -1 do
+          if report.tools[i].name == t.name then table.remove(report.tools, i) end
+        end
+      end
+      known[t.name] = false
+    elseif decl == nil then
+      if context.is_manifest then
+        report.warnings[#report.warnings + 1] = { kind = "tool", line = t.line,
+          message = "tool '" .. t.name .. "' has a part that is not a literal, so its arguments are not checked" }
+      end
+      known[t.name] = false
+    else
+      known[t.name] = decl
+      if context.is_manifest then
+        report.tools[#report.tools + 1] = { name = t.name, line = t.line, exe = decl.exe, args = decl.args,
+          output = decl.output or "none", emits = decl.emits or {}, timeout = decl.timeout, reach = decl.reach or {} }
+      end
+    end
+  end
+  if not context.is_manifest then
+    for name, decl in pairs(context.tools) do
+      if known[name] == nil then known[name] = decl end
+    end
+  end
+  -- What reads as an option name in a tool's argv: `-x`, `--long`, or a
+  -- Windows switch `/x`; not `-` or `--` alone, not a negative number, not a
+  -- path that happens to start with a slash.  `--name=value` is judged by
+  -- its name.
+  local function option_name(text)
+    local head = text:match("^([^=]+)=") or text
+    if head == "-" or head == "--" then return nil end
+    if head:sub(1, 1) == "-" then return not head:match("^%-%-?%d") and head or nil end
+    if head:sub(1, 1) == "/" then return not head:find("[/\\.:]", 2) and head or nil end
+    return nil
+  end
+  for _, entry in ipairs(contracts) do
+    local b = entry.binding
+    if b and not b.changed and entry.kind == "call" and entry.module == "task"
+      and (entry.member == "exec" or entry.member == "command") then
+      local given = entry.args[1]
+      local tool, named = nil, false
+      if given and given.keys then
+        for _, key in ipairs(given.keys) do
+          if key.name == "tool" then
+            named = true
+            if type(key.value.literal) == "string" then tool = { name = key.value.literal, line = key.line } end
+          end
+        end
+      end
+      if not context.readable then
+        -- the manifest could not be read: nothing is known, so nothing is judged
+      elseif given == nil or given.keys == nil then
+        -- a table the checker cannot see into is not judged
+      elseif not named then
+        -- Only task.exec runs anything, and only where there is a manifest to
+        -- declare it in: a program with no project around it has nowhere to
+        -- put the declaration.
+        if context.has_manifest and entry.member == "exec" then
+          report.warnings[#report.warnings + 1] = { kind = "tool", line = entry.line,
+            message = entry.alias .. ".exec runs a program without a tool declaration; declare it in the manifest so its arguments are checked and capabilities lists it" }
+        end
+      elseif tool == nil then
+        -- tool = <not a literal>: not judged
+      elseif known[tool.name] == nil then
+        local names = {}
+        for name in pairs(known) do names[#names + 1] = name end
+        local suggestion = nearest(tool.name, set_of(names))
+        local message = context.has_manifest and ("tool '" .. tool.name .. "' is not declared in the manifest")
+          or ("tool '" .. tool.name .. "' is not declared: this file declares none, and there is no manifest.lua here or above")
+        if suggestion then message = message .. "; did you mean '" .. suggestion .. "'?" end
+        report.errors[#report.errors + 1] = { kind = "name", line = tool.line, message = message,
+          module = "manifest", name = tool.name, suggestion = suggestion }
+      elseif known[tool.name] and type(known[tool.name].args) == "table" then
+        local args = known[tool.name].args
+        local expects_value = false
+        for _, item in ipairs(given.items) do
+          local text = item.literal
+          if type(text) ~= "string" then
+            expects_value = false
+          elseif expects_value then
+            expects_value = false -- the value of the option before it
+          elseif args[text] ~= nil then
+            expects_value = args[text] ~= "flag" -- a declared name, `sign` say, that takes a value
+          else
+            local name = option_name(text)
+            if name ~= nil and args[name] == nil then
+              local suggestion = nearest(name, args)
+              local message = "'" .. name .. "' is not an argument of tool '" .. tool.name .. "'"
+              if suggestion then message = message .. "; did you mean '" .. suggestion .. "'?" end
+              report.errors[#report.errors + 1] = { kind = "option", line = entry.line, message = message,
+                module = tool.name, name = name, suggestion = suggestion }
+            elseif name ~= nil then
+              expects_value = args[name] ~= "flag"
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
 -- Follow expression/block structure to distinguish bindings, not to infer
 -- types. Defer diagnostics until the whole file is scanned: reassignment
 -- makes a binding uncertain even in a closure declared before the write.
-local function inspect(tokens, report, root)
+local function inspect(tokens, report, root, context)
   local pos, declares = 1, false
   local native_require = { native = true }
-  local scopes, calls, accesses, contracts = { { require = native_require } }, {}, {}, {}
+  local scopes, calls, accesses, contracts, tools = { { require = native_require } }, {}, {}, {}, {}
   local expression, block, function_body
   local function token() return tokens[pos] end
   local function is(s) return token().text == s end
@@ -416,6 +561,37 @@ local function inspect(tokens, report, root)
     end
     return {}
   end
+  -- The body of a table constructor, after its `{`. The named keys are kept
+  -- so that a constructor passed as a call's option table can be checked
+  -- against the names that call takes, and the values and items with them,
+  -- so that a declaration written as a constructor can be read as the
+  -- literal it is. A computed key says nothing, is parsed past, and marks
+  -- the constructor as not literal.
+  local function constructor()
+    local result, keys, items, computed = {}, {}, {}, false
+    while not is("}") do
+      if consume("[") then
+        -- `["--out"] = "path"` is a literal key spelled the only way a name
+        -- with a dash can be; anything else in brackets is computed.
+        if token().kind == "string" and tokens[pos + 1].text == "]" then
+          local key = take()
+          take()
+          expect("=")
+          local value = expression(0)
+          keys[#keys + 1] = { name = key.value, line = key.line, value = value }
+        else expression(0) expect("]") expect("=") expression(0) computed = true end
+      elseif token().kind == "name" and tokens[pos + 1].text == "=" then
+        local key = take()
+        take()
+        local value = expression(0)
+        keys[#keys + 1] = { name = key.text, line = key.line, value = value }
+      else items[#items + 1] = expression(0) end
+      if not consume(",") and not consume(";") then break end
+    end
+    result.keys, result.items, result.computed = keys, items, computed
+    expect("}")
+    return result
+  end
   local function arguments()
     if consume("(") then
       local args = {}
@@ -423,7 +599,11 @@ local function inspect(tokens, report, root)
       expect(")")
       return args
     end
-    return { expression(13) } -- a string or table constructor
+    -- A string or a constructor as the sole argument is the argument itself:
+    -- in `f "x" { ... }` the constructor is a second call on f's result,
+    -- never a call on the string, so neither takes suffixes here.
+    if consume("{") then return { constructor() } end
+    return { { literal = take().value } }
   end
   local function primary()
     local t, result = take(), {}
@@ -431,24 +611,10 @@ local function inspect(tokens, report, root)
       result = expression(0)
       expect(")")
     elseif t.text == "function" then function_body(false)
-    elseif t.text == "{" then
-      -- The named keys are kept so that a constructor passed as a call's
-      -- option table can be checked against the names that call takes. A
-      -- computed key says nothing and is parsed past.
-      local keys = {}
-      while not is("}") do
-        if consume("[") then expression(0) expect("]") expect("=") expression(0)
-        elseif token().kind == "name" and tokens[pos + 1].text == "=" then
-          local key = take()
-          take()
-          expression(0)
-          keys[#keys + 1] = { name = key.text, line = key.line }
-        else expression(0) end
-        if not consume(",") and not consume(";") then break end
-      end
-      result.keys = keys
-      expect("}")
+    elseif t.text == "{" then result = constructor()
     elseif t.kind == "string" then result.literal = t.value
+    elseif t.kind == "number" then result.literal = tonumber(t.text)
+    elseif t.text == "true" or t.text == "false" then result.literal = t.text == "true"
     elseif t.kind == "name" then result = { name = t.text, binding = lookup(t.text) }
     end
     while true do
@@ -458,7 +624,7 @@ local function inspect(tokens, report, root)
       elseif is("(") or is("{") or token().kind == "string" then
         local args, original = arguments(), result
         result = {}
-        if original.binding == native_require and #args == 1 and args[1].literal ~= nil then
+        if original.binding == native_require and #args == 1 and type(args[1].literal) == "string" then
           local call = { name = args[1].literal, line = t.line }
           calls[#calls + 1] = call
           result.call = call
@@ -474,6 +640,19 @@ local function inspect(tokens, report, root)
           contracts[#contracts + 1] = { kind = "call", binding = original.binding,
             module = original.module, member = original.member,
             alias = original.alias, line = original.line, args = args }
+          -- `task.tool "name" { ... }` declares a tool: the first call names
+          -- it, the constructor that follows describes it, and both are read
+          -- here as the literal they are. The direct spelling with two
+          -- arguments is the same declaration.
+          if original.module == "task" and original.member == "tool" and args[1] and type(args[1].literal) == "string" then
+            if args[2] and args[2].keys then
+              tools[#tools + 1] = { name = args[1].literal, line = original.line, node = args[2] }
+            else
+              result.declaring = { name = args[1].literal, line = original.line }
+            end
+          end
+        elseif original.declaring and args[1] and args[1].keys then
+          tools[#tools + 1] = { name = original.declaring.name, line = original.declaring.line, node = args[1] }
         end
       else break end
     end
@@ -497,7 +676,7 @@ local function inspect(tokens, report, root)
       if op == "==" or op == "~=" then
         local member, value = result, right
         if member.module == nil then member, value = right, result end
-        if member.module and value.literal ~= nil then
+        if member.module and type(value.literal) == "string" then
           contracts[#contracts + 1] = { kind = "compare", binding = member.binding,
             module = member.module, member = member.member, alias = member.alias,
             line = member.line, literal = value.literal }
@@ -619,13 +798,63 @@ local function inspect(tokens, report, root)
       end
     end
     if palette then contract_findings(contracts, report) end
+    tool_findings(contracts, tools, context, report)
   end
   return declares
 end
 
--- check.file(path [, root]) -> { path, errors, warnings, requires }
+-- The project's manifest under `root`: manifest.lua, else tasks.lua, else nil.
+local function manifest_path(root)
+  for _, name in ipairs { "manifest.lua", "tasks.lua" } do
+    if fs.exists(root .. "/" .. name) == "file" then return root .. "/" .. name end
+  end
+  return nil
+end
+
+-- The tools the manifest under `root` declares, read from its text once per
+-- root: name -> the declaration as a literal, or false where the text does
+-- not bound it. The manifest's own check reads its own declarations and
+-- never comes here, so there is no circle.
+local tool_cache = {}
+local function project_tools(root)
+  if tool_cache[root] == nil then
+    local known, readable = {}, true
+    local path = manifest_path(root)
+    if path ~= nil then
+      local report = check.file(path, root)
+      -- A manifest that does not parse declares nothing anyone can read;
+      -- the syntax error is the finding, and no call is judged against it.
+      for _, e in ipairs(report.errors) do
+        if e.kind == "read" or e.kind == "syntax" then readable = false end
+      end
+      for _, t in ipairs(report.tools or {}) do known[t.name] = t end
+      for _, w in ipairs(report.warnings) do
+        local name = w.kind == "tool" and (w.message:match("^tool '(.-)' has a part") or w.message:match("^tool '(.-)' is declared more")) or nil
+        if name then known[name] = false end
+      end
+    end
+    tool_cache[root] = { tools = known, has_manifest = path ~= nil, readable = readable }
+  end
+  return tool_cache[root]
+end
+
+-- check.tools(root) -> the tools the manifest declares, as check reads them:
+-- { { name, line, exe, args, output, emits, timeout, reach }, ... } in
+-- declaration order, only those the text bounds. The same reading the
+-- checker uses, so that capabilities' executed reading can be held to it.
+function check.tools(root)
+  root = fs.absolute(root)
+  local path = manifest_path(root)
+  if path == nil then return {} end
+  return check.file(path, root).tools or {}
+end
+
+-- check.file(path [, root]) -> { path, errors, warnings, requires, tools }
 function check.file(path, root)
-  root = root or fs.absolute(".")
+  -- The root is spelled as fs.absolute spells it, however the caller wrote
+  -- it: paths under it are compared as text, and the manifest must be
+  -- recognised as itself whichever way its root was given.
+  root = fs.absolute(root or ".")
   local report = { path = fs.absolute(path), errors = {}, warnings = {}, requires = {} }
   local text, e = fs.read(path, { encoding = "utf-8" })
   if not text then
@@ -639,7 +868,11 @@ function check.file(path, root)
     report.errors[#report.errors + 1] = { kind = "syntax", line = tonumber(line) or 0, message = message or tostring(load_error) }
   end
   local tokens, declares = tokens_of(text), false
-  if chunk ~= nil then declares = inspect(tokens, report, root)
+  local is_manifest = report.path:lower() == (manifest_path(root) or ""):lower()
+  if chunk ~= nil then
+    local context = is_manifest and { tools = {}, has_manifest = true, readable = true } or project_tools(root)
+    context = { tools = context.tools, has_manifest = context.has_manifest, readable = context.readable, is_manifest = is_manifest }
+    declares = inspect(tokens, report, root, context)
   else
     for _, t in ipairs(tokens) do if t.text == "global" then declares = true break end end
   end
@@ -655,7 +888,7 @@ end
 -- path order, skipping check.PRUNE directories; requires resolve against root.
 function check.tree(dir, root)
   dir = fs.absolute(dir)
-  root = root or dir
+  root = root and fs.absolute(root) or dir
   local reports = {}
   local skip = {}
   for _, name in ipairs(check.PRUNE) do skip[name:lower()] = true end

@@ -85,6 +85,29 @@ says nothing about correctness.
 Beyond these, no call is type-checked: argument counts, option values, and
 types still belong to runtime validation.
 
+**The manifest's tools are checked the same way.** Each
+`task.tool "name" { ... }` in `manifest.lua` is read as the literal it is —
+nothing runs — and every `task.exec` or `task.command` written with a
+literal `tool = "name"`, in any file under the root, is held to it: a name
+the manifest does not declare is a `name` error with the nearest declared
+name suggested, and an argument that reads as an option name and is not in
+the declaration's `args` is an `option` error, as for a palette call. An
+option name is `-x`, `--long`, or a Windows switch `/x` — not `-` or `--`
+alone, not a negative number, not a path — and `--name=value` is judged by
+its name. The value an option takes is skipped: after `--out`, declared as a
+`path`, the next argument is its value whatever it looks like. Anything not
+a literal is not judged, and a declaration without `args` leaves its
+arguments undescribed. Under a root that holds a manifest, a `task.exec`
+whose table names no `tool` at all is a `tool` warning: the door still runs
+it, but nothing describes it; a table the checker cannot see into, or a
+`tool` whose value is not a literal, is neither warned about nor judged. A
+declaration with a part the text does not show — a computed key, a value an
+expression builds — and a name declared more than once are `tool` warnings
+too, and their calls are not judged, the way a module whose exports cannot
+be bounded is left alone. A manifest that does not parse is one syntax
+error, and no call anywhere is judged against it. [Tools](tools.md) has the
+declaration.
+
 ## Fixing the declaration
 
 `--fix` writes each file's global declaration: it adds the standard names the
@@ -156,6 +179,7 @@ type CheckReport = {
       errors: CheckError[];
       warnings: CheckWarning[];
       requires: string[]; // unique, sorted literal module names
+      tools: ToolDeclaration[]; // the manifest's declarations the text bounds; empty in every other file
     }[];
     errors: number; // total error count
     warnings: number; // total warning count
@@ -166,7 +190,12 @@ type CheckError =
   | { kind: "name" | "code" | "option" | "value"; line: number; message: string;
       module: string; name: string; suggestion?: string };
 type CheckWarning = {
-  kind: "globals" | "require"; line: number; message: string;
+  kind: "globals" | "require" | "tool"; line: number; message: string;
+};
+type ToolDeclaration = {
+  name: string; line: number; exe: string; output: string;
+  args?: { [name: string]: string }; emits: string[]; timeout?: number | string;
+  reach: { [kind: string]: string[] };
 };
 ```
 
@@ -176,7 +205,9 @@ Each error and warning carries `line` (0 when it is about the whole file) and
 palette export), `code` (an error code its domain does not have), `option`
 (an option a call does not take), and `value` (a closed set compared with a
 literal outside it, `rt.version` compared by text included). Warning kinds
-are `globals` (no declaration) and `require` (unresolved module). For `name`,
+are `globals` (no declaration), `require` (unresolved module), and `tool` (a
+tool declaration the text does not bound, or a program run through the door
+with no declaration). For `name`,
 `code`, `option` and `value`, `module` and `name` identify what was written
 and `suggestion` is the nearest real spelling, omitted when none is close.
 
@@ -189,8 +220,11 @@ before a report is available and print a diagnostic on stderr, even with
 `--json`; `--help` prints usage and exits 0.
 
 In a program, `require("check").file(path, root)` returns
-`{path, errors, warnings, requires}` with an absolute `path` and the same
-finding kinds. `check.tree(dir, root)` returns `{root, reports = {...}}`.
+`{path, errors, warnings, requires, tools}` with an absolute `path` and the
+same finding kinds; `tools` holds the manifest's declarations when the file
+is the manifest, and is empty otherwise. `check.tree(dir, root)` returns
+`{root, reports = {...}}`. Either spelling of `root` — backslashes, a
+trailing slash, a relative path — is taken as `fs.absolute` spells it.
 
 The extraction above is reachable on its own. `check.exports(path)` is the set
 of names a module exports, read from its text, or nil when the text does not
@@ -198,7 +232,10 @@ bound them; `check.modules(root)` returns
 `{root, files, modules = {{name, path, exports}, ...}}` -- every `.lua` file
 below the root that a `require` name could reach and whose exports it could
 bound, in name order, with `files` counting all of them.
-[capabilities](capabilities.md) reports what it returns.
+[capabilities](capabilities.md) reports what it returns. `check.tools(root)`
+is the manifest's tool declarations as the checker reads them, in declaration
+order, only those the text bounds; `capabilities` lists the same tools from
+the registry the manifest filled, and the suite holds the two readings equal.
 
 ## Errors
 

@@ -49,6 +49,7 @@ return function(T)
     'global none\nglobal <const> require\nlocal task = require "task"\n' ..
     'task "build" { desc = "compile it", run = function() end }\n' ..
     'task "test" { desc = "run the suite", deps = { "build" }, run = function() end }\n' ..
+    'task.tool "fmt" { exe = "tools/fmt.exe", output = "lines", args = { ["--check"] = "flag" } }\n' ..
     'task.default "test"\n')
   fs.write(work .. "/lib/util.lua",
     'global none\nlocal M = {}\nM.VERSION = "1"\nfunction M.slug(s) return s end\nreturn M\n')
@@ -132,6 +133,10 @@ return function(T)
   check("the project is the directory holding manifest.lua",
     here ~= nil and here.root == fs.canon(work).path, here and here.root or "absent")
   check("the descriptor names the file it found", here ~= nil and here.file == "manifest.lua", here and tostring(here.file) or "absent")
+  check("the descriptor lists the tools the manifest declares, with their attributes",
+    here ~= nil and #here.tools == 1 and here.tools[1].name == "fmt" and here.tools[1].exe == "tools/fmt.exe"
+      and here.tools[1].output == "lines" and here.tools[1].args["--check"] == "flag" and #here.tools[1].emits == 0,
+    here and json.encode(here.tools) or "absent")
   if here == nil then return end
   local task_names = {}
   for _, t in ipairs(here.tasks) do task_names[#task_names + 1] = t.name end

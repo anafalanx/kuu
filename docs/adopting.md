@@ -72,12 +72,15 @@ local PACKAGES = {
   { url = "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
     sha256 = "9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16" },
 }
-local MAKE = ".tools/msys2/ucrt64/bin/mingw32-make.exe"
+-- The tools this repository calls through the door, declared beside the
+-- tasks that call them: where each is and what it emits.  See Tools.
+task.tool "make" { exe = ".tools/msys2/ucrt64/bin/mingw32-make.exe", output = "lines", timeout = "30m" }
+task.tool "tests" { exe = "build/tests.exe", output = "lines" }
 
 task "prereqs" {
   desc = "fetch the tools by hash into .tools",
   run = function()
-    if fs.exists(MAKE) == "file" then return end
+    if fs.exists(task.tool_get("make").exe) == "file" then return end
     fs.mkdir(".tools/downloads")
     for _, p in ipairs(PACKAGES) do
       local to = ".tools/downloads/" .. fs.basename(p.url)
@@ -94,13 +97,13 @@ task "prereqs" {
 task "build" {
   desc = "build with the fetched make",
   deps = { "prereqs" },
-  run = function() return task.exec { MAKE, "-j8" } end,
+  run = function() return task.exec { tool = "make", "-j8" } end,
 }
 
 task "test" {
   desc = "run the tests",
   deps = { "build" },
-  run = function() return task.exec { "build/tests.exe" } end,
+  run = function() return task.exec { tool = "tests" } end,
 }
 
 task "clean" {

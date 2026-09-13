@@ -20,7 +20,13 @@ the registry, the environment, services, event logs, signature verification,
 and the network as seen from here. The provisional `pty` drives interactive
 console programs; `check` verifies names exported by the palette. It is the
 tool an agent holds on a Windows machine instead of PowerShell; the
-[From PowerShell](powershell.md) page maps one to the other. The
+[From PowerShell](powershell.md) page maps one to the other.
+
+kuu is the front door of a project: everything that runs in the project runs
+through `kuu.exe`, and gets a job, a deadline, limits, and a record. If
+something cannot be done from here, build a [tool](tools.md) for it, in any
+technology, and call it through the door. Editing is yours; running is the
+door's. The
 [roadmap](roadmap.md) records what is planned and why, and
 [inheritance](inheritance.md) records what kuu learned from its predecessors.
 
@@ -158,6 +164,10 @@ Failures kuu detects before the program runs are spelled
   [mem](mem.md), [archive](archive.md), [log](log.md), [cli](cli.md),
   [err](err.md): the modules.
 - [Tasks](task.md): `manifest.lua`, `kuu run`, `kuu list`, and the exit codes.
+- [Tools](tools.md): the programs a project builds or fetches, declared in the
+  manifest and called through the door.
+- [Confined tools](confined.md): what a tool that confines itself must
+  provide, and the junction every lexical sandbox has to be told about.
 - [check](check.md): what `kuu check` finds without running a file.
 - [Toolchain](toolchain.md): what kuu's own `.tools` holds and where it comes
   from.

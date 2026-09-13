@@ -1,7 +1,7 @@
 -- check.lua -- `kuu check`: syntax errors with lines, undeclared globals under a
 -- declaration, the warning without one, require resolution, pruning, JSON.
 global none
-global <const> require, ipairs, tostring
+global <const> require, ipairs, pairs, tostring, type, table, pcall
 
 return function(T)
   local check, contains = T.check, T.contains
@@ -369,6 +369,119 @@ other.custom()
       r = T.kuu({ "check", "nested.lua" }, { cwd = dir })
       check("a second field is not checked against the module, and does not crash",
         r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+
+      -- Tools: the manifest's declarations read as literals, and every call
+      -- through the door, in any file, held to them.
+      put("manifest.lua", table.concat({
+        'global none', 'global <const> require', 'local task, rt = require "task", require "rt"',
+        'task.tool "report" {', '  exe = "tools/report.exe",',
+        '  args = { ["--out"] = "path", ["--since"] = "string", quiet = "flag" },',
+        '  output = "ndjson", emits = { "rows" }, timeout = "5m",', '}',
+        'task.tool("plain", { exe = "tools/plain.exe" })',
+        'local later = "x"', 'task.tool "dyn" { exe = later }',
+        'task "ok" { run = function() return task.exec { tool = "report", "--out", "build/r.json", "quiet" } end }',
+        'task "typo" { run = function() return task.exec { tool = "report", "--sinc", "yesterday" } end }',
+        'task "nosuch" { run = function() return task.exec { tool = "reprot" } end }',
+        'task "bare" { run = function() return task.exec { "cmd.exe", "/c", "dir" } end }',
+        'task "free" { run = function() return task.exec { tool = "plain", "--anything" } end }',
+        -- values are not options: a path, a negative number, --name=value, and the value an option takes
+        'task "values" { run = function() return task.exec { tool = "report", "--out", "/tmp/r.json", "--since", "-1", "--out=x", "quiet", "-" } end }',
+        -- a table the checker cannot see into, and a tool it cannot name, are not judged
+        'local spec = { tool = "report" }',
+        'task "var" { run = function() return task.exec(spec) end }',
+        'local which = "report"',
+        'task "named" { run = function() return task.exec { tool = which, "--nope" } end }',
+        -- declared once per arm: the text cannot tell which one runs
+        'if rt.route == "file" then task.tool "dup" { exe = "a.exe" } else task.tool "dup" { exe = "b.exe" } end',
+        'task "dupcall" { run = function() return task.exec { tool = "dup", "--x" } end }',
+      }, "\n") .. "\n")
+      put("tools/wrap.lua", 'global none\nglobal <const> require\nlocal task = require "task"\nlocal M = {}\n'
+        .. 'function M.go() return task.command { tool = "report", "--outt", "x" } end\nreturn M\n')
+      r = T.kuu({ "check", "--json" }, { cwd = dir })
+      local report = json.decode(r.out)
+      local by = {}
+      for _, f in ipairs(report and report.result.files or {}) do by[f.path:gsub("\\", "/")] = f end
+      local m, w = by["manifest.lua"], by["tools/wrap.lua"]
+      local function first(f, kind)
+        for _, e in ipairs(f and f.errors or {}) do if e.kind == kind then return e end end
+        return nil
+      end
+      check("the manifest's bounded declarations are reported with their attributes",
+        m ~= nil and #m.tools == 2 and m.tools[1].name == "report" and m.tools[1].args["--out"] == "path"
+          and m.tools[1].output == "ndjson" and m.tools[1].emits[1] == "rows" and m.tools[2].name == "plain" and m.tools[2].args == nil,
+        r.out:sub(1, 400))
+      local typo = first(m, "option")
+      check("a misspelt argument is an option finding with the nearest name",
+        typo ~= nil and typo.name == "--sinc" and typo.suggestion == "--since" and typo.module == "report", json.encode(m and m.errors))
+      local missing = first(m, "name")
+      check("an undeclared tool is a name finding with the nearest declared",
+        missing ~= nil and missing.name == "reprot" and missing.suggestion == "report" and missing.module == "manifest", json.encode(m and m.errors))
+      local twice, all_tool = false, m ~= nil and #m.warnings == 3
+      for _, w in ipairs(m and m.warnings or {}) do
+        all_tool = all_tool and w.kind == "tool"
+        if w.message:find("more than once", 1, true) then twice = true end
+      end
+      check("a declaration the text does not bound, a call with no declaration, and a name declared twice are tool warnings",
+        all_tool and twice, json.encode(m and m.warnings))
+      check("values, a table the checker cannot see into, a tool it cannot name, and a tool declared twice are not judged, so the manifest has exactly two errors",
+        m ~= nil and #m.errors == 2, json.encode(m and m.errors))
+      check("a project module's call is held to the manifest's declaration",
+        w ~= nil and #w.errors == 1 and w.errors[1].kind == "option" and w.errors[1].suggestion == "--out", json.encode(w and w.errors))
+
+      -- The two readings of one declaration: what check took from the text
+      -- and what capabilities took from the registry the manifest filled.
+      local function equal(a, b)
+        if type(a) ~= "table" or type(b) ~= "table" then return a == b end
+        for k, v in pairs(a) do if not equal(v, b[k]) then return false end end
+        for k in pairs(b) do if a[k] == nil then return false end end
+        return true
+      end
+      local scanned = checker.tools(dir)
+      r = T.kuu({ "capabilities", "--json" }, { cwd = dir })
+      local descriptor = json.decode(r.out)
+      local executed = {}
+      for _, x in ipairs(descriptor and descriptor.result.project.tools or {}) do executed[x.name] = x end
+      local same = #scanned == 2 and executed.report ~= nil and executed.plain ~= nil and executed.dyn ~= nil and executed.dup ~= nil
+      for _, s in ipairs(scanned) do
+        local x = executed[s.name]
+        same = same and x ~= nil and x.exe == s.exe and x.output == s.output and x.timeout == s.timeout
+          and equal(x.emits, s.emits) and equal(x.args, s.args) and equal(x.reach, s.reach)
+      end
+      check("check's reading of a declaration equals the registry's, attribute for attribute", same,
+        json.encode(scanned) .. " vs " .. json.encode(executed))
+      -- On the wire, too: an empty list is an array in both.
+      r = T.kuu({ "check", "--json" }, { cwd = dir })
+      check("check --json spells a declaration's empty lists as arrays, as capabilities does",
+        contains(r.out, '"emits":[]') and not contains(r.out, '"emits":{}'), r.out:sub(1, 400))
+      -- The root however it is spelled: the manifest is recognised as itself
+      -- under backslashes, a trailing slash, and a `..`, where a text compare
+      -- once recursed until the stack ran out.
+      local spellings = { dir:gsub("/", "\\"), dir .. "/", dir .. "/tools/.." }
+      local every_way = true
+      for _, spelling in ipairs(spellings) do
+        local ok2, result = pcall(checker.file, dir .. "/tools/wrap.lua", spelling)
+        every_way = every_way and ok2 and #result.errors == 1
+      end
+      check("a root spelled any way finds the manifest, and never recurses", every_way)
+      -- A number or a boolean where a literal may stand is not a string, and
+      -- nothing downstream may take it for one.
+      put("literals.lua", 'global none\nglobal <const> require\nlocal rt = require "rt"\nlocal m = require(42)\nif rt.route == 1 or rt.route == true then return m end\n')
+      r = T.kuu({ "check", "literals.lua" }, { cwd = dir })
+      check("a number or boolean in a literal's place is passed over, not crashed on", r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+
+      -- A manifest that does not parse declares nothing anyone can read, and
+      -- no call is judged against it.
+      put("manifest.lua", 'global none\nglobal <const> require\nlocal task = require "task"\ntask.tool "report" { exe = "x.exe"\n')
+      r = T.kuu({ "check", "--json" }, { cwd = dir })
+      local broken = json.decode(r.out)
+      local wrap_errors, manifest_errors
+      for _, f in ipairs(broken and broken.result.files or {}) do
+        local path = f.path:gsub("\\", "/")
+        if path == "tools/wrap.lua" then wrap_errors = f.errors elseif path == "manifest.lua" then manifest_errors = f.errors end
+      end
+      check("a manifest that does not parse is one syntax error, not one 'not declared' per call site",
+        manifest_errors ~= nil and #manifest_errors == 1 and manifest_errors[1].kind == "syntax"
+          and wrap_errors ~= nil and #wrap_errors == 0, r.out:sub(1, 400))
 
       fs.remove(dir, { recursive = true })
     end

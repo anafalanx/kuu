@@ -327,15 +327,18 @@ Observations, none of them a kuu defect:
   complete production suite then passed all 1,044 checks. No change to
   process-tree enumeration was made.
 - **Evidence:** [dated validation record](../notes/validation-23h2-2026-09-11_094612.md).
-- **Status:** isolated 2026-09-13, closed in 0.10.0. The snapshot's parent
-  id is the number the parent had when the child started, and Windows hands
-  a dead process's id to the next one that needs it; a process orphaned by
-  an earlier test, whose parent's id a chain node later received, appears as
-  that node's second child. `tree` now lists a child only when it began no
-  earlier than its parent. The 23H2 instance itself was not reproduced: 40
-  attempts to provoke id reuse on the owner's machine produced none, so the
-  fix removes the one mechanism the evidence admits, not a reproduced
-  instance.
+- **Status:** one mechanism closed 2026-09-13, the observation open. The
+  snapshot's parent id is the number the parent had when the child started,
+  and Windows hands a dead process's id to the next one that needs it; a
+  process orphaned by an earlier test, whose parent's id a chain node later
+  received, would appear as that node's second child, and `tree` now lists
+  a child only when it began no earlier than its parent. That did not end
+  it: the same assertion failed once more the same day, under the sanitizer
+  build inside the full suite, and not in 24 isolated rounds of the chain
+  under either build. The assertion now names every child it sees — pid,
+  name, parent, start time — so the next failure says what the second
+  child is. It is tolerated in no sense but that: the suite fails when it
+  happens.
 
 ## Orphaned I/O completion during console shutdown — 2026-09-11
 
