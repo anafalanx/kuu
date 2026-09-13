@@ -18,8 +18,8 @@
  * source the Makefile and the version resource read; rt.version_at_least parses it
  * rather than keeping numbers beside it that could drift. */
 #define KUU_NAME "kuu"
-#define KUU_VERSION "0.9.0"
-#define KUU_VERSION_W L"0.9.0"
+#define KUU_VERSION "0.10.0"
+#define KUU_VERSION_W L"0.10.0"
 
 /* Exit codes.  2 means kuu never started the program (usage, entry, state);
  * 1 means the program itself failed; anything else is the program's own

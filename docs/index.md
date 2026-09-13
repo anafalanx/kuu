@@ -16,15 +16,19 @@ later. The runtime uses native Windows process, console and filesystem APIs.
 Console shutdown adapts to the older 23H2 lifetime contract; the Lua API is
 the same on every supported version.
 
-This is version 0.9.0: the runner, the scheduler with scoped deadlines,
+This is version 0.10.0: the runner, the scheduler with scoped deadlines,
 processes with resource limits (its own children and the others on the machine), files, JSON, CSV, INI, HTTP, archives,
 hashing, text encodings, regular expressions, time, logging, argument
-parsing, a repository's tasks, a memory across runs, the machine's own facts,
-the registry, the environment, services, event logs, signature verification,
-and the network as seen from here. The provisional `pty` drives interactive
-console programs; `check` verifies names exported by the palette. It is the
-tool an agent holds on a Windows machine instead of PowerShell; the
-[From PowerShell](powershell.md) page maps one to the other.
+parsing, a repository's tasks and the tools they call, declared once in
+`manifest.lua`, a ledger of every crossing, a memory across runs, the
+machine's own facts, the registry, the environment, services, event logs,
+signature verification, and the network as seen from here. The provisional
+`pty` drives interactive console programs; `check` reads what can be known
+without running; `capabilities` says what is here, and the manual — this
+page, [the conduct expected of an agent](agent.md), every module — is
+inside the executable. It is the tool an agent holds on a Windows machine
+instead of PowerShell; the [From PowerShell](powershell.md) page maps one
+to the other.
 
 kuu is the front door of a project: everything that runs in the project runs
 through `kuu.exe`, and gets a job, a deadline, limits, and a record. If
@@ -36,17 +40,20 @@ door's. The
 
 ## Running a program
 
+<!-- usage -->
 ```text
-kuu FILE [arg ...]        run a Lua program file
-kuu - [arg ...]           run a program read from standard input
-kuu -e SCRIPT [arg ...]   run an inline script
-kuu docs [PAGE [SECTION] | search TEXT ...]   this manual, from inside the executable
-kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua      (see Tasks)
-kuu list [--json]         those tasks
-kuu check [--json] [PATH ...]   syntax, globals, requires, palette names, without running  (see check)
-kuu capabilities [--json] what a program can reach from here                      (see capabilities)
-kuu version | --version | --help
+usage: kuu FILE [arg ...]        run a Lua program file
+       kuu - [arg ...]           run a program read from standard input
+       kuu -e SCRIPT [arg ...]   run an inline script
+       kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
+       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua
+       kuu list [--json]         those tasks
+       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
+       kuu capabilities [--json] what a program can reach from here, and what to read
+       kuu version | --version | --help
+kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.
 ```
+<!-- /usage -->
 
 A program file is UTF-8, optionally with a BOM, with any line ending. The bytes
 must be valid UTF-8; kuu refuses an invalid file rather than repairing it. A
@@ -60,8 +67,8 @@ array of the `rt` module. There is no `arg` global.
 ```lua
 local rt = require("rt")
 print(rt.version, rt.lua, rt.route, rt.exe, rt.program, #rt.args)
--- 0.9.0  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
-rt.version_at_least(0, 9)   -- true: this runtime is 0.9.0 or newer
+-- 0.10.0  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
+rt.version_at_least(0, 10)  -- true: this runtime is 0.10.0 or newer
 ```
 
 `rt.route` is `"file"`, `"stdin"`, `"eval"`, or `"cmd"` for a verb such as
@@ -199,7 +206,8 @@ type DocsSearch = { ok: true; result: { text: string;
 - [capabilities](capabilities.md): what a program can reach from here -- the
   verbs, the palette, and this project's tasks and modules, in one command;
   provisional.
-- [Cookbook](cookbook.md): ten complete programs for common automation jobs.
+- [Cookbook](cookbook.md): fourteen complete programs for common automation
+  jobs, the last four shaped by the front door.
 - [Stability](stability.md): the future 1.x contract and minimum-version guards.
 - [proc](proc.md), [fs](fs.md), [http](http.md), [net](net.md),
   [sched](sched.md), [json](json.md), [csv](csv.md), [ini](ini.md),

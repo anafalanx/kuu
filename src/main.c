@@ -46,11 +46,11 @@ static void usage(FILE *to)
           "usage: kuu FILE [arg ...]        run a Lua program file\n"
           "       kuu - [arg ...]           run a program read from standard input\n"
           "       kuu -e SCRIPT [arg ...]   run an inline script\n"
-          "       kuu docs [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable\n"
-          "       kuu run [TASK [arg ...]]  run a task from the nearest manifest.lua\n"
-          "       kuu list [--json]         list those tasks\n"
-          "       kuu check [--json] [PATH ...]   parse, global declarations, requires\n"
-          "       kuu capabilities [--json] the palette, the verbs, and this project\n"
+          "       kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable\n"
+          "       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua\n"
+          "       kuu list [--json]         those tasks\n"
+          "       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running\n"
+          "       kuu capabilities [--json] what a program can reach from here, and what to read\n"
           "       kuu version | --version | --help\n"
           "kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.\n",
           to);

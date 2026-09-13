@@ -2,17 +2,17 @@
 
 0.10.0 is the release after the pre-freeze correction. It adds, and it
 corrects one convention: an unknown option is refused everywhere, where
-eleven calls used to ignore it, and three calls now fall on the right side of
+fourteen calls used to ignore it, and three calls now fall on the right side of
 the raise-or-return rule. No call moved and nothing was removed. A program
 that ran on 0.9.0 runs here unchanged unless it misspelt an option, or
 checked `hash.file`'s second value for a malformed path; the two sections at
 the end name every call.
 
-It is not yet released. It is held until the front-door work recorded in the
-[roadmap](roadmap.md) has landed — the declaration file becomes
-`manifest.lua`, tools are declared beside tasks, and the door keeps a ledger
-— and this page will grow to describe that. What follows is what has landed
-so far.
+It is the front-door release: the declaration file is `manifest.lua`, tools
+are declared beside the tasks that call them, the door keeps a ledger, `kuu
+run --json` is a stream, and the executable explains itself. Each has a
+section below. A build that reports `0.10.0` has all of it, and the guard
+advice on this page holds for it.
 
 What it changes is what kuu tells you about code that already runs. `check`
 reads an authored description of kuu's own interface and a project's own
@@ -42,11 +42,15 @@ kuu check src lib          # the part that is clean today
 kuu check                  # everything below the project root
 ```
 
-If the project calls `text.trim`, `rt.verbs`, `rt.pages`, `check.exports`,
-`check.modules`, or `kuu capabilities`, raise its guard to
-`rt.version_at_least(0, 10)`; otherwise leave it where it is. A project that
-uses one of them under an older guard fails at the call rather than at the
-guard, which is the failure the guard exists to prevent.
+If the project uses anything this page introduces — a `task.tool`
+declaration, `task.exec { tool = ... }`, `task.command`, `task.tools`,
+`task.tool_get`, `rt.page`, `text.trim`, `rt.verbs`, `rt.pages`,
+`check.exports`, `check.modules`, `kuu capabilities`, the events of the
+`kuu run --json` stream, the ledger, or `kuu docs` with options — raise its
+guard to `rt.version_at_least(0, 10)`; a project that uses none of them may
+leave it where it is. A project that uses one of them under an older guard
+fails at the call rather than at the guard, which is the failure the guard
+exists to prevent.
 
 For earlier releases, read
 [upgrading to 0.9](upgrading-0.9.md), [to 0.8](upgrading-0.8.md),
@@ -103,6 +107,25 @@ that decoded the whole of standard output as one document breaks: take the
 last line for what you had, or read each line for what you did not.
 [Tasks](task.md) has the events. `--dry-run --json` and every failure
 before the run are still one envelope.
+
+## The executable explains itself
+
+Nothing here moves a call; it is what kuu says to an agent that arrives.
+[For the agent](agent.md), `kuu docs agent`, states what is expected of an
+agent in a project that runs through kuu, as instructions in the order they
+are met, and asks it to report back in the project's `kuu-eval.md`;
+`kuu --help`, the `kuu docs` footer and both forms of `kuu capabilities`
+point to it, and `capabilities` counts the entries the file holds. `kuu
+docs` is a verb like the others: `--help`, `--json`, one `##` section by
+heading or anchor, a search over all its words; `rt.page(name)` gives a
+program a page's text. Every verb points onward at the moment it matters —
+a manifest that declares no task, a misspelt verb, an unknown task, no
+project, a first `.kuu/` the repository does not ignore — on standard error
+and, for `--json` readers, as `notes` on the `run`, `list`, `check` and
+`capabilities` envelopes; and `check` names the version guard of 0.8 where
+it stands, before the manifest runs. `kuu run TASK --help`
+prints the task's usage and exits 0, as every `--help` does; a `TASK
+failed` error carries `status` and `limit` so a task branches on fields.
 
 ## `check` reports four mistakes it used to pass
 

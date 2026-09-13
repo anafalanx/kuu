@@ -50,7 +50,7 @@ half. kuu does not walk whatever directory it was started in instead: that is
 a different question, and an expensive one to answer by accident.
 
 ```text
-kuu 0.9.0 (Lua 5.5.1) at C:\work\app\kuu.exe
+kuu 0.10.0 (Lua 5.5.1) at C:\work\app\kuu.exe
 
   verbs      capabilities, check, docs, list, run  kuu VERB --help
   manual     46 pages                              kuu docs PAGE | search TEXT

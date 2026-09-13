@@ -17,7 +17,7 @@ The same promise covers running a file, stdin, or an inline program; the
 `docs`, `run`, `list`, and `check` verbs; their documented options and exit
 codes; and their documented JSON reports. It includes the supported Windows
 baseline and the documented Lua language version. The freeze is a promise
-for 1.x, not a claim that the 0.9.0 interface can no longer improve.
+for 1.x, not a claim that the 0.10.0 interface can no longer improve.
 
 `pty`, `svc`, `evt`, and `sys.signature` are provisional, and so is the
 `capabilities` verb with its JSON report. Their APIs may change before or
@@ -75,8 +75,8 @@ text:
 global none
 global <const> require, assert
 local rt = require "rt"
-assert(rt.version_at_least(0, 9),
-  "this project requires kuu 0.9.0 or later; found " .. rt.version)
+assert(rt.version_at_least(0, 10),
+  "this project requires kuu 0.10.0 or later; found " .. rt.version)
 ```
 
 `rt.version_at_least(major [, minor [, patch]])` answers whether the running

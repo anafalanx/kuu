@@ -83,6 +83,9 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `kuu capabilities [--json]`: the verbs, the public modules and their names, the error domains and closed sets, and this project's tasks and modules; `rt.verbs`, `rt.pages` | 0.10.0 |
 | `text.trim`, native, replacing a helper hand-rolled six times; the unanchored `$` out of every hot path in `lua/` and `tools/`; `check` lexes by byte | 0.10.0 |
 | `kuu.md`: what kuu is, what its predecessors taught, and the whole manual inlined by `tools/bundle_docs.lua`, held to `docs/` by the suite | 0.10.0 |
+| `manifest.lua` as the declaration file, `tasks.lua` found for one release; tools declared beside tasks with `task.tool` and called with `task.exec { tool = }`, read by `check` as literals and held to; the ledger under `.kuu/ledger`, chained, with the tree delta and the repository's head; `kuu run --json` as a stream | 0.10.0 |
+| `kuu docs agent`, what is expected of an agent and the `kuu-eval.md` report back, named by every entry point and counted by `capabilities`; `docs` a verb like the others with sections, descriptions, search and `--json`; `rt.page` | 0.10.0 |
+| every verb points onward: a manifest that declares nothing, a misspelt verb, an unknown task with the nearest name, no project, a first `.kuu/` not ignored, the 0.8 version guard found by `check`; `notes` on the JSON envelopes; `kuu run TASK --help` exits 0; `TASK failed` carries `status` and `limit` | 0.10.0 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
 
@@ -261,8 +264,9 @@ add to it is a tool the project builds, called through the door.
      co-evolved with the runtime, so it does not answer the cold-adopter
      amendment. Recorded in the
      [release handoff](../notes/handoff-2026-09-11_145745.md).
-10. **0.10.0, the interface described, and no language.** On main and
-   unreleased: the executable still reports `0.9.0`. The owner decided on
+10. **0.10.0, the interface described, and no language.** On main, and
+   what the executable reports; tagging, signing and publishing are the
+   owner's. The owner decided on
    2026-09-11 that there is no successor language, no compiler and no emission
    subset; kuu is a runtime for Lua 5.5, and grows capabilities in the palette
    and options on the calls already there. `kuu.md` lost the part that
@@ -333,7 +337,8 @@ add to it is a tool the project builds, called through the door.
      [design note](../notes/design-js-capability-2026-09-12_155114.md) stands
      as the record of what was considered and measured; the
      [front-door plan](../notes/plan-front-door-2026-09-13_001735.md) is what
-     follows, and 0.10.0 is held until it lands.
+     followed; it landed through its fourth phase on 2026-09-13, and 0.10.0
+     is the release that carries it.
    - Great care with the C, as the front-door plan's first phase asks.
      `make asan` runs inside `make gate`, and the compiler is pinned by hash.
      Five defects the review of 2026-09-12 confirmed are closed: `fs.rename`
@@ -398,7 +403,7 @@ add to it is a tool the project builds, called through the door.
    promise on a signal nobody trusts; and **at least one cold adopter**,
    because every adoption finding on record comes from Time Actual, which
    co-evolved with the runtime and therefore routes around contract mistakes
-   instead of reporting them. Between 0.9.0 and 1.0: the freeze, the month of
+   instead of reporting them. Between 0.10.0 and 1.0: the freeze, the month of
    use, and corrections driven by what that use finds.
 
 ## The 0.5 review: fixes implemented

@@ -121,6 +121,29 @@ local function capabilities_page(here)
   return text
 end
 
+-- The usage is one string, the one `kuu --help` prints, and the three
+-- places that quote it -- index.md, kuu.md's Start here, README -- carry
+-- it between markers that --write refreshes and the suite holds equal;
+-- three hand copies disagreed on the verbs' options before this.
+local USAGE_OPEN, USAGE_CLOSE = "<!-- usage -->", "<!-- /usage -->"
+
+local function usage_block()
+  local r = proc.run { rt.exe, "--help", timeout = "30s" }
+  if not (r and r.code == 0) then error("kuu --help did not run: " .. (r and r.err or "no result")) end
+  local text = rtrim((r.out:gsub("\r\n", "\n")))
+  local lines = {}
+  for line in (text .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+  table.remove(lines, 1) -- the version line; the block is the usage alone
+  return table.concat({ USAGE_OPEN, "```text", table.concat(lines, "\n"), "```", USAGE_CLOSE }, "\n")
+end
+
+local function with_usage(text, path)
+  local open_at = text:find(USAGE_OPEN, 1, true)
+  local close_at = text:find(USAGE_CLOSE, 1, true)
+  if not open_at or not close_at then error(path .. " has no usage block between " .. USAGE_OPEN .. " and " .. USAGE_CLOSE) end
+  return text:sub(1, open_at - 1) .. usage_block() .. text:sub(close_at + #USAGE_CLOSE)
+end
+
 -- GitHub's anchor for a heading: lower case, dots dropped, spaces to dashes.
 local function anchor(name)
   return (name:lower():gsub("%.", ""))
@@ -183,8 +206,12 @@ end
 
 local here = root()
 if rt.args[1] == "--write" then
-  -- the page's figures first, so the bundle carries the refreshed page
+  -- the pages' figures and usage first, so the bundle carries the refreshed pages
   assert(fs.write(here .. "/docs/capabilities.md", capabilities_page(here)))
+  for _, name in ipairs { "docs/index.md", "README.md" } do
+    local path = here .. "/" .. name
+    assert(fs.write(path, with_usage(fs.read(path) or error("no " .. path), name)))
+  end
 end
 local bundle = build(here .. "/docs")
 
@@ -212,11 +239,14 @@ if rt.args[1] == "--write" then
     error("kuu.md's Part I has no figures block between " .. FIGURES_OPEN .. " and " .. FIGURES_CLOSE)
   end
   head = head:sub(1, open_at - 1) .. figures(here) .. head:sub(close_at + #FIGURES_CLOSE)
+  head = with_usage(head, "kuu.md")
   assert(fs.write(path, rtrim(head) .. "\n\n" .. bundle .. "\n"))
-  io.write("kuu.md: Part I's figures and Part III regenerated from ", tostring(#ORDER),
-    " pages; docs/capabilities.md's figures refreshed\n")
+  io.write("kuu.md: Part I's figures, the usage and Part III regenerated from ", tostring(#ORDER),
+    " pages; docs/capabilities.md's figures and the usage in index.md and README.md refreshed\n")
 elseif rt.args[1] == "--figures" then
   io.write(figures(here), "\n")
+elseif rt.args[1] == "--usage" then
+  io.write(usage_block(), "\n")
 elseif rt.args[1] == "--capabilities" then
   io.write(capabilities_page(here))
 else

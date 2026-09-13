@@ -10,14 +10,14 @@ repo/
   manifest.lua          the tasks, and the prerequisites as url and sha256
   kuu.exe            this project's own runtime; git ignores it
   .tools/            downloads and unpacked tools; git ignores it
-  .kuu/              kuu's notebook for this repository (mem); git ignores it
+  .kuu/              kuu's own: the ledger of every crossing, and mem's notebook; git ignores it
   build/             outputs; git ignores it
   src/               whatever the repository is about
 ```
 
-The examples require 0.7 or later. Read [upgrading to 0.7](upgrading-0.7.md)
-when moving from 0.6; a repository still on 0.5 also needs the
-[duration migration](upgrading-0.6.md).
+The examples require 0.10 or later, since they declare their tools. Read
+[upgrading to 0.10](upgrading-0.10.md) when moving from 0.9, and the
+earlier upgrading pages from further back.
 
 ## 1. Give the repository its kuu
 
@@ -52,7 +52,7 @@ has the full contract; this is the shape:
 global none
 global <const> require, ipairs, print, error
 
-local NEED_MAJOR, NEED_MINOR = 0, 9
+local NEED_MAJOR, NEED_MINOR = 0, 10
 
 local rt = require "rt"
 local task = require "task"
@@ -63,7 +63,7 @@ local hash = require "hash"
 local err = require "err"
 
 if not rt.version_at_least(NEED_MAJOR, NEED_MINOR) then
-  error(err.new("PROJECT", "version", "requires kuu 0.9.0 or later, found " .. rt.version .. "; copy a supported kuu.exe into the repository root"))
+  error(err.new("PROJECT", "version", "requires kuu 0.10.0 or later, found " .. rt.version .. "; copy a supported kuu.exe into the repository root"))
 end
 task.defaults { timeout = "10m" }
 
@@ -126,8 +126,9 @@ Three habits make this work:
   nothing; `archive.unpack` opens tar, zip, and zst archives with the tar
   Windows ships. Hashes come from upstream's checksum files or from a first
   fetch inspected by hand; once written down they pin the file forever.
-- **Tools are called by path**, `.tools/...`, never by name. `PATH` is
-  whatever the machine has today; the repository does not depend on it.
+- **Tools are declared by path**, `.tools/...`, and called by the name the
+  declaration gives them; nothing is looked up on `PATH`, which is whatever
+  the machine has today, and the repository does not depend on it.
 - **A task fails by returning `nil, err`** or by a child's exit code
   through `task.exec`. `kuu run` turns that into an exit code and, with
   `--json`, into a record another program can read.

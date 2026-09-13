@@ -1,7 +1,7 @@
 # kuu
 
 This document is the single place where kuu is explained: what the runtime is
-today at 0.9.0 and what was learned building it and its two predecessors. It
+today at 0.10.0 and what was learned building it and its two predecessors. It
 exists because that understanding was scattered across three repositories, a
 roadmap, an inheritance register, a shortcomings log and a decision record,
 and none of those answer the question *why is it like this* in one reading.
@@ -11,7 +11,7 @@ and it will not: what it grows are capabilities in the palette, and options on
 the calls that are already there.
 
 Nothing here is a promise about compatibility. The compatibility posture is
-still being designed and is deliberately left open; where 0.9.0 changed
+still being designed and is deliberately left open; where 0.10.0 changed
 something, the change is described, not ratified.
 
 This file carries the complete manual as **Part III**, so everything kuu knows
@@ -21,21 +21,27 @@ about itself can be read in one sitting without querying the executable.
 
 ## Where things stand
 
-**kuu 0.9.0 is released.** Tagged on the tested commit, signed, published, and
-verified: the gate, the sanitizer gate and the publish gate all green, the two
-of them that carry a soak clean, and the downloaded asset, its sidecar and the local signed file in
-agreement with the released binary reporting its own certificate identity. A
-consuming project adopted it the same day with its checks passing.
+**kuu 0.10.0 is what this tree reports**, and the gate — suite, sanitizer,
+analysis, fuzzing, soak — is green on it. It is the front-door release:
+`manifest.lua` declares a project's tasks and the tools they call, every
+crossing is recorded in a ledger under `.kuu/`, `kuu run --json` is a
+stream, `check` reads what can be known without running, `capabilities`
+says what is here, and the executable explains itself — a page that states
+what is expected of an agent and asks it to report back, a `docs` verb like
+the others, and every verb pointing onward at the moment a next step is
+needed. Tagging, signing and publishing are the owner's; the previous
+release, 0.9.0, is the one on the releases page until then.
 
-The version break landed as predicted. A project carrying the guard published
-through 0.8 — `rt.version:match("^(%d+)%.(%d+)$")` — refuses 0.9.0 and every
-later release, because that pattern does not match three components. Migrating
-to `rt.version_at_least` is the fix, and it is the one thing an existing
-project must do.
+The version break of 0.9.0 landed as predicted. A project carrying the guard
+published through 0.8 — `rt.version:match("^(%d+)%.(%d+)$")` — refuses 0.9.0
+and every later release, because that pattern does not match three
+components. `rt.version_at_least` is the fix, and since 0.10.0 `kuu check`
+names the guard where it stands.
 
 **What is open** is design, not work in progress. The 1.0 criteria remain the
-owner's to set. There is no half-finished work to pick up, and the intent is to
-take the time to get the design right and correct course where needed.
+owner's to set, `kuu watch` waits until something runs unattended, and the
+intent is to take the time to get the design right and correct course where
+needed.
 
 ---
 
@@ -71,14 +77,20 @@ kuu --help                     the verbs
 
 Running, checking, and driving a project:
 
+<!-- usage -->
 ```text
-kuu FILE [arg ...]             run a program
-kuu -e SCRIPT [arg ...]        run an inline script
-kuu check [--json] PATH ...    syntax, globals, requires, palette names
-kuu capabilities [--json]      what a program can reach from here
-kuu run [--dry-run] [TASK]     a task from the nearest manifest.lua
-kuu list                       those tasks
+usage: kuu FILE [arg ...]        run a Lua program file
+       kuu - [arg ...]           run a program read from standard input
+       kuu -e SCRIPT [arg ...]   run an inline script
+       kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
+       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua
+       kuu list [--json]         those tasks
+       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
+       kuu capabilities [--json] what a program can reach from here, and what to read
+       kuu version | --version | --help
+kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.
 ```
+<!-- /usage -->
 
 kuu is the front door of a project. Everything that runs in the project runs
 through `kuu.exe` — a task, a build, a test, a fetch, a tool — and gets a
@@ -107,7 +119,7 @@ Building and verifying kuu itself, from the repository root:
 | `docs/capabilities.md` | `kuu capabilities`: the verbs, the palette, and this project's tasks and modules, in one command |
 | `docs/adopting.md` | how a repository comes to be driven by kuu: `manifest.lua`, prerequisites by URL and hash |
 | `docs/powershell.md` | each cmdlet you would reach for, and the kuu call that replaces it |
-| `docs/cookbook.md` | ten complete programs, extracted and checked by the suite |
+| `docs/cookbook.md` | fourteen complete programs, extracted and checked by the suite; the last four are shaped by the front door |
 | `docs/roadmap.md` | decisions and milestones, with their reasons |
 | `docs/inheritance.md` | what kuu carried over from its predecessors, each item sourced |
 | `docs/shortcomings.md` | problems found in real use, with evidence and status |
@@ -156,8 +168,8 @@ follows from it:
   tell the truth about the platform.
 
 <!-- figures -->
-By the numbers, 0.9.0 is 15,960 lines of authored host C, 5,343 lines of kuu's own
-Lua, a suite of 6,211 lines, and 6,570 lines of manual in 46 pages that ship
+By the numbers, 0.10.0 is 15,960 lines of authored host C, 5,343 lines of kuu's own
+Lua, a suite of 6,222 lines, and 6,607 lines of manual in 46 pages that ship
 inside the executable. The palette is 27 public modules and 173 functions,
 plus methods on handles. The suite's own count is what `make test` prints.
 These figures are produced by `tools/bundle_docs.lua` from the executable
@@ -166,15 +178,15 @@ and the tree, and the suite holds them.
 The verbs, as `kuu --help` prints them:
 
 ```text
-kuu 0.9.0 -- a Lua 5.5 runtime for agents on Windows
+kuu 0.10.0 -- a Lua 5.5 runtime for agents on Windows
 usage: kuu FILE [arg ...]        run a Lua program file
        kuu - [arg ...]           run a program read from standard input
        kuu -e SCRIPT [arg ...]   run an inline script
-       kuu docs [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
-       kuu run [TASK [arg ...]]  run a task from the nearest manifest.lua
-       kuu list [--json]         list those tasks
-       kuu check [--json] [PATH ...]   parse, global declarations, requires
-       kuu capabilities [--json] the palette, the verbs, and this project
+       kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
+       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua
+       kuu list [--json]         those tasks
+       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
+       kuu capabilities [--json] what a program can reach from here, and what to read
        kuu version | --version | --help
 kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.
 ```
@@ -357,6 +369,44 @@ Verification is layered and all of it runs locally:
   the gate since 0.10.0; before that it was a release check run by hand, and
   its build was found 22 commits stale.
 - `make gate` — all five in order: `test`, `asan`, `analyze`, `fuzz`, `soak`.
+
+## Where 0.10.0 stands
+
+0.10.0 is the front-door release: what runs in a project runs through
+`kuu.exe`, and the executable explains itself.
+
+- **`manifest.lua` is the declaration file**, `tasks.lua` still found for
+  one release and warned. Tools are declared beside the tasks that call
+  them — `task.tool "name" { exe, args, output, emits, timeout, reach }` —
+  and called through the door with `task.exec { tool = "name", ... }`;
+  `check` reads the declarations as literals and holds every literal call
+  to them, and `capabilities` lists them.
+- **The door keeps a ledger.** One record per crossing under
+  `.kuu/ledger/<day>.ndjson`, chained by hash, ninety days, the tree delta
+  since the previous run on each run's first record, the repository's head
+  read from `.git` itself. `capabilities` walks the chain and says whether
+  it is intact. The record is never a condition on the run.
+- **`kuu run --json` is a stream**: run, task and child events as they
+  happen, flushed per line, the envelope last, `notes` for what was also
+  said on standard error.
+- **The executable explains itself.** `kuu docs agent` states what is
+  expected of an agent in a project that runs through kuu, and asks for a
+  report back in the project's `kuu-eval.md`; every entry point names it.
+  `docs` is a verb like the others — sections, descriptions, search over
+  all its words, `--json`, `rt.page` for a program. Each verb points onward
+  at the moment it matters: a manifest that declares nothing, a misspelt
+  verb, an unknown task, no project, a first `.kuu/` the repository does
+  not ignore; and `check` names the version guard of 0.8 where it stands.
+- **The laws hold everywhere.** An unknown option is `usage` in every call,
+  C and Lua; raise-or-return follows the function's purpose, stated in
+  err.md, and a project's own code is told to follow both. The asan build
+  is inside the gate, the compiler is pinned, and every figure in this
+  document is produced, not written.
+
+Three audits with a skeptic per finding — over the tools, over the ledger
+and the stream, over the manual's self-explanation — confirmed a hundred
+and eighteen findings between them, and every one was fixed with a check
+before its batch was gated.
 
 ## Where 0.9.0 stands
 
@@ -642,15 +692,19 @@ later. The runtime uses native Windows process, console and filesystem APIs.
 Console shutdown adapts to the older 23H2 lifetime contract; the Lua API is
 the same on every supported version.
 
-This is version 0.9.0: the runner, the scheduler with scoped deadlines,
+This is version 0.10.0: the runner, the scheduler with scoped deadlines,
 processes with resource limits (its own children and the others on the machine), files, JSON, CSV, INI, HTTP, archives,
 hashing, text encodings, regular expressions, time, logging, argument
-parsing, a repository's tasks, a memory across runs, the machine's own facts,
-the registry, the environment, services, event logs, signature verification,
-and the network as seen from here. The provisional `pty` drives interactive
-console programs; `check` verifies names exported by the palette. It is the
-tool an agent holds on a Windows machine instead of PowerShell; the
-[From PowerShell](#powershell) page maps one to the other.
+parsing, a repository's tasks and the tools they call, declared once in
+`manifest.lua`, a ledger of every crossing, a memory across runs, the
+machine's own facts, the registry, the environment, services, event logs,
+signature verification, and the network as seen from here. The provisional
+`pty` drives interactive console programs; `check` reads what can be known
+without running; `capabilities` says what is here, and the manual — this
+page, [the conduct expected of an agent](#agent), every module — is
+inside the executable. It is the tool an agent holds on a Windows machine
+instead of PowerShell; the [From PowerShell](#powershell) page maps one
+to the other.
 
 kuu is the front door of a project: everything that runs in the project runs
 through `kuu.exe`, and gets a job, a deadline, limits, and a record. If
@@ -662,17 +716,20 @@ door's. The
 
 ### Running a program
 
+<!-- usage -->
 ```text
-kuu FILE [arg ...]        run a Lua program file
-kuu - [arg ...]           run a program read from standard input
-kuu -e SCRIPT [arg ...]   run an inline script
-kuu docs [PAGE [SECTION] | search TEXT ...]   this manual, from inside the executable
-kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua      (see Tasks)
-kuu list [--json]         those tasks
-kuu check [--json] [PATH ...]   syntax, globals, requires, palette names, without running  (see check)
-kuu capabilities [--json] what a program can reach from here                      (see capabilities)
-kuu version | --version | --help
+usage: kuu FILE [arg ...]        run a Lua program file
+       kuu - [arg ...]           run a program read from standard input
+       kuu -e SCRIPT [arg ...]   run an inline script
+       kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
+       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua
+       kuu list [--json]         those tasks
+       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
+       kuu capabilities [--json] what a program can reach from here, and what to read
+       kuu version | --version | --help
+kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.
 ```
+<!-- /usage -->
 
 A program file is UTF-8, optionally with a BOM, with any line ending. The bytes
 must be valid UTF-8; kuu refuses an invalid file rather than repairing it. A
@@ -686,8 +743,8 @@ array of the `rt` module. There is no `arg` global.
 ```lua
 local rt = require("rt")
 print(rt.version, rt.lua, rt.route, rt.exe, rt.program, #rt.args)
--- 0.9.0  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
-rt.version_at_least(0, 9)   -- true: this runtime is 0.9.0 or newer
+-- 0.10.0  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
+rt.version_at_least(0, 10)  -- true: this runtime is 0.10.0 or newer
 ```
 
 `rt.route` is `"file"`, `"stdin"`, `"eval"`, or `"cmd"` for a verb such as
@@ -825,7 +882,8 @@ type DocsSearch = { ok: true; result: { text: string;
 - [capabilities](#capabilities): what a program can reach from here -- the
   verbs, the palette, and this project's tasks and modules, in one command;
   provisional.
-- [Cookbook](#cookbook): ten complete programs for common automation jobs.
+- [Cookbook](#cookbook): fourteen complete programs for common automation
+  jobs, the last four shaped by the front door.
 - [Stability](#stability): the future 1.x contract and minimum-version guards.
 - [proc](#proc), [fs](#fs), [http](#http), [net](#net),
   [sched](#sched), [json](#json), [csv](#csv), [ini](#ini),
@@ -1190,7 +1248,7 @@ half. kuu does not walk whatever directory it was started in instead: that is
 a different question, and an expensive one to answer by accident.
 
 ```text
-kuu 0.9.0 (Lua 5.5.1) at C:\work\app\kuu.exe
+kuu 0.10.0 (Lua 5.5.1) at C:\work\app\kuu.exe
 
   verbs      capabilities, check, docs, list, run  kuu VERB --help
   manual     46 pages                              kuu docs PAGE | search TEXT
@@ -1316,14 +1374,14 @@ repo/
   manifest.lua          the tasks, and the prerequisites as url and sha256
   kuu.exe            this project's own runtime; git ignores it
   .tools/            downloads and unpacked tools; git ignores it
-  .kuu/              kuu's notebook for this repository (mem); git ignores it
+  .kuu/              kuu's own: the ledger of every crossing, and mem's notebook; git ignores it
   build/             outputs; git ignores it
   src/               whatever the repository is about
 ```
 
-The examples require 0.7 or later. Read [upgrading to 0.7](#upgrading-07)
-when moving from 0.6; a repository still on 0.5 also needs the
-[duration migration](#upgrading-06).
+The examples require 0.10 or later, since they declare their tools. Read
+[upgrading to 0.10](#upgrading-010) when moving from 0.9, and the
+earlier upgrading pages from further back.
 
 ### 1. Give the repository its kuu
 
@@ -1358,7 +1416,7 @@ has the full contract; this is the shape:
 global none
 global <const> require, ipairs, print, error
 
-local NEED_MAJOR, NEED_MINOR = 0, 9
+local NEED_MAJOR, NEED_MINOR = 0, 10
 
 local rt = require "rt"
 local task = require "task"
@@ -1369,7 +1427,7 @@ local hash = require "hash"
 local err = require "err"
 
 if not rt.version_at_least(NEED_MAJOR, NEED_MINOR) then
-  error(err.new("PROJECT", "version", "requires kuu 0.9.0 or later, found " .. rt.version .. "; copy a supported kuu.exe into the repository root"))
+  error(err.new("PROJECT", "version", "requires kuu 0.10.0 or later, found " .. rt.version .. "; copy a supported kuu.exe into the repository root"))
 end
 task.defaults { timeout = "10m" }
 
@@ -1432,8 +1490,9 @@ Three habits make this work:
   nothing; `archive.unpack` opens tar, zip, and zst archives with the tar
   Windows ships. Hashes come from upstream's checksum files or from a first
   fetch inspected by hand; once written down they pin the file forever.
-- **Tools are called by path**, `.tools/...`, never by name. `PATH` is
-  whatever the machine has today; the repository does not depend on it.
+- **Tools are declared by path**, `.tools/...`, and called by the name the
+  declaration gives them; nothing is looked up on `PATH`, which is whatever
+  the machine has today, and the repository does not depend on it.
 - **A task fails by returning `nil, err`** or by a child's exit code
   through `task.exec`. `kuu run` turns that into an exit code and, with
   `--json`, into a record another program can read.
@@ -5298,6 +5357,9 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `kuu capabilities [--json]`: the verbs, the public modules and their names, the error domains and closed sets, and this project's tasks and modules; `rt.verbs`, `rt.pages` | 0.10.0 |
 | `text.trim`, native, replacing a helper hand-rolled six times; the unanchored `$` out of every hot path in `lua/` and `tools/`; `check` lexes by byte | 0.10.0 |
 | `kuu.md`: what kuu is, what its predecessors taught, and the whole manual inlined by `tools/bundle_docs.lua`, held to `docs/` by the suite | 0.10.0 |
+| `manifest.lua` as the declaration file, `tasks.lua` found for one release; tools declared beside tasks with `task.tool` and called with `task.exec { tool = }`, read by `check` as literals and held to; the ledger under `.kuu/ledger`, chained, with the tree delta and the repository's head; `kuu run --json` as a stream | 0.10.0 |
+| `kuu docs agent`, what is expected of an agent and the `kuu-eval.md` report back, named by every entry point and counted by `capabilities`; `docs` a verb like the others with sections, descriptions, search and `--json`; `rt.page` | 0.10.0 |
+| every verb points onward: a manifest that declares nothing, a misspelt verb, an unknown task with the nearest name, no project, a first `.kuu/` not ignored, the 0.8 version guard found by `check`; `notes` on the JSON envelopes; `kuu run TASK --help` exits 0; `TASK failed` carries `status` and `limit` | 0.10.0 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
 
@@ -5476,8 +5538,9 @@ add to it is a tool the project builds, called through the door.
      co-evolved with the runtime, so it does not answer the cold-adopter
      amendment. Recorded in the
      [release handoff](notes/handoff-2026-09-11_145745.md).
-10. **0.10.0, the interface described, and no language.** On main and
-   unreleased: the executable still reports `0.9.0`. The owner decided on
+10. **0.10.0, the interface described, and no language.** On main, and
+   what the executable reports; tagging, signing and publishing are the
+   owner's. The owner decided on
    2026-09-11 that there is no successor language, no compiler and no emission
    subset; kuu is a runtime for Lua 5.5, and grows capabilities in the palette
    and options on the calls already there. `kuu.md` lost the part that
@@ -5548,7 +5611,8 @@ add to it is a tool the project builds, called through the door.
      [design note](notes/design-js-capability-2026-09-12_155114.md) stands
      as the record of what was considered and measured; the
      [front-door plan](notes/plan-front-door-2026-09-13_001735.md) is what
-     follows, and 0.10.0 is held until it lands.
+     followed; it landed through its fourth phase on 2026-09-13, and 0.10.0
+     is the release that carries it.
    - Great care with the C, as the front-door plan's first phase asks.
      `make asan` runs inside `make gate`, and the compiler is pinned by hash.
      Five defects the review of 2026-09-12 confirmed are closed: `fs.rename`
@@ -5613,7 +5677,7 @@ add to it is a tool the project builds, called through the door.
    promise on a signal nobody trusts; and **at least one cold adopter**,
    because every adoption finding on record comes from Time Actual, which
    co-evolved with the runtime and therefore routes around contract mistakes
-   instead of reporting them. Between 0.9.0 and 1.0: the freeze, the month of
+   instead of reporting them. Between 0.10.0 and 1.0: the freeze, the month of
    use, and corrections driven by what that use finds.
 
 ### The 0.5 review: fixes implemented
@@ -6255,7 +6319,7 @@ The same promise covers running a file, stdin, or an inline program; the
 `docs`, `run`, `list`, and `check` verbs; their documented options and exit
 codes; and their documented JSON reports. It includes the supported Windows
 baseline and the documented Lua language version. The freeze is a promise
-for 1.x, not a claim that the 0.9.0 interface can no longer improve.
+for 1.x, not a claim that the 0.10.0 interface can no longer improve.
 
 `pty`, `svc`, `evt`, and `sys.signature` are provisional, and so is the
 `capabilities` verb with its JSON report. Their APIs may change before or
@@ -6313,8 +6377,8 @@ text:
 global none
 global <const> require, assert
 local rt = require "rt"
-assert(rt.version_at_least(0, 9),
-  "this project requires kuu 0.9.0 or later; found " .. rt.version)
+assert(rt.version_at_least(0, 10),
+  "this project requires kuu 0.10.0 or later; found " .. rt.version)
 ```
 
 `rt.version_at_least(major [, minor [, patch]])` answers whether the running
@@ -6597,17 +6661,17 @@ Before publishing a release:
 
 0.10.0 is the release after the pre-freeze correction. It adds, and it
 corrects one convention: an unknown option is refused everywhere, where
-eleven calls used to ignore it, and three calls now fall on the right side of
+fourteen calls used to ignore it, and three calls now fall on the right side of
 the raise-or-return rule. No call moved and nothing was removed. A program
 that ran on 0.9.0 runs here unchanged unless it misspelt an option, or
 checked `hash.file`'s second value for a malformed path; the two sections at
 the end name every call.
 
-It is not yet released. It is held until the front-door work recorded in the
-[roadmap](#roadmap) has landed — the declaration file becomes
-`manifest.lua`, tools are declared beside tasks, and the door keeps a ledger
-— and this page will grow to describe that. What follows is what has landed
-so far.
+It is the front-door release: the declaration file is `manifest.lua`, tools
+are declared beside the tasks that call them, the door keeps a ledger, `kuu
+run --json` is a stream, and the executable explains itself. Each has a
+section below. A build that reports `0.10.0` has all of it, and the guard
+advice on this page holds for it.
 
 What it changes is what kuu tells you about code that already runs. `check`
 reads an authored description of kuu's own interface and a project's own
@@ -6637,11 +6701,15 @@ kuu check src lib          # the part that is clean today
 kuu check                  # everything below the project root
 ```
 
-If the project calls `text.trim`, `rt.verbs`, `rt.pages`, `check.exports`,
-`check.modules`, or `kuu capabilities`, raise its guard to
-`rt.version_at_least(0, 10)`; otherwise leave it where it is. A project that
-uses one of them under an older guard fails at the call rather than at the
-guard, which is the failure the guard exists to prevent.
+If the project uses anything this page introduces — a `task.tool`
+declaration, `task.exec { tool = ... }`, `task.command`, `task.tools`,
+`task.tool_get`, `rt.page`, `text.trim`, `rt.verbs`, `rt.pages`,
+`check.exports`, `check.modules`, `kuu capabilities`, the events of the
+`kuu run --json` stream, the ledger, or `kuu docs` with options — raise its
+guard to `rt.version_at_least(0, 10)`; a project that uses none of them may
+leave it where it is. A project that uses one of them under an older guard
+fails at the call rather than at the guard, which is the failure the guard
+exists to prevent.
 
 For earlier releases, read
 [upgrading to 0.9](#upgrading-09), [to 0.8](#upgrading-08),
@@ -6698,6 +6766,25 @@ that decoded the whole of standard output as one document breaks: take the
 last line for what you had, or read each line for what you did not.
 [Tasks](#task) has the events. `--dry-run --json` and every failure
 before the run are still one envelope.
+
+### The executable explains itself
+
+Nothing here moves a call; it is what kuu says to an agent that arrives.
+[For the agent](#agent), `kuu docs agent`, states what is expected of an
+agent in a project that runs through kuu, as instructions in the order they
+are met, and asks it to report back in the project's `kuu-eval.md`;
+`kuu --help`, the `kuu docs` footer and both forms of `kuu capabilities`
+point to it, and `capabilities` counts the entries the file holds. `kuu
+docs` is a verb like the others: `--help`, `--json`, one `##` section by
+heading or anchor, a search over all its words; `rt.page(name)` gives a
+program a page's text. Every verb points onward at the moment it matters —
+a manifest that declares no task, a misspelt verb, an unknown task, no
+project, a first `.kuu/` the repository does not ignore — on standard error
+and, for `--json` readers, as `notes` on the `run`, `list`, `check` and
+`capabilities` envelopes; and `check` names the version guard of 0.8 where
+it stands, before the manifest runs. `kuu run TASK --help`
+prints the task's usage and exits 0, as every `--help` does; a `TASK
+failed` error carries `status` and `limit` so a task branches on fields.
 
 ### `check` reports four mistakes it used to pass
 

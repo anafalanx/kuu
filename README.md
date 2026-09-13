@@ -25,25 +25,30 @@ A repository declares its tasks once in `manifest.lua` and runs them with
 `archive`. The manual rides inside the executable: `kuu docs`. kuu runs on
 Windows 11 23H2 and later, and Windows Server 2025 and later, only.
 
-Version 0.9.0 is a correction release ahead of the planned 1.0 freeze, and
-corrects contracts while correcting them is still allowed. The version grows a patch component,
-which breaks the minimum-version guard published through 0.8: replace it with
-`rt.version_at_least`. `fs.write` now retries its rename, closing an intermittent
-`FS access` failure. `svc`, `evt`, and `sys.signature` leave the planned freeze
-list until a project has driven them. See
-[upgrading to 0.9](docs/upgrading-0.9.md).
+Version 0.10.0 is the front-door release: everything that runs in a project
+runs through `kuu.exe`. `manifest.lua` declares the tasks and the tools they
+call, every crossing is recorded in a ledger under `.kuu/`, `kuu run --json`
+is a stream, and the executable explains itself — `kuu docs agent` states
+what is expected of an agent and asks it to report back, `kuu docs` serves
+sections and searches, and every verb points onward when a next step is
+needed. An unknown option is refused everywhere, and `check` reports what
+can be known without running, a project's own modules included. See
+[upgrading to 0.10](docs/upgrading-0.10.md).
 
+<!-- usage -->
 ```text
-kuu FILE [arg ...]        run a Lua program file
-kuu - [arg ...]           run a program read from standard input
-kuu -e SCRIPT [arg ...]   run an inline script
-kuu run [--json] [--dry-run] [TASK [arg ...]]  a task from the nearest manifest.lua
-kuu list [--json]         those tasks
-kuu check [--json] [PATH ...]  syntax, globals, requires, palette names, without running
-kuu capabilities [--json]  what a program can reach from here; provisional
-kuu docs [PAGE [SECTION] | search TEXT ...]   the manual
-kuu version | --version | --help
+usage: kuu FILE [arg ...]        run a Lua program file
+       kuu - [arg ...]           run a program read from standard input
+       kuu -e SCRIPT [arg ...]   run an inline script
+       kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
+       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua
+       kuu list [--json]         those tasks
+       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
+       kuu capabilities [--json] what a program can reach from here, and what to read
+       kuu version | --version | --help
+kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.
 ```
+<!-- /usage -->
 
 ```lua
 global none
@@ -66,10 +71,11 @@ to the kuu call that replaces it. [docs/roadmap.md](docs/roadmap.md) records the
 [docs/shortcomings.md](docs/shortcomings.md) tracks problems observed during
 real repository adoption, with evidence and workarounds.
 
-Version 0.7 introduced the capabilities before the planned 1.0 freeze. See
-[upgrading to 0.7](docs/upgrading-0.7.md) for those changes since 0.6, the
-[cookbook](docs/cookbook.md) for ten complete programs, and the
-[stability statement](docs/stability.md) for the future compatibility promise.
+The [cookbook](docs/cookbook.md) holds fourteen complete programs, the last
+four shaped by the front door, and the [stability statement](docs/stability.md)
+the future compatibility promise; the upgrading pages, from
+[0.10](docs/upgrading-0.10.md) back to [0.6](docs/upgrading-0.6.md), say what
+each release changed and what a project must do.
 
 ## Building
 

@@ -52,6 +52,17 @@ return function(T)
     check("docs/capabilities.md's figures are what the executable says -- run tools/bundle_docs.lua --write",
       refreshed ~= nil and refreshed == page, c and (tostring(c.code) .. " " .. c.err) or "no result")
 
+    -- The usage is one string, kuu --help's, quoted between markers in three
+    -- places; each must be what the executable prints now.
+    local u = proc.run { rt.exe, generator, "--usage", timeout = "60s" }
+    local usage = u and u.code == 0 and u.out:gsub("\r\n", "\n"):gsub("%s+$", "") or nil
+    for _, name in ipairs { "docs/index.md", "README.md", "kuu.md" } do
+      local text = (fs.read(root .. "/" .. name) or ""):gsub("\r\n", "\n")
+      local block = text:match("<!%-%- usage %-%->.-<!%-%- /usage %-%->")
+      check(name .. "'s usage block is what kuu --help prints -- run tools/bundle_docs.lua --write",
+        usage ~= nil and block ~= nil and block == usage, (block or "no usage block") .. "\n--- vs ---\n" .. tostring(usage))
+    end
+
     -- Every page must appear. A page's own title is its own wording, so the
     -- count of separators is what is checked; the generator refuses outright
     -- when a page under docs/ is absent from its order.

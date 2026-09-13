@@ -210,7 +210,7 @@ print(table.concat(out, ","))
 ]]))
     r = T.kuu { probe }
     check("version_at_least compares components numerically, so 0.10 follows 0.9",
-      r.code == 0 and r.out == "true,true,true,false,false,false,false\n", T.describe(r))
+      r.code == 0 and r.out == "true,true,true,true,true,false,false\n", T.describe(r))
 
     local bad = T.kuu { "-e", 'global none global <const> require require("rt").version_at_least("0.9")' }
     check("a version component that is not a number raises RT badvalue",
