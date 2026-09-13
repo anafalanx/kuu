@@ -42,8 +42,10 @@ task "report" {
 | `timeout` | the child timeout when the call gives none; the default from `task.defaults` after that |
 | `reach` | what the tool touches — `read`, `write` and `net` lists; declared and shown, never enforced, since whether a tool can be confined is its own technology's business. [Confined tools](confined.md) says what a tool that confines itself must provide |
 
-A name the declaration cannot hold raises `TASK usage`; a value of the wrong
-shape raises `TASK badvalue`; a name declared twice, `TASK badvalue`.
+A name the declaration cannot hold raises `TASK usage`, and `kuu check`
+reports the same name without running, in whichever file the declaration
+stands; a value of the wrong shape raises `TASK badvalue`; a name declared
+twice, `TASK badvalue`.
 
 ## Calling one
 
@@ -71,7 +73,10 @@ streams through, and a non-zero exit is `TASK exit` with the code, as for any
 `task.exec` would run, for a program that wants the tool's output rather than
 its console — a wrapper module, say, that hands the table to `proc.run` and
 decodes what comes back. A tool the manifest does not declare is
-`TASK unknown` from either.
+`TASK unknown` from either. That `proc.run` is the program's own call: the
+child has the job and the timeout like any other, but only `task.exec`
+crosses the door, so neither the `kuu run --json` stream nor [the
+ledger](ledger.md) sees it.
 
 ## What the door does, and does not
 
@@ -126,7 +131,8 @@ the `yaml` declaration. No plugin system is needed, and none exists.
 ## What `check` and `capabilities` see
 
 `kuu check` reads the manifest as text — nothing runs — and takes each
-`task.tool` declaration as the literal it is. Then, in every file, a
+`task.tool` declaration as the literal it is, holding its attributes to the
+set above wherever it stands. Then, in every file, a
 `task.exec` or `task.command` written with a literal `tool = "name"` is held
 to it: a name the manifest does not declare is an error, with the nearest
 declared name suggested; an argument that reads as an option name — `-x`,

@@ -44,6 +44,7 @@ task "console" { desc = "asks for the console explicitly", run = function() retu
 task "big" { desc = "emits more than maxout", run = function() return task.exec { require("rt").exe, "-e", "io.write(string.rep('x', 200000))", maxout = "64K" } end }
 task "all" { desc = "aggregate", deps = { "test", "gen" } }
 task "all-fail" { hidden = true, deps = { "child", "gen" } }
+task "slow" { desc = "sleeps", run = function() require("sched").sleep("30s") end }
 task.default "build"
 ]])
 
@@ -72,7 +73,7 @@ task.default "build"
   r = T.kuu({ "list", "--json" }, { cwd = project })
   local listing = r.code == 0 and json.decode(r.out) or nil
   check("kuu list --json is an envelope with root, default, and tasks", listing and listing.ok == true and listing.result.root == project
-    and listing.result.default == "build" and #listing.result.tasks == 17, T.describe(r))
+    and listing.result.default == "build" and #listing.result.tasks == 18, T.describe(r))
   if listing then
     local build
     for _, t in ipairs(listing.result.tasks) do if t.name == "build" then build = t end end
@@ -170,6 +171,33 @@ task.default "build"
     ended ~= nil and ended.ok == false and ended.error.code == "exit" and ended.error.exit == 7, r.out)
   r = T.kuu({ "run", "--json", "--dry-run", "test" }, { cwd = project })
   check("--dry-run --json is one envelope, since nothing runs", r.code == 0 and #events_of(r.out) == 1, r.out)
+
+  -- The stream is pushed through the pipe as each line is written, which is
+  -- how a harness reads it; the C runtime would otherwise hold every line
+  -- until exit. The task sleeps far longer than the read waits, so the
+  -- line can only arrive because it was flushed.
+  do
+    local proc = require "proc"
+    local c <close> = proc.start { T.exe, "run", "--json", "slow", cwd = project, stream = true, timeout = "60s" }
+    local first = c and c:read("line", "10s")
+    local head = first and json.decode(first)
+    check("kuu run --json pushes each event through the pipe as it happens",
+      head ~= nil and head.event == "run" and head.task == "slow", tostring(first))
+    if c then c:kill() c:wait() end
+  end
+
+  -- A child the manifest starts at its top level runs under kuu list too;
+  -- it is no crossing of a run, so the stream begins with the run and
+  -- --dry-run stays one envelope.
+  local top = T.work .. "/project-top"
+  fs.remove(top, { recursive = true })
+  fs.mkdir(top)
+  fs.write(top .. "/manifest.lua", 'local task = require "task"\ntask.exec { "cmd.exe", "/c", "echo top-level" }\ntask "t" { desc = "nothing", run = function() end }\ntask.default "t"\n')
+  r = T.kuu({ "run", "--json", "--dry-run" }, { cwd = top })
+  check("a child the manifest starts at its top level is no event: --dry-run --json is one envelope", r.code == 0 and #events_of(r.out) == 1 and contains(r.err, "top-level"), T.describe(r))
+  r = T.kuu({ "run", "--json" }, { cwd = top })
+  local opening = events_of(r.out)[1]
+  check("and the stream still begins with the run", r.code == 0 and opening ~= nil and opening.event == "run", r.out)
 
   -- a project without a default, and broken declarations ----------------------------------
   local bare = T.work .. "/project-bare"

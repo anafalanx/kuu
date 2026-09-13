@@ -93,6 +93,34 @@ local function figures(here)
   }, "\n")
 end
 
+-- capabilities.md's example carries the executable's own figures -- the
+-- version, the page count, the module and name counts, the error domains
+-- -- and a hand wrote them wrong once already.  --write refreshes them
+-- from `kuu capabilities` run here, and --capabilities prints the page as
+-- --write leaves it, which the suite holds equal to the page.
+local function capabilities_page(here)
+  local text = fs.read(here .. "/docs/capabilities.md") or error("no docs/capabilities.md under " .. here)
+  local r = proc.run { rt.exe, "capabilities", cwd = here, timeout = "30s" }
+  if not (r and r.code == 0) then error("kuu capabilities did not run: " .. (r and r.err or "no result")) end
+  local out = r.out:gsub("\r\n", "\n")
+  local function figure(pattern, what)
+    return out:match(pattern) or error("kuu capabilities printed no " .. what)
+  end
+  local facts = {
+    { "(```text\nkuu )%S+ %(Lua [^)]+%)", figure("^kuu (%S+ %(Lua [^)]+%))", "version line") },
+    { "(\n  manual%s+)%d+ pages", figure("\n  manual%s+(%d+ pages)", "manual line") },
+    { "(\n  modules%s+)%d+, %d+ names", figure("\n  modules%s+(%d+, %d+ names)", "modules line") },
+    { "(\n  errors%s+)%d+ domains", figure("\n  errors%s+(%d+ domains)", "errors line") },
+  }
+  for _, fact in ipairs(facts) do
+    local pattern, value = fact[1], fact[2]
+    local n
+    text, n = text:gsub(pattern, function(prefix) return prefix .. value end, 1)
+    if n ~= 1 then error("docs/capabilities.md has no line matching " .. pattern) end
+  end
+  return text
+end
+
 -- GitHub's anchor for a heading: lower case, dots dropped, spaces to dashes.
 local function anchor(name)
   return (name:lower():gsub("%.", ""))
@@ -154,6 +182,10 @@ local function build(docs)
 end
 
 local here = root()
+if rt.args[1] == "--write" then
+  -- the page's figures first, so the bundle carries the refreshed page
+  assert(fs.write(here .. "/docs/capabilities.md", capabilities_page(here)))
+end
 local bundle = build(here .. "/docs")
 
 -- Every page must be in the order, or a new page would silently go missing.
@@ -181,9 +213,12 @@ if rt.args[1] == "--write" then
   end
   head = head:sub(1, open_at - 1) .. figures(here) .. head:sub(close_at + #FIGURES_CLOSE)
   assert(fs.write(path, rtrim(head) .. "\n\n" .. bundle .. "\n"))
-  io.write("kuu.md: Part I's figures and Part III regenerated from ", tostring(#ORDER), " pages\n")
+  io.write("kuu.md: Part I's figures and Part III regenerated from ", tostring(#ORDER),
+    " pages; docs/capabilities.md's figures refreshed\n")
 elseif rt.args[1] == "--figures" then
   io.write(figures(here), "\n")
+elseif rt.args[1] == "--capabilities" then
+  io.write(capabilities_page(here))
 else
   io.write(bundle, "\n")
 end

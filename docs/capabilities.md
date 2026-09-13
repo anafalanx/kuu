@@ -48,8 +48,8 @@ a different question, and an expensive one to answer by accident.
 kuu 0.9.0 (Lua 5.5.1) at C:\work\app\kuu.exe
 
   verbs      capabilities, check, list, run    kuu VERB --help
-  manual     42 pages                          kuu docs PAGE | search TEXT
-  modules    27, 176 names                     require "NAME"
+  manual     45 pages                          kuu docs PAGE | search TEXT
+  modules    27, 181 names                     require "NAME"
   errors     27 domains, codes in --json       err.is(e, DOMAIN, code)
 
 modules
@@ -68,6 +68,7 @@ project C:/work/app
              declared in the manifest; task.exec { tool = NAME } runs one
   ledger     child report exit, task weekly ok, verb run ok
              the last crossings, oldest first; .kuu/ledger holds ninety days of them
+             312 records, each hashing the one before it; the chain is intact
   modules    2 of the 4 .lua files below the root bound their exports
     lib.util      VERSION, slug, titlecase
     tools.report  render, write
@@ -113,6 +114,7 @@ type CapabilityReport = {
       default?: string; // the task kuu run alone runs
       note?: string; // why manifest.lua did not load; tasks is then empty
       ledger: { last: { at: number; kind: string; name: string; status: string; seconds: number }[]; // the last five crossings, oldest first
+                records: number; intact: boolean; broken?: string; // the chain, walked every time: how many, whether each hashes the one before it, and where not
                 unaccounted: number }; // changes no crossing accounts for; zero until something watches
       modules: { name: string; path: string; names: string[] }[];
       files: number; // .lua files below the root, whether or not they are modules

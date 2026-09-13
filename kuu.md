@@ -152,8 +152,8 @@ follows from it:
   tell the truth about the platform.
 
 <!-- figures -->
-By the numbers, 0.9.0 is 15,990 lines of authored host C, 4,787 lines of kuu's own
-Lua, a suite of 5,728 lines, and 6,072 lines of manual in 45 pages that ship
+By the numbers, 0.9.0 is 15,990 lines of authored host C, 4,912 lines of kuu's own
+Lua, a suite of 5,881 lines, and 6,101 lines of manual in 45 pages that ship
 inside the executable. The palette is 27 public modules and 172 functions,
 plus methods on handles. The suite's own count is what `make test` prints.
 These figures are produced by `tools/bundle_docs.lua` from the executable
@@ -1009,8 +1009,8 @@ a different question, and an expensive one to answer by accident.
 kuu 0.9.0 (Lua 5.5.1) at C:\work\app\kuu.exe
 
   verbs      capabilities, check, list, run    kuu VERB --help
-  manual     42 pages                          kuu docs PAGE | search TEXT
-  modules    27, 176 names                     require "NAME"
+  manual     45 pages                          kuu docs PAGE | search TEXT
+  modules    27, 181 names                     require "NAME"
   errors     27 domains, codes in --json       err.is(e, DOMAIN, code)
 
 modules
@@ -1029,6 +1029,7 @@ project C:/work/app
              declared in the manifest; task.exec { tool = NAME } runs one
   ledger     child report exit, task weekly ok, verb run ok
              the last crossings, oldest first; .kuu/ledger holds ninety days of them
+             312 records, each hashing the one before it; the chain is intact
   modules    2 of the 4 .lua files below the root bound their exports
     lib.util      VERSION, slug, titlecase
     tools.report  render, write
@@ -1074,6 +1075,7 @@ type CapabilityReport = {
       default?: string; // the task kuu run alone runs
       note?: string; // why manifest.lua did not load; tasks is then empty
       ledger: { last: { at: number; kind: string; name: string; status: string; seconds: number }[]; // the last five crossings, oldest first
+                records: number; intact: boolean; broken?: string; // the chain, walked every time: how many, whether each hashes the one before it, and where not
                 unaccounted: number }; // changes no crossing accounts for; zero until something watches
       modules: { name: string; path: string; names: string[] }[];
       files: number; // .lua files below the root, whether or not they are modules
@@ -1461,7 +1463,7 @@ task needs.
 {"v":1,"event":"task","name":"gen","state":"finished","ok":true,"seconds":0.01}
 {"v":1,"event":"task","name":"build","state":"started"}
 {"v":1,"event":"child","task":"build","state":"started","pid":4120,"argv":["C:/work/app/.tools/zig/zig.exe","build"]}
-{"v":1,"event":"child","task":"build","state":"finished","pid":4120,"status":"exit","code":0,"seconds":3.1}
+{"v":1,"event":"child","task":"build","state":"finished","pid":4120,"argv":["C:/work/app/.tools/zig/zig.exe","build"],"status":"exit","code":0,"seconds":3.1,"bytes":{"out":8192,"err":0}}
 {"v":1,"event":"task","name":"build","state":"finished","ok":true,"seconds":3.2}
 {"v":1,"event":"task","name":"test","state":"started"}
 {"v":1,"event":"task","name":"test","state":"finished","ok":true,"seconds":0.8}
@@ -1619,8 +1621,10 @@ task "report" {
 | `timeout` | the child timeout when the call gives none; the default from `task.defaults` after that |
 | `reach` | what the tool touches — `read`, `write` and `net` lists; declared and shown, never enforced, since whether a tool can be confined is its own technology's business. [Confined tools](#confined) says what a tool that confines itself must provide |
 
-A name the declaration cannot hold raises `TASK usage`; a value of the wrong
-shape raises `TASK badvalue`; a name declared twice, `TASK badvalue`.
+A name the declaration cannot hold raises `TASK usage`, and `kuu check`
+reports the same name without running, in whichever file the declaration
+stands; a value of the wrong shape raises `TASK badvalue`; a name declared
+twice, `TASK badvalue`.
 
 ### Calling one
 
@@ -1648,7 +1652,10 @@ streams through, and a non-zero exit is `TASK exit` with the code, as for any
 `task.exec` would run, for a program that wants the tool's output rather than
 its console — a wrapper module, say, that hands the table to `proc.run` and
 decodes what comes back. A tool the manifest does not declare is
-`TASK unknown` from either.
+`TASK unknown` from either. That `proc.run` is the program's own call: the
+child has the job and the timeout like any other, but only `task.exec`
+crosses the door, so neither the `kuu run --json` stream nor [the
+ledger](#ledger) sees it.
 
 ### What the door does, and does not
 
@@ -1703,7 +1710,8 @@ the `yaml` declaration. No plugin system is needed, and none exists.
 ### What `check` and `capabilities` see
 
 `kuu check` reads the manifest as text — nothing runs — and takes each
-`task.tool` declaration as the literal it is. Then, in every file, a
+`task.tool` declaration as the literal it is, holding its attributes to the
+set above wherever it stands. Then, in every file, a
 `task.exec` or `task.command` written with a literal `tool = "name"` is held
 to it: a name the manifest does not declare is an error, with the nearest
 declared name suggested; an argument that reads as an option name — `-x`,
@@ -1816,10 +1824,12 @@ chooses one owns the choice and the measurement.
 ## The ledger
 
 The door remembers what passes through it. Every `kuu run` writes one record
-per crossing — the run itself, each task, each child a task ran — to
-`.kuu/ledger/<day>.ndjson` under the project root, from what kuu observed
-and never from what a tool reported. It is the answer to "what ran here,
-against which edits, and how did it end", kept locally for ninety days.
+per crossing — the run itself, each task, each child a task ran through
+`task.exec` — to `.kuu/ledger/<day>.ndjson` under the project root, from
+what kuu observed and never from what a tool reported. It is the answer to
+"what ran here, against which edits, and how did it end", kept locally for
+ninety days. A child a task starts with `proc.run` itself, a `task.command`
+table included, is the program's own call and not a crossing.
 
 ```text
 .kuu/ledger/2026-09-13.ndjson      one record per line, the day in UTC
@@ -1835,7 +1845,7 @@ is the project's to commit.
 ```json
 {"v":1,"kuu":"0.10.0","root":"C:/work/app","git":{"ref":"refs/heads/main","head":"7c1a…"},
  "kind":"child","name":"report","tool":"report","task":"weekly","pid":4120,
- "argv":["C:/work/app/tools/report/report.exe","--out","build/r.json"],"cwd":null,
+ "argv":["C:/work/app/tools/report/report.exe","--out","build/r.json"],
  "at":1789300000.1,"seconds":3.2,"status":"exit","code":0,"bytes":{"out":8192,"err":0},
  "delta":{"added":0,"changed":2,"removed":0,"paths":[{"path":"src/report.lua","change":"changed","sha256":"…"}]},
  "prev":"5e9d…"}
@@ -1847,33 +1857,44 @@ is the project's to commit.
 | `kuu`, `root`, `git` | which runtime, which project, and where the repository stood: `git.head` and `git.ref` are read from `.git` itself, no `git.exe` assumed; absent without a repository |
 | `kind`, `name` | `verb` (`run`), `task` (its name), or `child` (the tool's name, else the program) |
 | `task`, `tool` | for a child, the task that ran it and the declaration it ran through, when it did |
-| `argv`, `cwd`, `pid` | what ran, from where, as what; `cwd` only when the call gave one |
+| `argv`, `cwd`, `pid` | what ran, from where, as what; `cwd` only for a child whose call gave one, and an absent field is absent, never `null` |
 | `at`, `seconds` | when it began, as an instant, and how long it took |
 | `status`, `code`, `bytes`, `error` | how it ended: a child's `exit`, `timeout`, `killed` or `limit` with its code, and the bytes on each stream when kuu relayed them (under `--json`; a child on the console has kuu's own streams and nothing is counted); a task's or the run's `ok` or `failed` with the error |
-| `delta` | on the first record of a run only: what changed under the root since the previous run, by size and mtime, skipping `.git`, `.tools`, `build`, `node_modules` and `.kuu`; the counts are complete, and up to forty paths are named with the content hash of what is there now. That says which edits this run ran against. An edit with no crossing after it is work in progress, not a bypass |
+| `delta` | on the first record of a run only: what changed under the root since the previous run, by size and mtime, skipping `.git`, `.tools`, `build`, `node_modules` and `.kuu`, and not entering a junction or symlink, as [`fs.dirs`](#fs) does not; the counts are complete, and up to forty paths are named, each with the content hash of what is there now when it can be read — a file another process holds open, or a name Windows would rewrite, is named without its `sha256`. That says which edits this run ran against. An edit with no crossing after it is work in progress, not a bypass |
 | `prev` | the SHA-256 of the record line before this one, across days |
 
 The chain is the point of `prev`. Nothing prevents editing a line — the file
 is text, the directory is yours — but an edited line no longer hashes to
-what the next record says, and `verify` finds it. Records older than ninety
-days are removed as new ones are written; the first record kept then names
-a line that is gone, and `verify` takes it as the anchor.
+what the next record says, and `kuu capabilities` finds it: every time it
+reads the ledger it walks the whole chain and says whether it is intact,
+or at which line it breaks. Records older than ninety days are removed as
+new ones are written; the first record kept then names a line that is gone,
+and the walk takes it as the anchor.
 
-Only the verbs that run project code write the ledger. `kuu list`, `kuu
-check` and `kuu capabilities` read; they are not crossings.
+Only `kuu run` writes the ledger, and only once its plan is checked and a
+task is about to run: `--dry-run`, an unknown task and a wrong argument
+write nothing, so the next real run's delta still names the edits it ran
+against. `kuu list` and `kuu capabilities` run `manifest.lua` to read its
+declarations and write nothing; `kuu check` runs nothing at all. A child
+the manifest starts at its top level is not a crossing of any run.
 
 ### Reading it
 
 `kuu capabilities` shows the last crossings, oldest first, and in its
 descriptor `project.ledger.last` carries `at`, `kind`, `name`, `status` and
-`seconds` for each, with `unaccounted`, the count of changes under the root
-that no crossing accounts for — zero until something watches the root, which
+`seconds` for each; `records` is how many the ledger holds, `intact` whether
+each hashes the one before it, with `broken` naming the file and line where
+that fails; and `unaccounted` is the count of changes under the root that
+no crossing accounts for — zero until something watches the root, which
 nothing does yet. The files are plain NDJSON: `fs.read` and `json.decode`
 one line at a time is the whole reader.
 
-A ledger that cannot be written — a read-only tree, a lock held too long —
-is said once on standard error, and the run goes on: the record is the
-door's, never a condition on the work.
+A ledger that cannot be opened or written — a read-only tree, a lock held
+too long, a record holding text that is not UTF-8 — is said once on
+standard error, and the run goes on: the record is the door's, never a
+condition on the work. A task's error message that is not UTF-8, which a
+child's output in the console code page often is, is recorded and reported
+with each such byte as U+FFFD.
 
 ---
 
@@ -1970,7 +1991,10 @@ nothing runs — and every `task.exec` or `task.command` written with a
 literal `tool = "name"`, in any file under the root, is held to it: a name
 the manifest does not declare is a `name` error with the nearest declared
 name suggested, and an argument that reads as an option name and is not in
-the declaration's `args` is an `option` error, as for a palette call. An
+the declaration's `args` is an `option` error, as for a palette call. The
+declaration itself is held to `task.tool`'s attributes, in the manifest or
+any other file and in either spelling: `outputt` is an `option` error with
+`output` suggested, found here rather than when the declaration runs. An
 option name is `-x`, `--long`, or a Windows switch `/x` — not `-` or `--`
 alone, not a negative number, not a path — and `--name=value` is judged by
 its name. The value an option takes is skipped: after `--out`, declared as a
@@ -5084,9 +5108,14 @@ add to it is a tool the project builds, called through the door.
      the suite, and `_palette` describes the options of every option-taking
      call, so "an option the call does not take" holds everywhere. A
      three-lens review with a skeptic per finding ran over the tool change
-     and confirmed twenty, all fixed with checks. What is left of the plan is
-     `kuu watch`, deferred by design until something runs unattended.
-   - The suite is at 1278 checks, with four new cases: `_palette` held to the
+     and confirmed twenty, all fixed with checks; a second over the ledger,
+     the stream and the figures confirmed twenty-two more — a task error
+     that is not UTF-8 crashing the run, a file name ending in a dot
+     stopping it at the door, a stream held in the pipe until exit, a
+     last-line pattern quadratic in the line — fixed the same way. What is
+     left of the plan is `kuu watch`, deferred by design until something
+     runs unattended.
+   - The suite gained four new cases: `_palette` held to the
      runtime, to the manual in both directions and to itself; `capabilities`;
      the fixer's invariant, which keeps every declaration outside
      `test/fixtures` correct so a name that falls out of use fails instead of
@@ -6175,7 +6204,7 @@ warnings needs the same default branch a reader of errors does.
 ### The door keeps a ledger
 
 `kuu run` writes one record per crossing — the run, each task, each child a
-task ran — to `.kuu/ledger/<day>.ndjson` under the project root, chained by
+task ran through `task.exec` — to `.kuu/ledger/<day>.ndjson` under the project root, chained by
 hash and kept ninety days, with the tree delta since the previous run on the
 first record. Nothing asks for it and nothing depends on it: a ledger that
 cannot be written is one line on standard error and the run goes on. Add

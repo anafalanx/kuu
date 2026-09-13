@@ -398,13 +398,15 @@ local function tool_findings(contracts, declared, context, report)
   report.tools = {}
   for _, t in ipairs(declared) do
     -- An attribute the declaration cannot hold, found here rather than when
-    -- the manifest runs: `task.tool "x" { ... }` is two calls, so the
-    -- description's option check never sees its table.
-    if context.is_manifest and t.node.keys then
+    -- the declaration runs, in whichever file it stands: `task.tool "x"
+    -- { ... }` is two calls, so the description's option check never sees
+    -- its table.  The direct spelling `task.tool("x", { ... })` reaches
+    -- that check, which says the same thing once.
+    if t.node.keys and not t.direct then
       for _, key in ipairs(t.node.keys) do
         if TOOL_ATTRIBUTES[key.name] == nil then
           local suggestion = nearest(key.name, TOOL_ATTRIBUTES)
-          local message = key.name .. " is not an attribute of task.tool"
+          local message = key.name .. " is not an option of task.tool"
           if suggestion then message = message .. "; did you mean " .. suggestion .. "?" end
           report.errors[#report.errors + 1] = { kind = "option", line = key.line, message = message,
             module = "task", name = key.name, suggestion = suggestion }
@@ -662,7 +664,7 @@ local function inspect(tokens, report, root, context)
           -- arguments is the same declaration.
           if original.module == "task" and original.member == "tool" and args[1] and type(args[1].literal) == "string" then
             if args[2] and args[2].keys then
-              tools[#tools + 1] = { name = args[1].literal, line = original.line, node = args[2] }
+              tools[#tools + 1] = { name = args[1].literal, line = original.line, node = args[2], direct = true }
             else
               result.declaring = { name = args[1].literal, line = original.line }
             end

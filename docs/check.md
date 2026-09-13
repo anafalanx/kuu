@@ -91,7 +91,10 @@ nothing runs — and every `task.exec` or `task.command` written with a
 literal `tool = "name"`, in any file under the root, is held to it: a name
 the manifest does not declare is a `name` error with the nearest declared
 name suggested, and an argument that reads as an option name and is not in
-the declaration's `args` is an `option` error, as for a palette call. An
+the declaration's `args` is an `option` error, as for a palette call. The
+declaration itself is held to `task.tool`'s attributes, in the manifest or
+any other file and in either spelling: `outputt` is an `option` error with
+`output` suggested, found here rather than when the declaration runs. An
 option name is `-x`, `--long`, or a Windows switch `/x` — not `-` or `--`
 alone, not a negative number, not a path — and `--name=value` is judged by
 its name. The value an option takes is skipped: after `--out`, declared as a

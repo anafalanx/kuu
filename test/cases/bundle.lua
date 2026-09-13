@@ -44,6 +44,14 @@ return function(T)
       produced ~= nil and block ~= nil and block == produced,
       (block or "no figures block") .. "\n--- vs ---\n" .. tostring(produced))
 
+    -- capabilities.md's example carries the executable's figures, refreshed
+    -- by --write and held here: a hand wrote them wrong once already.
+    local c = proc.run { rt.exe, generator, "--capabilities", timeout = "60s" }
+    local refreshed = c and c.code == 0 and c.out:gsub("\r\n", "\n") or nil
+    local page = (fs.read(root .. "/docs/capabilities.md") or ""):gsub("\r\n", "\n")
+    check("docs/capabilities.md's figures are what the executable says -- run tools/bundle_docs.lua --write",
+      refreshed ~= nil and refreshed == page, c and (tostring(c.code) .. " " .. c.err) or "no result")
+
     -- Every page must appear. A page's own title is its own wording, so the
     -- count of separators is what is checked; the generator refuses outright
     -- when a page under docs/ is absent from its order.

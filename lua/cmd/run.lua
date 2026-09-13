@@ -1,6 +1,6 @@
 -- run.lua -- `kuu run [--json] [TASK [arg ...]]`: a task from the nearest manifest.lua.
 global none
-global <const> require, ipairs, pairs, tostring, type, string, table, io, os,
+global <const> require, ipairs, pairs, tostring, type, pcall, string, table, utf8, io, os,
                rawset, _G
 
 local rt = require "rt"
@@ -39,45 +39,80 @@ if want_json then
   task.relay = io.stderr
 end
 
+-- What goes on the wire or into the ledger is UTF-8, because JSON is.  A
+-- task's error message is whatever the task raised, and on Windows that
+-- is often a child's output in the console code page; a byte that is not
+-- UTF-8 becomes U+FFFD rather than a raised encoding error in the door's
+-- own reporting.  Tables are cleaned in place, their shape kept.
+local function utf8ify(s)
+  local parts, from = {}, 1
+  while true do
+    local n, bad = utf8.len(s, from)
+    if n then parts[#parts + 1] = s:sub(from) break end
+    parts[#parts + 1] = s:sub(from, bad - 1) .. "\u{FFFD}"
+    from = bad + 1
+  end
+  return table.concat(parts)
+end
+local function clean(value)
+  if type(value) == "string" then return utf8ify(value) end
+  if type(value) == "table" then
+    for k, v in pairs(value) do value[k] = clean(v) end
+  end
+  return value
+end
+
 -- Under --json, standard output is a stream: one JSON object per line as
 -- things happen -- the run, each task, each child -- and the envelope as
 -- the last line, which is what the whole output used to be.  A reader that
 -- takes the last line sees what it always saw; one that watches sees the
--- run as it goes.
+-- run as it goes, which needs each line pushed through a pipe as it is
+-- written: the C runtime would otherwise hold them all until exit.
 local ran = json.array {}
 local current = nil
 local function emit(record)
   if not want_json then return end
   record.v = 1
-  io.stdout:write(json.encode(record), "\n")
+  io.stdout:write(json.encode(clean(record)), "\n")
+  io.stdout:flush()
 end
 
 -- The door remembers what passes through it: the run, each task, each
 -- child, written to .kuu/ledger under the root as it happens.  A ledger
--- that cannot be written is said once on standard error and the run goes
--- on; the record is the door's, never a condition on the work.
+-- that cannot be opened or written is said once on standard error and the
+-- run goes on; the record is the door's, never a condition on the work.
 local ledger = require "_ledger"
 local book = nil
 local run_began = sched.clock()
 local run_at = require("time").now()
 local function crossing(fields)
   if book == nil then return end
-  local ok, e = ledger.record(book, fields)
+  local ok, e = ledger.record(book, clean(fields))
   if not ok then
     io.stderr:write("kuu: warning: the ledger was not written: ", tostring(e), "\n")
     book = nil
   end
 end
-task.observer = function(record)
-  record.task = current
-  if record.argv then record.argv = json.array(record.argv) end
-  if record.state == "finished" then
-    crossing { kind = "child", name = record.tool or record.argv[1], task = current, tool = record.tool,
-      argv = record.argv, cwd = record.cwd, pid = record.pid, at = run_at + (record.started - run_began),
-      seconds = record.seconds, status = record.status, code = record.code, bytes = record.bytes }
+-- Installed once the plan is checked and something is about to run: a
+-- child the manifest starts at its top level is not a crossing of this
+-- run, and a run that runs nothing -- --dry-run, an unknown task, a wrong
+-- argument -- writes nothing, so the next real run's delta still names
+-- the edits it ran against.
+local function open_the_door(root)
+  local opened, result = pcall(ledger.open, root)
+  if opened then book = result
+  else io.stderr:write("kuu: warning: the ledger was not opened: ", tostring(result), "\n") end
+  task.observer = function(record)
+    record.task = current
+    if record.argv then record.argv = json.array(record.argv) end
+    if record.state == "finished" then
+      crossing { kind = "child", name = record.tool or record.argv[1], task = current, tool = record.tool,
+        argv = record.argv, cwd = record.cwd, pid = record.pid, at = run_at + (record.started - run_began),
+        seconds = record.seconds, status = record.status, code = record.code, bytes = record.bytes }
+    end
+    record.started, record.cwd = nil, nil
+    emit(record)
   end
-  record.started, record.cwd, record.tool = nil, nil, record.tool
-  emit(record)
 end
 
 local function exit_code_for(e)
@@ -90,7 +125,7 @@ local function finish(ok, e, extra)
   if book ~= nil then
     local argv = json.array {}
     for _, a in ipairs(rt.args) do argv[#argv + 1] = a end
-    crossing { kind = "verb", name = "run", task = extra and extra.task or nil, argv = argv, cwd = book.root,
+    crossing { kind = "verb", name = "run", task = extra and extra.task or nil, argv = argv,
       at = run_at, seconds = sched.clock() - run_began, status = ok and "ok" or "failed",
       code = ok and 0 or exit_code_for(e),
       error = (not ok) and { domain = e.domain, code = e.code, message = e.message } or nil }
@@ -101,7 +136,8 @@ local function finish(ok, e, extra)
     local envelope = { ok = ok, result = { tasks = ran } }
     if extra ~= nil then for k, v in pairs(extra) do envelope.result[k] = v end end
     if not ok then envelope.error = { domain = e.domain, code = e.code, message = e.message, exit = e.exit } end
-    io.stdout:write(json.encode(envelope), "\n")
+    io.stdout:write(json.encode(clean(envelope)), "\n")
+    io.stdout:flush()
   elseif not ok then
     io.stderr:write("kuu: ", tostring(e), "\n")
   end
@@ -115,7 +151,6 @@ if not entered then finish(false, e2) end
 local loaded, e3 = project.load_tasks(root)
 if not loaded then finish(false, e3) end
 if e3 then io.stderr:write("kuu: warning: ", e3, "\n") end -- a tasks.lua read as the manifest
-book = ledger.open(root)
 
 if name == nil then
   name = task.default_task()
@@ -158,6 +193,7 @@ if dry_run then
   os.exit(0)
 end
 
+open_the_door(root)
 local names = json.array {}
 for _, entry in ipairs(plan) do names[#names + 1] = entry.name end
 emit { event = "run", root = root, task = name, plan = names }

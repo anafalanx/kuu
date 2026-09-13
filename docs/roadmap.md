@@ -370,9 +370,14 @@ add to it is a tool the project builds, called through the door.
      the suite, and `_palette` describes the options of every option-taking
      call, so "an option the call does not take" holds everywhere. A
      three-lens review with a skeptic per finding ran over the tool change
-     and confirmed twenty, all fixed with checks. What is left of the plan is
-     `kuu watch`, deferred by design until something runs unattended.
-   - The suite is at 1278 checks, with four new cases: `_palette` held to the
+     and confirmed twenty, all fixed with checks; a second over the ledger,
+     the stream and the figures confirmed twenty-two more — a task error
+     that is not UTF-8 crashing the run, a file name ending in a dot
+     stopping it at the door, a stream held in the pipe until exit, a
+     last-line pattern quadratic in the line — fixed the same way. What is
+     left of the plan is `kuu watch`, deferred by design until something
+     runs unattended.
+   - The suite gained four new cases: `_palette` held to the
      runtime, to the manual in both directions and to itself; `capabilities`;
      the fixer's invariant, which keeps every declaration outside
      `test/fixtures` correct so a name that falls out of use fails instead of

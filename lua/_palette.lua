@@ -330,9 +330,11 @@ modules = {
   },
 
   task = {
+    -- exec runs the child on the console or relays it: it takes no stdin,
+    -- and `stream` is its own to set, so neither is an option of it.
     exec     = { options_at = 1,
-                 options = { tool = "string?", cwd = "string?", env = "table?", timeout = "Duration?", stdin = "string?",
-                             maxout = "Size?", inherit = "boolean?", stream = "boolean?", limits = "Limits?" },
+                 options = { tool = "string?", cwd = "string?", env = "table?", timeout = "Duration?",
+                             maxout = "Size?", inherit = "boolean?", limits = "Limits?" },
                  result = "boolean", errors = { "failed", "exit", "unknown", "badvalue" } },
     command  = { options_at = 1,
                  options = { tool = "string?", cwd = "string?", env = "table?", timeout = "Duration?", stdin = "string?",

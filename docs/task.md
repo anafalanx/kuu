@@ -165,7 +165,7 @@ task needs.
 {"v":1,"event":"task","name":"gen","state":"finished","ok":true,"seconds":0.01}
 {"v":1,"event":"task","name":"build","state":"started"}
 {"v":1,"event":"child","task":"build","state":"started","pid":4120,"argv":["C:/work/app/.tools/zig/zig.exe","build"]}
-{"v":1,"event":"child","task":"build","state":"finished","pid":4120,"status":"exit","code":0,"seconds":3.1}
+{"v":1,"event":"child","task":"build","state":"finished","pid":4120,"argv":["C:/work/app/.tools/zig/zig.exe","build"],"status":"exit","code":0,"seconds":3.1,"bytes":{"out":8192,"err":0}}
 {"v":1,"event":"task","name":"build","state":"finished","ok":true,"seconds":3.2}
 {"v":1,"event":"task","name":"test","state":"started"}
 {"v":1,"event":"task","name":"test","state":"finished","ok":true,"seconds":0.8}

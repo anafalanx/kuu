@@ -117,14 +117,19 @@ if root then
     here.note = "manifest.lua did not load: " .. tostring(why)
   end
 
-  -- The door's memory: the last crossings, and the count of changes no
-  -- crossing accounts for, which is zero until something watches.
+  -- The door's memory: the last crossings, the chain held to itself --
+  -- every record hashes the line before it, and this is where an edited
+  -- line is found -- and the count of changes no crossing accounts for,
+  -- which is zero until something watches.
   local ledger = require "_ledger"
-  here.ledger = { last = json.array {}, unaccounted = 0 }
+  here.ledger = { last = json.array {}, records = 0, intact = true, unaccounted = 0 }
   for _, record in ipairs(ledger.tail(root, 5)) do
     here.ledger.last[#here.ledger.last + 1] = { at = record.at, kind = record.kind, name = record.name,
       status = record.status, seconds = record.seconds }
   end
+  local sound, detail = ledger.verify(root)
+  if sound then here.ledger.records = detail
+  else here.ledger.intact, here.ledger.broken = false, detail.message end
 
   local found = check.modules(root)
   here.files = found.files
@@ -237,6 +242,11 @@ else
     end
     listing(LABEL, 2, "ledger", shown)
     io.write(string.rep(" ", LABEL), "the last crossings, oldest first; .kuu/ledger holds ninety days of them\n")
+    if here.ledger.intact then
+      io.write(string.rep(" ", LABEL), string.format("%d records, each hashing the one before it; the chain is intact\n", here.ledger.records))
+    else
+      io.write(string.rep(" ", LABEL), "the chain is broken: ", here.ledger.broken, "\n")
+    end
   else
     io.write(string.format("  %-" .. (LABEL - 2) .. "snothing has crossed the door yet; kuu run writes .kuu/ledger\n", "ledger"))
   end

@@ -268,9 +268,12 @@ task.relay = nil
 
 -- task.observer: nil, or a function given one record per crossing the door
 -- sees -- a child started, a child finished -- with `event`, `state`, `pid`,
--- and for a start the argv, for a finish `status`, `code` and `seconds`.
--- `kuu run --json` sets it to write each as a line of its stream; it is
--- called only on the relay path, which is the one that path takes.
+-- `argv`, `tool` and `cwd`, and for a finish `status`, `code`, `seconds`,
+-- `started` (the clock at launch) and, on the relay path, `bytes`.  `kuu
+-- run` sets it: the relay path reports both events, the console path the
+-- finish only, since a child on kuu's own console starts and ends in one
+-- call.  A child a task runs through proc.run itself is the program's own
+-- and is not observed.
 task.observer = nil
 
 local function observe(record)

@@ -86,7 +86,7 @@ warnings needs the same default branch a reader of errors does.
 ## The door keeps a ledger
 
 `kuu run` writes one record per crossing — the run, each task, each child a
-task ran — to `.kuu/ledger/<day>.ndjson` under the project root, chained by
+task ran through `task.exec` — to `.kuu/ledger/<day>.ndjson` under the project root, chained by
 hash and kept ninety days, with the tree delta since the previous run on the
 first record. Nothing asks for it and nothing depends on it: a ledger that
 cannot be written is one line on standard error and the run goes on. Add

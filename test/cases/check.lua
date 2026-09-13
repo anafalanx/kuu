@@ -470,15 +470,30 @@ other.custom()
       local found = {}
       for _, e in ipairs(described and described.result.files[1].errors or {}) do found[#found + 1] = e.kind .. ":" .. e.name .. ">" .. tostring(e.suggestion) end
       table.sort(found)
-      check("an option a described call does not take is found in hash, time and csv alike",
-        #found == 3 and found[1] == "option:mnth>month" and found[2] == "option:raww>raw" and found[3] == "option:separater>separator",
+      check("an option a described call does not take is found in hash, time and csv alike, and a declaration's attribute in any file",
+        table.concat(found, " ") == "option:mnth>month option:outputt>output option:raww>raw option:separater>separator",
         table.concat(found, " "))
-      put("manifest.lua", 'global none\nglobal <const> require\nlocal task = require "task"\ntask.tool "declared" { exe = "x.exe", outputt = "lines" }\n')
+      put("manifest.lua", 'global none\nglobal <const> require\nlocal task = require "task"\ntask.tool "declared" { exe = "x.exe", outputt = "lines" }\ntask.tool("direct", { exe = "y.exe", outputt = "lines" })\n')
       r = T.kuu({ "check", "--json", "manifest.lua" }, { cwd = dir })
       local declared = json.decode(r.out)
-      local attribute = declared and declared.result.files[1].errors[1]
-      check("an attribute a tool declaration cannot hold is an option finding in the manifest, with the nearest attribute",
-        attribute ~= nil and attribute.kind == "option" and attribute.name == "outputt" and attribute.suggestion == "output", r.out:sub(1, 300))
+      local attributes = {}
+      for _, e in ipairs(declared and declared.result.files[1].errors or {}) do
+        attributes[#attributes + 1] = e.kind .. ":" .. e.name .. ">" .. tostring(e.suggestion) .. "@" .. e.line
+      end
+      table.sort(attributes)
+      check("an attribute a tool declaration cannot hold is one option finding per declaration, in either spelling, with the nearest attribute",
+        table.concat(attributes, " ") == "option:outputt>output@4 option:outputt>output@5", r.out:sub(1, 400))
+      -- the same, in a file that is not the manifest, and an option
+      -- task.exec does not take, since it neither feeds nor streams
+      put("elsewhere.lua", 'global none\nglobal <const> require\nlocal task = require "task"\ntask.tool "x2" { exe = "a.exe", outputt = "lines" }\n'
+        .. 'task.tool("y2", { exe = "b.exe", outputt = "lines" })\ntask.exec { "cmd.exe", "/c", "dir", stdin = "", stream = true }\n')
+      r = T.kuu({ "check", "--json", "elsewhere.lua" }, { cwd = dir })
+      local elsewhere = json.decode(r.out)
+      local names = {}
+      for _, e in ipairs(elsewhere and elsewhere.result.files[1].errors or {}) do names[#names + 1] = e.kind .. ":" .. e.name .. "@" .. e.line end
+      table.sort(names)
+      check("outside the manifest both spellings are judged alike, and task.exec's stdin and stream are found",
+        table.concat(names, " ") == "option:outputt@4 option:outputt@5 option:stdin@6 option:stream@6", table.concat(names, " "))
 
       -- The root however it is spelled: the manifest is recognised as itself
       -- under backslashes, a trailing slash, and a `..`, where a text compare
