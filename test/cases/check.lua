@@ -14,7 +14,7 @@ return function(T)
   fs.mkdir(project .. "/lib")
   fs.mkdir(project .. "/build")
   fs.mkdir(project .. "/sub")
-  fs.write(project .. "/tasks.lua", 'global none\nglobal <const> require\nlocal task = require "task"\ntask "x" { run = function() end }\n')
+  fs.write(project .. "/manifest.lua", 'global none\nglobal <const> require\nlocal task = require "task"\ntask "x" { run = function() end }\n')
   fs.write(project .. "/good.lua", 'global none\nglobal <const> require\nlocal fs = require "fs"\nlocal helper = require("lib.helper")\nreturn helper\n')
   fs.write(project .. "/lib/helper.lua", "return { word = 'helped' }\n")
   fs.write(project .. "/bad.lua", "local x = = 1\n")
@@ -269,7 +269,7 @@ other.custom()
         fs.write(path, text)
         return path
       end
-      put("tasks.lua", 'global none\nlocal task = require "task"\ntask "x" { run = function() end }\n')
+      put("manifest.lua", 'global none\nlocal task = require "task"\ntask "x" { run = function() end }\n')
       put("tools/project.lua",
         'global none\nlocal M = {}\nfunction M.setup() end\nfunction M.capture(argv) return argv end\nM.root = "."\nreturn M\n')
 

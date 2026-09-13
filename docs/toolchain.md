@@ -237,7 +237,7 @@ is not on `PATH`.
 
 A project takes a release by copying `kuu.exe` directly into its root, after
 checking the download against the sidecar, and states the version it expects
-at the top of its `tasks.lua`.
+at the top of its `manifest.lua`.
 
 Before publishing a release:
 

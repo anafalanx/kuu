@@ -8,7 +8,7 @@ kuu check [--json] [--fix [--adopt]] [PATH ...]
 ```
 
 Without paths it checks every `.lua` file below the nearest project (the
-directory holding `tasks.lua`), or below the current directory when there is
+directory holding `manifest.lua`), or below the current directory when there is
 no project, skipping `.git`, `.tools`, `build`, and `node_modules`. Paths may
 be files or directories; `require` names always resolve against the project
 root.

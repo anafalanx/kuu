@@ -1,4 +1,4 @@
--- list.lua -- `kuu list [--json]`: the tasks of the nearest tasks.lua.
+-- list.lua -- `kuu list [--json]`: the tasks of the nearest manifest.lua.
 global none
 global <const> require, ipairs, tostring, string, io, os, table
 
@@ -28,6 +28,7 @@ local entered, e4 = project.enter(root)
 if not entered then fail(e4) end
 local loaded, e5 = project.load_tasks(root)
 if not loaded then fail(e5) end
+if e5 then io.stderr:write("kuu: warning: ", e5, "\n") end -- a tasks.lua read as the manifest
 
 local tasks = json.array {}
 for _, t in ipairs(task.all()) do

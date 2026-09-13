@@ -65,7 +65,7 @@ guarantee. Such changes require a new major version and a migration note.
 
 ## A minimum-version guard
 
-A `tasks.lua` should ask for the oldest release whose features it uses,
+A `manifest.lua` should ask for the oldest release whose features it uses,
 rather than compare the runtime version for equality. Since 0.9.0 a version
 has three natural-number components, Major.Minor.Patch, and
 `rt.version_at_least` compares them, so a project never parses the version
@@ -97,5 +97,5 @@ when updating, and read the upgrading notes for every intervening 0.x
 release or a future major release.
 
 For the changes introduced with this statement, see
-[Upgrading to 0.7](upgrading-0.7.md). For a complete `tasks.lua`, see
+[Upgrading to 0.7](upgrading-0.7.md). For a complete `manifest.lua`, see
 [Adopting kuu](adopting.md).

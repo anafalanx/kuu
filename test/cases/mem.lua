@@ -68,7 +68,7 @@ return function(T)
   -- the default place: .kuu/memory.json under the project, else under the require root
   local project = work .. "/proj/deep"
   fs.mkdir(project)
-  fs.write(work .. "/proj/tasks.lua", "")
+  fs.write(work .. "/proj/manifest.lua", "")
   r = T.kuu({ "-e", "io.write(require('mem').path())" }, { cwd = project })
   check("without open, the memory lives under the nearest project", r.code == 0 and r.out == work .. "/proj/.kuu/memory.json", T.describe(r))
   r = T.kuu({ "-e", "io.write(require('mem').path())" }, { cwd = work })

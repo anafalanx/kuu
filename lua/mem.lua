@@ -11,7 +11,7 @@
 --   mem.path()                                              -- where it lives
 --   mem.open("build/state.json")                            -- somewhere else instead
 --
--- The file is .kuu/memory.json under the project root, the nearest tasks.lua
+-- The file is .kuu/memory.json under the project root, the nearest manifest.lua
 -- upward from the current directory, or under the directory `require`
 -- searches when there is no project.  Every read goes to the file, and every
 -- set holds a machine-wide lock named after the file while it reads, merges,

@@ -31,7 +31,7 @@ kuu FILE [arg ...]        run a Lua program file
 kuu - [arg ...]           run a program read from standard input
 kuu -e SCRIPT [arg ...]   run an inline script
 kuu docs [PAGE | search TEXT]   this manual, from inside the executable
-kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest tasks.lua      (see Tasks)
+kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua      (see Tasks)
 kuu list [--json]         those tasks
 kuu check [--json] [PATH ...]   syntax, globals, requires, palette names, without running  (see check)
 kuu capabilities [--json] what a program can reach from here                      (see capabilities)
@@ -82,7 +82,7 @@ hashing, and every other organ are behind `require`.
 | [`log`](log.md) | structured lines that never interrupt the work |
 | [`cli`](cli.md) | a program's arguments, declared once |
 | [`err`](err.md) | the one error shape and how to test it |
-| [`task`](task.md) | a repository's tasks and default child timeout, declared once in `tasks.lua`, run by `kuu run` |
+| [`task`](task.md) | a repository's tasks and default child timeout, declared once in `manifest.lua`, run by `kuu run` |
 | [`check`](check.md) | syntax, global declarations, require resolution, and palette names without running project code |
 | [`archive`](archive.md) | zip and tar archives through the tar.exe Windows ships |
 | [`sys`](sys.md) | facts about this machine and process, embedded Authenticode signatures |
@@ -144,7 +144,7 @@ Failures kuu detects before the program runs are spelled
 - [Pitfalls](pitfalls.md): what differs from the Lua an agent already knows,
   and the Windows facts kuu refuses to hide.
 - [Adopting kuu](adopting.md): a repository gets its own kuu.exe, a
-  tasks.lua, and prerequisites by hash; nothing on the machine.
+  manifest.lua, and prerequisites by hash; nothing on the machine.
 - [capabilities](capabilities.md): what a program can reach from here -- the
   verbs, the palette, and this project's tasks and modules, in one command;
   provisional.
@@ -157,7 +157,7 @@ Failures kuu detects before the program runs are spelled
   [pty](pty.md), [sync](sync.md),
   [mem](mem.md), [archive](archive.md), [log](log.md), [cli](cli.md),
   [err](err.md): the modules.
-- [Tasks](task.md): `tasks.lua`, `kuu run`, `kuu list`, and the exit codes.
+- [Tasks](task.md): `manifest.lua`, `kuu run`, `kuu list`, and the exit codes.
 - [check](check.md): what `kuu check` finds without running a file.
 - [Toolchain](toolchain.md): what kuu's own `.tools` holds and where it comes
   from.

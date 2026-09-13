@@ -47,7 +47,7 @@ static void usage(FILE *to)
           "       kuu - [arg ...]           run a program read from standard input\n"
           "       kuu -e SCRIPT [arg ...]   run an inline script\n"
           "       kuu docs [PAGE | search TEXT]   the manual, from inside the executable\n"
-          "       kuu run [TASK [arg ...]]  run a task from the nearest tasks.lua\n"
+          "       kuu run [TASK [arg ...]]  run a task from the nearest manifest.lua\n"
           "       kuu list [--json]         list those tasks\n"
           "       kuu check [--json] [PATH ...]   parse, global declarations, requires\n"
           "       kuu capabilities [--json] the palette, the verbs, and this project\n"

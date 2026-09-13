@@ -132,7 +132,7 @@ return function(T)
     fs.mkdir(fs.dirname(path))
     fs.write(path, text)
   end
-  put("tasks.lua", 'global none\nglobal <const> require\nlocal task = require "task"\ntask "x" { run = function() end }\n')
+  put("manifest.lua", 'global none\nglobal <const> require\nlocal task = require "task"\ntask "x" { run = function() end }\n')
 
   local COUNT = 48
   local plan = {}

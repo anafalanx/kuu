@@ -1,13 +1,13 @@
 # Adopting kuu in a repository
 
 How a repository comes to be driven by kuu: one executable of its own, one
-`tasks.lua`, and a list of prerequisites it fetches itself. Nothing is
+`manifest.lua`, and a list of prerequisites it fetches itself. Nothing is
 installed on the machine, nothing is shared between repositories, and
 nothing is looked up on `PATH`.
 
 ```text
 repo/
-  tasks.lua          the tasks, and the prerequisites as url and sha256
+  manifest.lua          the tasks, and the prerequisites as url and sha256
   kuu.exe            this project's own runtime; git ignores it
   .tools/            downloads and unpacked tools; git ignores it
   .kuu/              kuu's notebook for this repository (mem); git ignores it
@@ -37,9 +37,9 @@ Add to `.gitignore`:
 /build/
 ```
 
-## 2. Write tasks.lua
+## 2. Write manifest.lua
 
-`tasks.lua` sits at the repository root. It states the minimum kuu version
+`manifest.lua` sits at the repository root. It states the minimum kuu version
 it needs, lists the prerequisites, and declares the tasks. [Tasks](task.md)
 has the full contract; this is the shape:
 
@@ -132,7 +132,7 @@ Three habits make this work:
 .\kuu.exe run --dry-run test   the plan: what would run, in order, running nothing
 .\kuu.exe run --json test      the outcome as one JSON object on stdout
 .\kuu.exe list                 every task with its description and arguments
-.\kuu.exe check                tasks.lua and the repository's Lua, without running anything
+.\kuu.exe check                manifest.lua and the repository's Lua, without running anything
 ```
 
 Exit codes: 0 when the task returned, a child's nonzero code when `task.exec`

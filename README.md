@@ -20,7 +20,7 @@ the machine, `mem` remembers between runs, `sync` takes turns; `json`, `csv`,
 services, `evt` reads event logs, `sys.signature` checks installers, and the
 provisional `pty` drives interactive console prompts. `sched.deadline`
 bounds a sequence of waits, and `check` catches misspelled palette exports.
-A repository declares its tasks once in `tasks.lua` and runs them with
+A repository declares its tasks once in `manifest.lua` and runs them with
 `kuu run`, and fetches its own prerequisites by url and hash with `http` and
 `archive`. The manual rides inside the executable: `kuu docs`. kuu runs on
 Windows 11 23H2 and later, and Windows Server 2025 and later, only.
@@ -37,7 +37,7 @@ list until a project has driven them. See
 kuu FILE [arg ...]        run a Lua program file
 kuu - [arg ...]           run a program read from standard input
 kuu -e SCRIPT [arg ...]   run an inline script
-kuu run [--json] [--dry-run] [TASK [arg ...]]  a task from the nearest tasks.lua
+kuu run [--json] [--dry-run] [TASK [arg ...]]  a task from the nearest manifest.lua
 kuu list [--json]         those tasks
 kuu check [--json] [PATH ...]  syntax, globals, requires, palette names, without running
 kuu capabilities [--json]  what a program can reach from here; provisional

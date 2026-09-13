@@ -1,7 +1,7 @@
 -- check.lua -- what kuu can tell about Lua files before running them.
 --
 --   local check = require "check"
---   local r = check.file("tasks.lua", root)     -- { path, errors, warnings, requires }
+--   local r = check.file("manifest.lua", root)     -- { path, errors, warnings, requires }
 --   local t = check.tree(dir, root)             -- every *.lua below dir: { root, reports }
 --
 -- For each file: it is parsed by Lua 5.5's own compiler, text only, so a

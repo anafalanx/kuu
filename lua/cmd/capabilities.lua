@@ -81,15 +81,15 @@ table.sort(sets, function(a, b) return a.name < b.name end)
 
 -- ---- what this project is ------------------------------------------------
 
--- Absent when there is no tasks.lua at or above here. Without a project there
+-- Absent when there is no manifest.lua at or above here. Without a project there
 -- is no root to read modules under, and walking whatever directory kuu
 -- happens to have been started in is not the same question.
 local here = nil
-local root = project.find()
+local root, file = project.find()
 if root then
-  here = { root = root, tasks = json.array {}, modules = json.array {}, files = 0 }
+  here = { root = root, file = file, tasks = json.array {}, modules = json.array {}, files = 0 }
 
-  -- Tasks are declared by running tasks.lua, which is project code; `kuu
+  -- Tasks are declared by running manifest.lua, which is project code; `kuu
   -- list` and `kuu run` already do that. A failure costs the task list and
   -- nothing else, so it is reported here rather than raised.
   local loaded, why = false, nil
@@ -105,7 +105,7 @@ if root then
     end
     here.default = task.default_task()
   else
-    here.note = "tasks.lua did not load: " .. tostring(why)
+    here.note = "manifest.lua did not load: " .. tostring(why)
   end
 
   local found = check.modules(root)
@@ -187,10 +187,13 @@ if #modules > 0 then
 end
 
 if here == nil then
-  io.write("\nno project here: kuu found no tasks.lua in this directory or above,\n",
+  io.write("\nno project here: kuu found no manifest.lua in this directory or above,\n",
     "so there are no tasks to run and no root to read project modules under.\n")
 else
   io.write("\nproject ", here.root, "\n")
+  if here.file == project.LEGACY then
+    io.write("  ", project.LEGACY_NOTE, "\n")
+  end
   if here.note then
     io.write("  ", here.note, "\n")
   else

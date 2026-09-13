@@ -1,4 +1,4 @@
--- task.lua -- a repository's tasks, declared once in its tasks.lua.
+-- task.lua -- a repository's tasks, declared once in its manifest.lua.
 --
 --   local task = require "task"
 --   task "build" {
@@ -15,7 +15,7 @@
 -- `kuu list` shows them.  A task fails by raising or by returning nil, err.
 -- The runner exits with the child's code when `task.exec` failed, 2 for a
 -- usage mistake, 1 for any other failure, 0 when every task returned.  The
--- registry is the module itself, so tasks.lua and the runner share it.
+-- registry is the module itself, so manifest.lua and the runner share it.
 global none
 global <const> require, ipairs, pairs, tostring, type, error, setmetatable,
                pcall

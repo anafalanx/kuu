@@ -1,4 +1,4 @@
--- run.lua -- `kuu run [--json] [TASK [arg ...]]`: a task from the nearest tasks.lua.
+-- run.lua -- `kuu run [--json] [TASK [arg ...]]`: a task from the nearest manifest.lua.
 global none
 global <const> require, ipairs, pairs, tostring, type, string, table, io, os,
                rawset, _G
@@ -65,11 +65,12 @@ local entered, e2 = project.enter(root)
 if not entered then finish(false, e2) end
 local loaded, e3 = project.load_tasks(root)
 if not loaded then finish(false, e3) end
+if e3 then io.stderr:write("kuu: warning: ", e3, "\n") end -- a tasks.lua read as the manifest
 
 if name == nil then
   name = task.default_task()
   if name == nil then
-    local lines = { "no task named and tasks.lua declares no default; the tasks in " .. root .. ":" }
+    local lines = { "no task named and manifest.lua declares no default; the tasks in " .. root .. ":" }
     for _, t in ipairs(task.all()) do
       if not t.hidden then lines[#lines + 1] = string.format("  %-20s %s", t.name, t.desc) end
     end

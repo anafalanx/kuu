@@ -31,14 +31,14 @@ Nothing is reported that kuu cannot know.
   over-approximates, and a module whose exports the text does not bound is
   counted rather than named. A program is not a module, and from the text
   alone the two do not differ.
-- **Tasks are declared by running `tasks.lua`**, which is project code. `kuu
-  run` and `kuu list` already do that, and this does no more. A `tasks.lua`
+- **Tasks are declared by running `manifest.lua`**, which is project code. `kuu
+  run` and `kuu list` already do that, and this does no more. A `manifest.lua`
   that does not load costs the task list and nothing else: the reason is
   reported and the rest of the descriptor still stands.
 - **What a task installs under `.tools` is not reported at all.** kuu keeps no
   manifest of it, and a guess about a toolchain is worse than saying nothing.
 
-Without a `tasks.lua` at or above the current directory there is no project
+Without a `manifest.lua` at or above the current directory there is no project
 half. kuu does not walk whatever directory it was started in instead: that is
 a different question, and an expensive one to answer by accident.
 
@@ -97,10 +97,11 @@ type CapabilityReport = {
     errors: { domain: string; codes: string[] }[]; // err.is(e, DOMAIN, code)
     sets: { name: string; values: string[] }[]; // the closed sets, in their own order
     project?: {
-      root: string; // absolute path of the directory holding tasks.lua
+      root: string; // absolute path of the directory holding manifest.lua
+      file: string; // "manifest.lua", or "tasks.lua" from a project that has not renamed yet
       tasks: { name: string; desc: string }[]; // hidden tasks omitted
       default?: string; // the task kuu run alone runs
-      note?: string; // why tasks.lua did not load; tasks is then empty
+      note?: string; // why manifest.lua did not load; tasks is then empty
       modules: { name: string; path: string; names: string[] }[];
       files: number; // .lua files below the root, whether or not they are modules
     };
@@ -129,5 +130,5 @@ it reads.
 
 The command has no error code of its own. Invalid command arguments use
 `CLI usage` and exit 2; `--help` prints usage and exits 0. Everything else
-exits 0, including a project whose `tasks.lua` does not load, because a
+exits 0, including a project whose `manifest.lua` does not load, because a
 descriptor that fails is worse than one that says what it could not find out.

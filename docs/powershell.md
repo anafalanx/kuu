@@ -108,7 +108,7 @@ inspection calls can be synchronous, as their manual pages describe.
 | `$PSScriptRoot` | `rt.root()` | |
 | `Start-Sleep` | `sched.sleep("2s")` | other tasks run meanwhile |
 | a shared timeout around several waiting operations | `sched.deadline("30s", fn)` | returns `nil, SCHED deadline` when a wait reaches the bound; does not preempt computing Lua or independently kill children |
-| a `.ps1` per job, `Invoke-Build` | `tasks.lua`, `kuu run`, `kuu list` | dependencies once, in order; `--dry-run` shows the plan |
+| a `.ps1` per job, `Invoke-Build` | `manifest.lua`, `kuu run`, `kuu list` | dependencies once, in order; `--dry-run` shows the plan |
 | a wrapper adding `-Timeout` to every command | `task.defaults { timeout = "10m" }` | a default for `task.exec`; each call can override it, including with zero; `task.defaults {}` clears the default |
 | `Export-Clixml` for state between runs | `mem.set`, `mem.get`, `mem.update` | a JSON notebook per project, 1 MiB at most; update holds the lock through read, callback, and write |
 | `Set-StrictMode -Version Latest` | `global none` at the top of the file | the compiler refuses an undeclared global |

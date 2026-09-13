@@ -45,7 +45,7 @@ return function(T)
   fs.mkdir(work .. "/lib")
   fs.mkdir(work .. "/pkg")
   fs.mkdir(work .. "/build")
-  fs.write(work .. "/tasks.lua",
+  fs.write(work .. "/manifest.lua",
     'global none\nglobal <const> require\nlocal task = require "task"\n' ..
     'task "build" { desc = "compile it", run = function() end }\n' ..
     'task "test" { desc = "run the suite", deps = { "build" }, run = function() end }\n' ..
@@ -129,8 +129,9 @@ return function(T)
 
   -- The project half.
   local here = result.project
-  check("the project is the directory holding tasks.lua",
+  check("the project is the directory holding manifest.lua",
     here ~= nil and here.root == fs.canon(work).path, here and here.root or "absent")
+  check("the descriptor names the file it found", here ~= nil and here.file == "manifest.lua", here and tostring(here.file) or "absent")
   if here == nil then return end
   local task_names = {}
   for _, t in ipairs(here.tasks) do task_names[#task_names + 1] = t.name end
@@ -155,10 +156,10 @@ return function(T)
     here.files == 5, tostring(here.files))
 
   -- What it says when it cannot say much.
-  fs.write(work .. "/tasks.lua", 'global none\nglobal <const> error\nerror("nope")\n')
+  fs.write(work .. "/manifest.lua", 'global none\nglobal <const> error\nerror("nope")\n')
   r = T.kuu({ "capabilities", "--json" }, { cwd = work })
   local broken = json.decode(r.out).result
-  check("a tasks.lua that does not load costs the task list and nothing else",
+  check("a manifest.lua that does not load costs the task list and nothing else",
     r.code == 0 and #broken.project.tasks == 0 and broken.project.note ~= nil
       and #broken.project.modules == 2 and #broken.modules > 20,
     T.describe(r))

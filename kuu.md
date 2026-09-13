@@ -73,7 +73,7 @@ kuu FILE [arg ...]             run a program
 kuu -e SCRIPT [arg ...]        run an inline script
 kuu check [--json] PATH ...    syntax, globals, requires, palette names
 kuu capabilities [--json]      what a program can reach from here
-kuu run [--dry-run] [TASK]     a task from the nearest tasks.lua
+kuu run [--dry-run] [TASK]     a task from the nearest manifest.lua
 kuu list                       those tasks
 ```
 
@@ -94,7 +94,7 @@ Building and verifying kuu itself, from the repository root:
 | `docs/` — 42 pages, shipped inside the executable | the reference: one page per module, plus the pages below |
 | `docs/pitfalls.md` | what an agent's Lua priors get wrong here. Read once, first |
 | `docs/capabilities.md` | `kuu capabilities`: the verbs, the palette, and this project's tasks and modules, in one command |
-| `docs/adopting.md` | how a repository comes to be driven by kuu: `tasks.lua`, prerequisites by URL and hash |
+| `docs/adopting.md` | how a repository comes to be driven by kuu: `manifest.lua`, prerequisites by URL and hash |
 | `docs/powershell.md` | each cmdlet you would reach for, and the kuu call that replaces it |
 | `docs/cookbook.md` | ten complete programs, extracted and checked by the suite |
 | `docs/roadmap.md` | decisions and milestones, with their reasons |
@@ -239,7 +239,7 @@ because Lua patterns are not regular expressions. `time` handles instants,
 zones and ISO 8601. `hash` is digests, HMAC and random bytes from Windows' own
 CNG. `archive` packs and unpacks through the `tar.exe` Windows ships.
 `sched` provides tasks, sleep, a monotonic clock and scoped deadlines. `task`
-declares a repository's work in a `tasks.lua` that `kuu run` executes.
+declares a repository's work in a `manifest.lua` that `kuu run` executes.
 `check` inspects code without running it. `rt` describes the launch.
 
 **Provisional.** `pty` drives interactive console programs over ConPTY. It
@@ -292,7 +292,7 @@ the wrong settings.
 
 ## How a project adopts kuu
 
-A repository copies `kuu.exe` into its root and writes one `tasks.lua`. That
+A repository copies `kuu.exe` into its root and writes one `manifest.lua`. That
 file states the minimum version it needs, lists its prerequisites by URL and
 SHA-256, and declares its tasks with their dependencies. `kuu run` executes a
 task after its dependencies, `kuu list` reads them back, and `kuu run
@@ -625,7 +625,7 @@ kuu FILE [arg ...]        run a Lua program file
 kuu - [arg ...]           run a program read from standard input
 kuu -e SCRIPT [arg ...]   run an inline script
 kuu docs [PAGE | search TEXT]   this manual, from inside the executable
-kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest tasks.lua      (see Tasks)
+kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua      (see Tasks)
 kuu list [--json]         those tasks
 kuu check [--json] [PATH ...]   syntax, globals, requires, palette names, without running  (see check)
 kuu capabilities [--json] what a program can reach from here                      (see capabilities)
@@ -676,7 +676,7 @@ hashing, and every other organ are behind `require`.
 | [`log`](#log) | structured lines that never interrupt the work |
 | [`cli`](#cli) | a program's arguments, declared once |
 | [`err`](#err) | the one error shape and how to test it |
-| [`task`](#task) | a repository's tasks and default child timeout, declared once in `tasks.lua`, run by `kuu run` |
+| [`task`](#task) | a repository's tasks and default child timeout, declared once in `manifest.lua`, run by `kuu run` |
 | [`check`](#check) | syntax, global declarations, require resolution, and palette names without running project code |
 | [`archive`](#archive) | zip and tar archives through the tar.exe Windows ships |
 | [`sys`](#sys) | facts about this machine and process, embedded Authenticode signatures |
@@ -738,7 +738,7 @@ Failures kuu detects before the program runs are spelled
 - [Pitfalls](#pitfalls): what differs from the Lua an agent already knows,
   and the Windows facts kuu refuses to hide.
 - [Adopting kuu](#adopting): a repository gets its own kuu.exe, a
-  tasks.lua, and prerequisites by hash; nothing on the machine.
+  manifest.lua, and prerequisites by hash; nothing on the machine.
 - [capabilities](#capabilities): what a program can reach from here -- the
   verbs, the palette, and this project's tasks and modules, in one command;
   provisional.
@@ -751,7 +751,7 @@ Failures kuu detects before the program runs are spelled
   [pty](#pty), [sync](#sync),
   [mem](#mem), [archive](#archive), [log](#log), [cli](#cli),
   [err](#err): the modules.
-- [Tasks](#task): `tasks.lua`, `kuu run`, `kuu list`, and the exit codes.
+- [Tasks](#task): `manifest.lua`, `kuu run`, `kuu list`, and the exit codes.
 - [check](#check): what `kuu check` finds without running a file.
 - [Toolchain](#toolchain): what kuu's own `.tools` holds and where it comes
   from.
@@ -953,14 +953,14 @@ Nothing is reported that kuu cannot know.
   over-approximates, and a module whose exports the text does not bound is
   counted rather than named. A program is not a module, and from the text
   alone the two do not differ.
-- **Tasks are declared by running `tasks.lua`**, which is project code. `kuu
-  run` and `kuu list` already do that, and this does no more. A `tasks.lua`
+- **Tasks are declared by running `manifest.lua`**, which is project code. `kuu
+  run` and `kuu list` already do that, and this does no more. A `manifest.lua`
   that does not load costs the task list and nothing else: the reason is
   reported and the rest of the descriptor still stands.
 - **What a task installs under `.tools` is not reported at all.** kuu keeps no
   manifest of it, and a guess about a toolchain is worse than saying nothing.
 
-Without a `tasks.lua` at or above the current directory there is no project
+Without a `manifest.lua` at or above the current directory there is no project
 half. kuu does not walk whatever directory it was started in instead: that is
 a different question, and an expensive one to answer by accident.
 
@@ -1019,10 +1019,11 @@ type CapabilityReport = {
     errors: { domain: string; codes: string[] }[]; // err.is(e, DOMAIN, code)
     sets: { name: string; values: string[] }[]; // the closed sets, in their own order
     project?: {
-      root: string; // absolute path of the directory holding tasks.lua
+      root: string; // absolute path of the directory holding manifest.lua
+      file: string; // "manifest.lua", or "tasks.lua" from a project that has not renamed yet
       tasks: { name: string; desc: string }[]; // hidden tasks omitted
       default?: string; // the task kuu run alone runs
-      note?: string; // why tasks.lua did not load; tasks is then empty
+      note?: string; // why manifest.lua did not load; tasks is then empty
       modules: { name: string; path: string; names: string[] }[];
       files: number; // .lua files below the root, whether or not they are modules
     };
@@ -1051,7 +1052,7 @@ it reads.
 
 The command has no error code of its own. Invalid command arguments use
 `CLI usage` and exit 2; `--help` prints usage and exits 0. Everything else
-exits 0, including a project whose `tasks.lua` does not load, because a
+exits 0, including a project whose `manifest.lua` does not load, because a
 descriptor that fails is worse than one that says what it could not find out.
 
 ---
@@ -1059,13 +1060,13 @@ descriptor that fails is worse than one that says what it could not find out.
 ## Adopting kuu in a repository
 
 How a repository comes to be driven by kuu: one executable of its own, one
-`tasks.lua`, and a list of prerequisites it fetches itself. Nothing is
+`manifest.lua`, and a list of prerequisites it fetches itself. Nothing is
 installed on the machine, nothing is shared between repositories, and
 nothing is looked up on `PATH`.
 
 ```text
 repo/
-  tasks.lua          the tasks, and the prerequisites as url and sha256
+  manifest.lua          the tasks, and the prerequisites as url and sha256
   kuu.exe            this project's own runtime; git ignores it
   .tools/            downloads and unpacked tools; git ignores it
   .kuu/              kuu's notebook for this repository (mem); git ignores it
@@ -1095,9 +1096,9 @@ Add to `.gitignore`:
 /build/
 ```
 
-### 2. Write tasks.lua
+### 2. Write manifest.lua
 
-`tasks.lua` sits at the repository root. It states the minimum kuu version
+`manifest.lua` sits at the repository root. It states the minimum kuu version
 it needs, lists the prerequisites, and declares the tasks. [Tasks](#task)
 has the full contract; this is the shape:
 
@@ -1190,7 +1191,7 @@ Three habits make this work:
 .\kuu.exe run --dry-run test   the plan: what would run, in order, running nothing
 .\kuu.exe run --json test      the outcome as one JSON object on stdout
 .\kuu.exe list                 every task with its description and arguments
-.\kuu.exe check                tasks.lua and the repository's Lua, without running anything
+.\kuu.exe check                manifest.lua and the repository's Lua, without running anything
 ```
 
 Exit codes: 0 when the task returned, a child's nonzero code when `task.exec`
@@ -1241,13 +1242,13 @@ in step.
 
 ## Tasks
 
-A repository declares its tasks once, in a `tasks.lua` at its root, and runs
+A repository declares its tasks once, in a `manifest.lua` at its root, and runs
 them with `kuu run`. There is no second file to keep in step: the task list,
 each task's description, its dependencies, and its arguments live in the
 declaration, and `kuu list` reads them back from there.
 
 ```lua
--- tasks.lua
+-- manifest.lua
 local task = require "task"
 local fs = require "fs"
 
@@ -1291,12 +1292,18 @@ kuu list [--json]            the tasks, their descriptions, dependencies, and ar
 ### Where kuu looks
 
 `kuu run` and `kuu list` walk up from the current directory to the nearest
-directory holding `tasks.lua`, make that directory the current directory, and
+directory holding `manifest.lua`, make that directory the current directory, and
 point `require` at it. A task's relative paths are therefore relative to the
 project root wherever the command was typed, children started by a task begin
-there, and `require "lib.helper"` in `tasks.lua` reads `lib/helper.lua` of the
-project. Without a `tasks.lua` anywhere above, both verbs exit 2 with
+there, and `require "lib.helper"` in `manifest.lua` reads `lib/helper.lua` of the
+project. Without a `manifest.lua` anywhere above, both verbs exit 2 with
 `TASK noproject`.
+
+Through 0.9 the file was `tasks.lua`. 0.10 still finds a `tasks.lua` where no
+`manifest.lua` is, reads it as the manifest, and says so on standard error
+each time; a directory holding both is read from `manifest.lua` and told
+nothing. 0.11 will not look for the old name. Rename the file — nothing
+inside it changes.
 
 ### Declaring
 
@@ -1325,7 +1332,7 @@ with neither a function nor non-empty dependencies is refused.
 `task.default "name"` names what `kuu run` alone runs; without it, `kuu run`
 alone lists the tasks and exits 2.
 
-`tasks.lua` is an ordinary Lua chunk and its top level runs on every `kuu run`
+`manifest.lua` is an ordinary Lua chunk and its top level runs on every `kuu run`
 and `kuu list`, so keep work inside `run` functions. A syntax error or a raise
 while declaring is reported with its line and exits 2.
 
@@ -1374,7 +1381,7 @@ a duration string), and `processes` (a positive count); see
 | 0 | every task returned |
 | the child's code | a `task.exec` child exited non-zero |
 | 1 | a task raised or returned `nil, err` |
-| 2 | no `tasks.lua`, a broken `tasks.lua`, an unknown task or dependency, a cycle, or wrong arguments |
+| 2 | no `manifest.lua`, a broken `manifest.lua`, an unknown task or dependency, a cycle, or wrong arguments |
 
 ### JSON
 
@@ -1435,7 +1442,7 @@ type ListReport =
 
 The `default` task name is omitted when none is declared. Arguments carry
 their declared default and choices, not parsed values; bounds such as
-`min` and `max` are not included. `tasks.lua` must keep its top level quiet
+`min` and `max` are not included. `manifest.lua` must keep its top level quiet
 for `list --json` because that verb does not redirect declaration output.
 Malformed command-line options are rejected with a diagnostic on stderr
 before either verb builds a JSON report. `--help` before the task name
@@ -1444,7 +1451,7 @@ prints usage and exits 0; task-specific `--help` is a `CLI usage` failure.
 ### The module in a program
 
 The same module drives the verbs and is open to programs that build on them.
-The registry is the module, so a program that loads a `tasks.lua` with `load`
+The registry is the module, so a program that loads a `manifest.lua` with `load`
 after `require "task"` sees its declarations.
 
 ```lua
@@ -1459,8 +1466,8 @@ task.execute(entry, opts)     -- run it with parsed arguments: true | nil, err
 
 | code | meaning |
 |---|---|
-| `TASK noproject` | no `tasks.lua` here or above |
-| `TASK badvalue` | a bad declaration, or `tasks.lua` failed to load |
+| `TASK noproject` | no `manifest.lua` here or above |
+| `TASK badvalue` | a bad declaration, or `manifest.lua` failed to load |
 | `TASK usage` | no task or default was selected, a runner option is unknown, or a declaration holds an attribute or option that is not known |
 | `TASK unknown`, `TASK cycle` | the dependency graph |
 | `CLI usage` | wrong arguments for a task, or `--help` |
@@ -1483,7 +1490,7 @@ kuu check [--json] [--fix [--adopt]] [PATH ...]
 ```
 
 Without paths it checks every `.lua` file below the nearest project (the
-directory holding `tasks.lua`), or below the current directory when there is
+directory holding `manifest.lua`), or below the current directory when there is
 no project, skipping `.git`, `.tools`, `build`, and `node_modules`. Paths may
 be files or directories; `require` names always resolve against the project
 root.
@@ -3167,7 +3174,7 @@ mem.open("build/state.json")                            -- somewhere else instea
 ```
 
 The file is `.kuu/memory.json` under the project root, the nearest
-`tasks.lua` upward from the current directory, or under the directory
+`manifest.lua` upward from the current directory, or under the directory
 `require` searches when there is no project. Add `.kuu/` to the project's
 `.gitignore` unless the memory is meant to travel with the repository.
 
@@ -3777,7 +3784,7 @@ inspection calls can be synchronous, as their manual pages describe.
 | `$PSScriptRoot` | `rt.root()` | |
 | `Start-Sleep` | `sched.sleep("2s")` | other tasks run meanwhile |
 | a shared timeout around several waiting operations | `sched.deadline("30s", fn)` | returns `nil, SCHED deadline` when a wait reaches the bound; does not preempt computing Lua or independently kill children |
-| a `.ps1` per job, `Invoke-Build` | `tasks.lua`, `kuu run`, `kuu list` | dependencies once, in order; `--dry-run` shows the plan |
+| a `.ps1` per job, `Invoke-Build` | `manifest.lua`, `kuu run`, `kuu list` | dependencies once, in order; `--dry-run` shows the plan |
 | a wrapper adding `-Timeout` to every command | `task.defaults { timeout = "10m" }` | a default for `task.exec`; each call can override it, including with zero; `task.defaults {}` clears the default |
 | `Export-Clixml` for state between runs | `mem.set`, `mem.get`, `mem.update` | a JSON notebook per project, 1 MiB at most; update holds the lock through read, callback, and write |
 | `Set-StrictMode -Version Latest` | `global none` at the top of the file | the compiler refuses an undeclared global |
@@ -4297,7 +4304,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | what a project may fetch | upstream downloads only, into its own `.tools`; nothing re-hosted, nothing shared between projects | no commonalities, and a stranger fetches from the same public sources. kuu itself fetches nothing, ever; `.kuu/` holds only kuu's own state, the notebook and the ledger |
 | a project's tools | whatever a project builds or fetches into its own root, in any technology, declared in its manifest with the arguments it takes and the shape it emits, and called through the door | there are exactly two kinds of thing a program can reach: the palette, kuu's, described by `_palette` and gated by `require`; and the project's tools, the project's, declared in `manifest.lua`. There is no third kind; a tool that wants to read like a module is wrapped by an ordinary project module |
 | the project's declaration file | `manifest.lua` at the root: prerequisites by hash, tasks, and `tool` declarations, in one file; `tasks.lua` still found for one release, with a warning | decided 2026-09-13; one authored file, read two ways from one source — executed by `run`, `list` and `capabilities`, read as literals by `check`, held equal by the suite |
-| kuu's own repository | free of kuu: build and release are make, gcc, and cmd recipes; no `tasks.lua` there | self-reference is unwelcome, for release steps too |
+| kuu's own repository | free of kuu: build and release are make, gcc, and cmd recipes; no `manifest.lua` there | self-reference is unwelcome, for release steps too |
 | releases | anafalanx/kuu public; GitHub Releases carry `kuu.exe` and its `.sha256`; signed with the owner's existing Certum certificate through the Windows SDK's signtool | the estate already signs this way, and public releases need no credentials to fetch |
 | the second project | `C:\dev\kuu-test-project`, local, no remote, tailored to test kuu features | a project built to exercise the runtime, before any existing one is converted |
 | what kuu is | the front door of a project: everything that *runs* in a project runs through `kuu.exe` — a task, a build, a test, a tool, a fetch — and gets a job, a deadline, limits, tree-kill on the door's death, a record, and where the door can read it, a check. Writing code is not a crossing; what an agent writes becomes the door's business the moment it first runs, and `check` stands at that threshold | decided 2026-09-13, after the review of 2026-09-12 ([plan](notes/plan-front-door-2026-09-13_001735.md)). The door is the only part that must last fifteen years, so it is Lua on C, small, built with great care, and it stops growing; what a project needs beyond it is a tool the project builds, in any technology, and calls through the door. The earlier row — a power tool in the agent's hand that removes the fumbling, not the knowing — stands as the description of the palette |
@@ -5327,7 +5334,7 @@ guarantee. Such changes require a new major version and a migration note.
 
 ### A minimum-version guard
 
-A `tasks.lua` should ask for the oldest release whose features it uses,
+A `manifest.lua` should ask for the oldest release whose features it uses,
 rather than compare the runtime version for equality. Since 0.9.0 a version
 has three natural-number components, Major.Minor.Patch, and
 `rt.version_at_least` compares them, so a project never parses the version
@@ -5359,7 +5366,7 @@ when updating, and read the upgrading notes for every intervening 0.x
 release or a future major release.
 
 For the changes introduced with this statement, see
-[Upgrading to 0.7](#upgrading-07). For a complete `tasks.lua`, see
+[Upgrading to 0.7](#upgrading-07). For a complete `manifest.lua`, see
 [Adopting kuu](#adopting).
 
 ---
@@ -5603,7 +5610,7 @@ is not on `PATH`.
 
 A project takes a release by copying `kuu.exe` directly into its root, after
 checking the download against the sidecar, and states the version it expects
-at the top of its `tasks.lua`.
+at the top of its `manifest.lua`.
 
 Before publishing a release:
 
@@ -5670,6 +5677,25 @@ guard, which is the failure the guard exists to prevent.
 For earlier releases, read
 [upgrading to 0.9](#upgrading-09), [to 0.8](#upgrading-08),
 [to 0.7](#upgrading-07), and the [0.6 duration migration](#upgrading-06).
+
+### `tasks.lua` is `manifest.lua`
+
+The file at a project's root that declares its prerequisites and tasks is
+`manifest.lua`. It is the same file: `task "build" { ... }` reads as it did,
+and the `tool "name" { ... }` declarations that join it later in this release
+sit beside the tasks. Only the name changes, because the file describes more
+than tasks now.
+
+`kuu run`, `kuu list`, `kuu check` and `kuu capabilities` still find a
+`tasks.lua` where no `manifest.lua` is, read it as the manifest, and write
+one line to standard error each time saying to rename it; `capabilities
+--json` reports which name it found as `project.file`. A directory holding
+both is read from `manifest.lua` without a word. 0.11 will not look for the
+old name.
+
+```text
+git mv tasks.lua manifest.lua
+```
 
 ### `check` reports four mistakes it used to pass
 
@@ -5810,7 +5836,7 @@ names it exports, the error domains and closed sets, and the project's tasks
 and its own modules. It does not report what a task installs under `.tools`,
 because kuu keeps no manifest of it.
 
-**It runs `tasks.lua`** to read the tasks, exactly as `kuu run` and `kuu list`
+**It runs `manifest.lua`** to read the tasks, exactly as `kuu run` and `kuu list`
 do. The module half is read from text and never executed, but the task half is
 project code running. That matters if you point it at a checkout you do not
 know. See [capabilities](#capabilities).

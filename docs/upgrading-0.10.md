@@ -52,6 +52,25 @@ For earlier releases, read
 [upgrading to 0.9](upgrading-0.9.md), [to 0.8](upgrading-0.8.md),
 [to 0.7](upgrading-0.7.md), and the [0.6 duration migration](upgrading-0.6.md).
 
+## `tasks.lua` is `manifest.lua`
+
+The file at a project's root that declares its prerequisites and tasks is
+`manifest.lua`. It is the same file: `task "build" { ... }` reads as it did,
+and the `tool "name" { ... }` declarations that join it later in this release
+sit beside the tasks. Only the name changes, because the file describes more
+than tasks now.
+
+`kuu run`, `kuu list`, `kuu check` and `kuu capabilities` still find a
+`tasks.lua` where no `manifest.lua` is, read it as the manifest, and write
+one line to standard error each time saying to rename it; `capabilities
+--json` reports which name it found as `project.file`. A directory holding
+both is read from `manifest.lua` without a word. 0.11 will not look for the
+old name.
+
+```text
+git mv tasks.lua manifest.lua
+```
+
 ## `check` reports four mistakes it used to pass
 
 Three of them are silent: the call returns, the branch is never taken, and
@@ -191,7 +210,7 @@ names it exports, the error domains and closed sets, and the project's tasks
 and its own modules. It does not report what a task installs under `.tools`,
 because kuu keeps no manifest of it.
 
-**It runs `tasks.lua`** to read the tasks, exactly as `kuu run` and `kuu list`
+**It runs `manifest.lua`** to read the tasks, exactly as `kuu run` and `kuu list`
 do. The module half is read from text and never executed, but the task half is
 project code running. That matters if you point it at a checkout you do not
 know. See [capabilities](capabilities.md).

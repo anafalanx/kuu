@@ -1,4 +1,4 @@
--- task.lua -- tasks.lua discovery, `kuu run` and `kuu list`: dependency order,
+-- task.lua -- manifest.lua discovery, `kuu run` and `kuu list`: dependency order,
 -- arguments, exit codes, the JSON envelopes, and a project-local require.
 global none
 global <const> require, ipairs, tostring, type, pcall, select
@@ -15,7 +15,7 @@ return function(T)
   fs.mkdir(project .. "/sub/deeper")
   fs.mkdir(project .. "/lib")
   fs.write(project .. "/lib/helper.lua", "return { word = 'helped' }\n")
-  fs.write(project .. "/tasks.lua", [[
+  fs.write(project .. "/manifest.lua", [[
 local task = require "task"
 local fs = require "fs"
 local helper = require "lib.helper"
@@ -55,7 +55,7 @@ task.default "build"
 
   -- list ---------------------------------------------------------------------------------
   local r = T.kuu({ "list" }, { cwd = project .. "/sub/deeper" })
-  check("kuu list finds tasks.lua from a subdirectory and shows the tasks", r.code == 0 and contains(r.out, "build") and contains(r.out, "compile")
+  check("kuu list finds manifest.lua from a subdirectory and shows the tasks", r.code == 0 and contains(r.out, "build") and contains(r.out, "compile")
     and contains(r.out, "[after gen]") and contains(r.out, "tasks in " .. project), T.describe(r))
   check("hidden tasks are not listed", not contains(r.out, "secret"))
   check("the default task is marked", contains(r.out, "*build"))
@@ -120,7 +120,7 @@ task.default "build"
   r = T.kuu({ "run", "fail" }, { cwd = project })
   check("nil, err from a task exits 1 with the error", r.code == 1 and contains(r.err, "TASK failed: boom") and contains(r.err, "fail failed after"), T.describe(r))
   r = T.kuu({ "run", "raise" }, { cwd = project })
-  check("a raise in a task exits 1 with the message and location", r.code == 1 and contains(r.err, "tasks.lua:") and contains(r.err, "kaboom"), T.describe(r))
+  check("a raise in a task exits 1 with the message and location", r.code == 1 and contains(r.err, "manifest.lua:") and contains(r.err, "kaboom"), T.describe(r))
   r = T.kuu({ "run", "child" }, { cwd = project })
   check("task.exec streams the child's output and passes its exit code through", r.code == 7 and contains(r.out, "from-child") and contains(r.err, "exited with code 7"), T.describe(r))
   r = T.kuu({ "run", "loop_a" }, { cwd = project })
@@ -146,21 +146,38 @@ task.default "build"
   local bare = T.work .. "/project-bare"
   fs.remove(bare, { recursive = true })
   fs.mkdir(bare)
-  fs.write(bare .. "/tasks.lua", 'local task = require "task"\ntask "only" { desc = "the one", run = function() end }\n')
+  fs.write(bare .. "/manifest.lua", 'local task = require "task"\ntask "only" { desc = "the one", run = function() end }\n')
   r = T.kuu({ "run" }, { cwd = bare })
   check("kuu run with no default lists the tasks and exits 2", r.code == 2 and contains(r.err, "declares no default") and contains(r.err, "only"), T.describe(r))
-  fs.write(bare .. "/tasks.lua", 'local task = require "task"\ntask "x" { desc = 1, run = function() end }\n')
+  fs.write(bare .. "/manifest.lua", 'local task = require "task"\ntask "x" { desc = 1, run = function() end }\n')
   r = T.kuu({ "list" }, { cwd = bare })
-  check("a bad attribute in tasks.lua exits 2 with TASK badvalue and the line", r.code == 2 and contains(r.err, "TASK badvalue") and contains(r.err, "desc must be a string"), T.describe(r))
-  fs.write(bare .. "/tasks.lua", 'local task = require "task"\ntask "x" { run = function() end }\ntask "x" { run = function() end }\n')
+  check("a bad attribute in manifest.lua exits 2 with TASK badvalue and the line", r.code == 2 and contains(r.err, "TASK badvalue") and contains(r.err, "desc must be a string"), T.describe(r))
+  fs.write(bare .. "/manifest.lua", 'local task = require "task"\ntask "x" { run = function() end }\ntask "x" { run = function() end }\n')
   r = T.kuu({ "list" }, { cwd = bare })
   check("declaring a task twice is refused", r.code == 2 and contains(r.err, "declared twice"), T.describe(r))
-  fs.write(bare .. "/tasks.lua", 'local task = require "task"\ntask "x" { args = { { "--help" } }, run = function() end }\n')
+  fs.write(bare .. "/manifest.lua", 'local task = require "task"\ntask "x" { args = { { "--help" } }, run = function() end }\n')
   r = T.kuu({ "list" }, { cwd = bare })
   check("a broken argument spec is refused at declaration", r.code == 2 and contains(r.err, "--help is provided by the parser"), T.describe(r))
-  fs.write(bare .. "/tasks.lua", "this is not lua\n")
+  fs.write(bare .. "/manifest.lua", "this is not lua\n")
   r = T.kuu({ "list" }, { cwd = bare })
-  check("a syntax error in tasks.lua exits 2 with its location", r.code == 2 and contains(r.err, "tasks.lua:1:"), T.describe(r))
+  check("a syntax error in manifest.lua exits 2 with its location", r.code == 2 and contains(r.err, "manifest.lua:1:"), T.describe(r))
+
+  -- Through 0.9 the file was tasks.lua. 0.10 still finds one where no
+  -- manifest.lua is, and says so on stderr every time; a directory holding
+  -- both is read from manifest.lua and told nothing.
+  local legacy = T.work .. "/project-legacy"
+  fs.remove(legacy, { recursive = true })
+  fs.mkdir(legacy)
+  fs.write(legacy .. "/tasks.lua", 'local task = require "task"\ntask "old" { desc = "still found", run = function() end }\n')
+  r = T.kuu({ "list" }, { cwd = legacy })
+  check("a project with only tasks.lua is still found, with a warning to rename it",
+    r.code == 0 and contains(r.out, "old") and contains(r.err, "rename it to manifest.lua"), T.describe(r))
+  r = T.kuu({ "run", "old" }, { cwd = legacy })
+  check("kuu run says the same, once, and runs the task", r.code == 0 and contains(r.err, "rename it to manifest.lua") and contains(r.err, "kuu: old "), T.describe(r))
+  fs.write(legacy .. "/manifest.lua", 'local task = require "task"\ntask "new" { desc = "the manifest", run = function() end }\n')
+  r = T.kuu({ "list" }, { cwd = legacy })
+  check("manifest.lua wins over a tasks.lua beside it, silently",
+    r.code == 0 and contains(r.out, "new") and not contains(r.out, "old") and not contains(r.err, "rename"), T.describe(r))
 
   reset()
   r = T.kuu({ "run", "--json", "all" }, { cwd = project })
@@ -267,7 +284,7 @@ task.default "build"
   check("task.exec forwards child limits and refuses a limit result even with code zero",
     called and result == nil and err.is(limited, "TASK", "failed") and contains(limited.message, "limit (memory)")
     and received.limits == limits, tostring(limited))
-  fs.write(bare .. "/tasks.lua", 'require("task").defaults { timeout = "soon" }\n')
+  fs.write(bare .. "/manifest.lua", 'require("task").defaults { timeout = "soon" }\n')
   r = T.kuu({ "list" }, { cwd = bare })
   check("bad defaults fail while declaring tasks, before any task runs",
     r.code == 2 and contains(r.err, "TASK badvalue") and contains(r.err, "timeout must be"), T.describe(r))

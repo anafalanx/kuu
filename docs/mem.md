@@ -17,7 +17,7 @@ mem.open("build/state.json")                            -- somewhere else instea
 ```
 
 The file is `.kuu/memory.json` under the project root, the nearest
-`tasks.lua` upward from the current directory, or under the directory
+`manifest.lua` upward from the current directory, or under the directory
 `require` searches when there is no project. Add `.kuu/` to the project's
 `.gitignore` unless the memory is meant to travel with the repository.
 

@@ -1,12 +1,12 @@
 # Tasks
 
-A repository declares its tasks once, in a `tasks.lua` at its root, and runs
+A repository declares its tasks once, in a `manifest.lua` at its root, and runs
 them with `kuu run`. There is no second file to keep in step: the task list,
 each task's description, its dependencies, and its arguments live in the
 declaration, and `kuu list` reads them back from there.
 
 ```lua
--- tasks.lua
+-- manifest.lua
 local task = require "task"
 local fs = require "fs"
 
@@ -50,12 +50,18 @@ kuu list [--json]            the tasks, their descriptions, dependencies, and ar
 ## Where kuu looks
 
 `kuu run` and `kuu list` walk up from the current directory to the nearest
-directory holding `tasks.lua`, make that directory the current directory, and
+directory holding `manifest.lua`, make that directory the current directory, and
 point `require` at it. A task's relative paths are therefore relative to the
 project root wherever the command was typed, children started by a task begin
-there, and `require "lib.helper"` in `tasks.lua` reads `lib/helper.lua` of the
-project. Without a `tasks.lua` anywhere above, both verbs exit 2 with
+there, and `require "lib.helper"` in `manifest.lua` reads `lib/helper.lua` of the
+project. Without a `manifest.lua` anywhere above, both verbs exit 2 with
 `TASK noproject`.
+
+Through 0.9 the file was `tasks.lua`. 0.10 still finds a `tasks.lua` where no
+`manifest.lua` is, reads it as the manifest, and says so on standard error
+each time; a directory holding both is read from `manifest.lua` and told
+nothing. 0.11 will not look for the old name. Rename the file — nothing
+inside it changes.
 
 ## Declaring
 
@@ -84,7 +90,7 @@ with neither a function nor non-empty dependencies is refused.
 `task.default "name"` names what `kuu run` alone runs; without it, `kuu run`
 alone lists the tasks and exits 2.
 
-`tasks.lua` is an ordinary Lua chunk and its top level runs on every `kuu run`
+`manifest.lua` is an ordinary Lua chunk and its top level runs on every `kuu run`
 and `kuu list`, so keep work inside `run` functions. A syntax error or a raise
 while declaring is reported with its line and exits 2.
 
@@ -133,7 +139,7 @@ a duration string), and `processes` (a positive count); see
 | 0 | every task returned |
 | the child's code | a `task.exec` child exited non-zero |
 | 1 | a task raised or returned `nil, err` |
-| 2 | no `tasks.lua`, a broken `tasks.lua`, an unknown task or dependency, a cycle, or wrong arguments |
+| 2 | no `manifest.lua`, a broken `manifest.lua`, an unknown task or dependency, a cycle, or wrong arguments |
 
 ## JSON
 
@@ -194,7 +200,7 @@ type ListReport =
 
 The `default` task name is omitted when none is declared. Arguments carry
 their declared default and choices, not parsed values; bounds such as
-`min` and `max` are not included. `tasks.lua` must keep its top level quiet
+`min` and `max` are not included. `manifest.lua` must keep its top level quiet
 for `list --json` because that verb does not redirect declaration output.
 Malformed command-line options are rejected with a diagnostic on stderr
 before either verb builds a JSON report. `--help` before the task name
@@ -203,7 +209,7 @@ prints usage and exits 0; task-specific `--help` is a `CLI usage` failure.
 ## The module in a program
 
 The same module drives the verbs and is open to programs that build on them.
-The registry is the module, so a program that loads a `tasks.lua` with `load`
+The registry is the module, so a program that loads a `manifest.lua` with `load`
 after `require "task"` sees its declarations.
 
 ```lua
@@ -218,8 +224,8 @@ task.execute(entry, opts)     -- run it with parsed arguments: true | nil, err
 
 | code | meaning |
 |---|---|
-| `TASK noproject` | no `tasks.lua` here or above |
-| `TASK badvalue` | a bad declaration, or `tasks.lua` failed to load |
+| `TASK noproject` | no `manifest.lua` here or above |
+| `TASK badvalue` | a bad declaration, or `manifest.lua` failed to load |
 | `TASK usage` | no task or default was selected, a runner option is unknown, or a declaration holds an attribute or option that is not known |
 | `TASK unknown`, `TASK cycle` | the dependency graph |
 | `CLI usage` | wrong arguments for a task, or `--help` |
