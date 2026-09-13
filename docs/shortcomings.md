@@ -327,18 +327,20 @@ Observations, none of them a kuu defect:
   complete production suite then passed all 1,044 checks. No change to
   process-tree enumeration was made.
 - **Evidence:** [dated validation record](../notes/validation-23h2-2026-09-11_094612.md).
-- **Status:** one mechanism closed 2026-09-13, the observation open. The
-  snapshot's parent id is the number the parent had when the child started,
-  and Windows hands a dead process's id to the next one that needs it; a
-  process orphaned by an earlier test, whose parent's id a chain node later
-  received, would appear as that node's second child, and `tree` now lists
-  a child only when it began no earlier than its parent. That did not end
-  it: the same assertion failed once more the same day, under the sanitizer
-  build inside the full suite, and not in 24 isolated rounds of the chain
-  under either build. The assertion now names every child it sees — pid,
-  name, parent, start time — so the next failure says what the second
-  child is. It is tolerated in no sense but that: the suite fails when it
-  happens.
+- **Status:** closed 2026-09-13, on evidence. The snapshot's parent id is
+  the number the parent had when the child started, and Windows hands a dead
+  process's id to the next one that needs it. `tree` first learned to list a
+  child only when it began no earlier than its parent, keeping a child whose
+  start time it could not read; the assertion failed again that day, twice,
+  and once the assertion named what it saw, the second and third children of
+  chain node 1000 were `csrss.exe` and `wininit.exe` — system processes whose
+  recorded parent is the boot-time pid 1000, unreadable to this user, worn
+  that afternoon by a `kuu.exe` the chain had just started. A process kuu can
+  open never starts one it cannot, so an unreadable child under a readable
+  parent is a stranger, and `tree` leaves it out; only a parent that cannot
+  be read keeps every child. The proc case holds the rule against whatever
+  the machine offers: every readable process whose snapshot children include
+  an unreadable one shows it no such child.
 
 ## Orphaned I/O completion during console shutdown — 2026-09-11
 

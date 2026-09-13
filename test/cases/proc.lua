@@ -314,6 +314,27 @@ return function(T)
     check("tree of this process lists the started child", tree ~= nil and tree.pid == me and has_child, tree and tostring(#tree.children))
     local none, e = proc.tree(2147483646)
     check("tree of an unknown pid is nil, PROC notfound", none == nil and err.is(e, "PROC", "notfound"), tostring(e))
+    -- A process this user cannot ask about is never listed under one it can:
+    -- csrss and wininit name the boot-time pid 1000 as their parent, and
+    -- whatever wears that pid today did not start them. Held against the
+    -- snapshot the machine offers now, so it is a check whenever there is a
+    -- readable parent with an unreadable "child", which every desktop has.
+    local everyone = proc.list()
+    local by_pid, readable = {}, {}
+    for _, p in ipairs(everyone) do by_pid[p.pid] = p if p.started ~= nil then readable[p.pid] = true end end
+    local strangers, wrongly_listed, judged = 0, {}, 0
+    for _, p in ipairs(everyone) do
+      if p.started == nil and readable[p.parent] and judged < 5 then
+        strangers = strangers + 1
+        local t = proc.tree(p.parent)
+        judged = judged + 1
+        for _, c in ipairs(t and t.children or {}) do
+          if c.pid == p.pid then wrongly_listed[#wrongly_listed + 1] = c.name .. " under " .. tostring(by_pid[p.parent] and by_pid[p.parent].name) end
+        end
+      end
+    end
+    check("tree never lists an unreadable process under a readable parent (" .. strangers .. " such pairs on this machine)",
+      #wrongly_listed == 0, table.concat(wrongly_listed, "; "))
     local fixture = T.root .. "/build/test/http_fixture.exe"
     if fs.exists(fixture) == "file" then
       local server <close> = proc.start { fixture, (T.fixtures:gsub("/", "\\")), stream = true }

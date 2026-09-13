@@ -219,7 +219,11 @@ exited long ago and whose id now belongs to something unrelated; the field
 reports what the snapshot says. `tree` does not follow such a name: a
 process is listed as a child only when it began no earlier than the parent
 did, which a real child always has and a stranger wearing a dead parent's
-id never has. A process whose start time cannot be read is kept.
+id never has. A process whose start time cannot be read — one this user may
+not ask about — is listed only under a parent whose start time cannot be
+read either, since nothing kuu can open starts a process it cannot; `csrss`
+and `wininit` name the boot-time pid 1000 as their parent, and whatever
+wears that pid today did not start them.
 Tree expansion stops after 64 levels; a deepest entry then has no expanded
 children.
 

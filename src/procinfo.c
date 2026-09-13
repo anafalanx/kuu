@@ -321,13 +321,17 @@ static void push_tree(lua_State *L, const ku_pentry *list, size_t count, size_t 
          * child started, and Windows hands a dead process's id to the next
          * one that needs it.  A real child began no earlier than its parent;
          * a stranger wearing the parent's old id began after the child did.
-         * Either start time unreadable: the child is kept, as before. */
+         * A child whose start time cannot be read at all -- csrss and wininit
+         * wearing the boot-time pid 1000 as their parent, which a test child
+         * later received -- is a stranger too: nothing kuu can open starts a
+         * process it cannot.  Only a parent that cannot be read keeps every
+         * child, since then nothing can be compared. */
         int64_t parent_started = process_started(list[index].pid);
         for (size_t i = 0; i < count; i++) {
             if (list[i].parent == list[index].pid && list[i].pid != list[index].pid && i != index) {
                 if (parent_started != 0) {
                     int64_t child_started = process_started(list[i].pid);
-                    if (child_started != 0 && child_started < parent_started) {
+                    if (child_started == 0 || child_started < parent_started) {
                         continue;
                     }
                 }
