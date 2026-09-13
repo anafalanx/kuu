@@ -170,6 +170,13 @@ SOAK ?= 60
 soak: $(OUT) $(FIXTURES)
 	$(subst /,\,$(OUT)) test\soak.lua $(SOAK)
 
+# The Win32 surface, so that "small" is a number: every function the host
+# objects import by name, from their undefined symbols, plus the ones resolved
+# at run time.  docs/roadmap.md records the count.
+.PHONY: surface
+surface: $(OUT)
+	$(OUT_WIN) tools\surface.lua $(TOOLS_WIN)\bin\nm.exe
+
 # Recursive makes deliberately serialize the gates even under `make -j gate`:
 # test and soak share scratch files and must never run alongside one another.
 .PHONY: gate

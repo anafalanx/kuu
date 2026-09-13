@@ -101,6 +101,21 @@ return function(T)
   ok, e2 = pcall(fs.glob, root .. "/*", { kinds = "file" })
   check("glob refuses an unknown option as FS usage", not ok and err.is(e2, "FS", "usage") and contains(tostring(e2), "kinds"), tostring(e2))
 
+  -- chdir moves the whole process, so this puts it back before anything
+  -- else in the suite can notice.
+  do
+    local before = fs.cwd()
+    local there = root .. "/chdir-target"
+    fs.mkdir(there)
+    fs.chdir(there)
+    local moved = fs.cwd()
+    fs.chdir(before)
+    check("chdir moves the process and cwd reports it", fs.same(moved, there), moved)
+    check("chdir back restores the directory the suite runs in", fs.same(fs.cwd(), before), fs.cwd())
+    local missing, why = fs.chdir(root .. "/no-such-directory")
+    check("chdir into a missing directory is nil, FS notfound", missing == nil and err.is(why, "FS", "notfound") and fs.same(fs.cwd(), before), tostring(why))
+  end
+
   -- stat / exists -----------------------------------------------------------------------
   local st = fs.stat(root .. "/a.bin")
   check("stat describes a file", st and st.kind == "file" and st.size == 10 and type(st.mtime) == "number" and st.mtime > 1.6e9

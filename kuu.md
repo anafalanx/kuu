@@ -4350,6 +4350,15 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
 | no-go: `tools.get`, `proc.shell`, YAML, templating, `text.diff`, shortcuts, Windows features, firewall, Defender, power, `kuu init`, bootstrap scripts | decided 2026-09-09 |
 
+The Win32 surface, counted on 2026-09-13 from the host objects' undefined
+symbols (`make surface`, which runs `tools/surface.lua`): 180 functions
+imported by name; four resolved with `GetProcAddress` at run time —
+`NtQueryInformationProcess`, `RtlGetVersion`, `ReleasePseudoConsole`,
+`GetAddrInfoExCancel`; and seven entry points of `archiveint.dll`, loaded
+from System32 only while `archive.list` runs. 191 names is what "small"
+means here, and the number is meant to go down, not up: a module that would
+add to it is a tool the project builds, called through the door.
+
 ### Milestones
 
 1. **0.1, the runner.** Routes, decoding, the state, `rt`, errors and exit

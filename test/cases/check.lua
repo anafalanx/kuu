@@ -325,12 +325,40 @@ other.custom()
       check("and a misspelling of one is still caught",
         r.code == 1 and contains(r.out, "did you mean c.LIMIT"), T.describe(r))
 
+      -- The extraction on its own, as capabilities reports it: the same set
+      -- the checker uses, or nil where the text does not bound it.
+      local set = checker.exports(dir .. "/tools/consts.lua")
+      check("check.exports reads a module's names from its text",
+        set ~= nil and set.VERSION and set.LIMIT and set.paths and set.go and not set.nothing, tostring(set))
+      check("check.exports is nil for a module behind a metatable", checker.exports(dir .. "/tools/opaque.lua") == nil)
+      check("check.exports is nil for a module that returns what it did not build", checker.exports(dir .. "/tools/borrowed.lua") == nil)
+      check("check.exports is nil for a path that is not there", checker.exports(dir .. "/tools/absent.lua") == nil)
+
       put("tools/constcomputed.lua",
         'global none\nlocal k = "a"\nlocal M = { [k] = 1, real = 2 }\nreturn M\n')
       put("constdyn.lua",
         'global none\nglobal <const> require\nlocal c = require "tools.constcomputed"\nreturn c.anything\n')
       r = T.kuu({ "check", "constdyn.lua" }, { cwd = dir })
       check("a computed key in the constructor bails like any other",
+        r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
+
+      -- A metatable on the module's own objects is not a metatable on the
+      -- module. The token alone used to put the whole module out of reach,
+      -- which the generated corpus found: every module that builds a class
+      -- went unchecked.
+      put("tools/classy.lua",
+        'global none\nglobal <const> setmetatable\nlocal M = {}\nlocal Thing = {}\nThing.__index = Thing\nfunction M.new() return setmetatable({}, Thing) end\nfunction M.count() return 0 end\nreturn M\n')
+      put("classy.lua",
+        'global none\nglobal <const> require, print\nlocal c = require "tools.classy"\nprint(c.new(), c.coutn())\n')
+      r = T.kuu({ "check", "classy.lua" }, { cwd = dir })
+      check("a module that builds its own objects with setmetatable is still bounded",
+        r.code == 1 and contains(r.out, "did you mean c.count"), T.describe(r))
+      put("tools/aliased.lua",
+        'global none\nglobal <const> setmetatable\nlocal M = {}\nfunction M.known() end\nlocal T = M\nsetmetatable(T, { __index = function() return 1 end })\nreturn M\n')
+      put("aliased.lua",
+        'global none\nglobal <const> require\nlocal m = require "tools.aliased"\nreturn m.anything()\n')
+      r = T.kuu({ "check", "aliased.lua" }, { cwd = dir })
+      check("but a module that lets its table escape near setmetatable is not guessed at",
         r.code == 0 and contains(r.err, "0 errors"), T.describe(r))
 
       -- Only the first field after an alias names a module export. Reaching

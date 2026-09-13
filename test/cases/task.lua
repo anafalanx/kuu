@@ -212,6 +212,29 @@ task.default "build"
   ok, raised = pcall(task("t-unknown-attribute"), { desc = "x", runn = function() end })
   check("an attribute a declaration cannot hold is TASK usage",
     not ok and err.is(raised, "TASK", "usage") and contains(raised.message, "unknown attribute 'runn'"), tostring(raised))
+
+  -- The two names the runner is built from, on their own: which task is the
+  -- default, and a task's arguments parsed against its spec, in a process of
+  -- their own so this suite's registry stays as it is.
+  do
+    local r = T.kuu { "-e", [=[
+      local task, err = require "task", require "err"
+      task "needy" { args = { { "target", required = true }, { "--fast", type = "flag" } }, run = function() end }
+      task "plain" { run = function() end }
+      local before = task.default_task()
+      task.default "plain"
+      local opts = assert(task.arguments(task.get("needy"), { "app", "--fast" }))
+      local none, e = task.arguments(task.get("needy"), {})
+      local none2, e2 = task.arguments(task.get("plain"), { "extra" })
+      local none3, e3 = task.arguments(task.get("needy"), { "--help" })
+      io.write(tostring(before), " ", task.default_task(), " ", opts.target, " ", tostring(opts.fast), " ",
+        tostring(none == nil and err.is(e, "CLI", "usage")), " ",
+        tostring(none2 == nil and err.is(e2, "CLI", "usage") and e2.message:find("takes no arguments", 1, true) ~= nil), " ",
+        tostring(none3 == nil and err.is(e3, "CLI", "usage") and e3.message:find("usage: kuu run needy", 1, true) ~= nil))
+    ]=] }
+    check("task.default_task and task.arguments answer for a declared project",
+      r.status == "exit" and r.code == 0 and r.out == "nil plain app true true true true", T.describe(r))
+  end
   ran, timed = task.exec(slow)
   check("a rejected defaults declaration preserves the preceding default",
     ran == nil and err.is(timed, "TASK", "failed") and contains(timed.message, "timeout"), tostring(timed))

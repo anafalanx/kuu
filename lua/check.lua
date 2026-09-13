@@ -214,20 +214,32 @@ local function project_exports(path)
     end
   end
 
+  -- A metatable or a raw set can put names on the table that its text does
+  -- not show, but only through a reference to the table.  So the file's
+  -- mention of `setmetatable` or `rawset` puts the set out of reach only
+  -- when the table also escapes: is passed, aliased, or used as `self`,
+  -- anywhere other than its own `local M = {`, its `M.name` accesses, and
+  -- the final `return M`.  A module that declares the name and never uses
+  -- it, or builds its own objects with it, stays bounded: the generated
+  -- corpus found every such module going unchecked.
+  local reaches, escapes = false, false
   for i = 1, #tokens do
     local t = tokens[i]
-    if t.text == "setmetatable" or t.text == "rawset" then return nil end
+    if t.text == "setmetatable" or t.text == "rawset" then reaches = true end
     if t.text == returned then
-      local next1, next2, next3 = tokens[i + 1], tokens[i + 2], tokens[i + 3]
+      local before, next1, next2, next3 = tokens[i - 1], tokens[i + 1], tokens[i + 2], tokens[i + 3]
       if next1 ~= nil and next1.text == "[" then return nil end
       if next1 ~= nil and next1.text == "." and next2 ~= nil and next2.kind == "name" then
-        local before = tokens[i - 1]
         if (next3 ~= nil and next3.text == "=") or (before ~= nil and before.text == "function") then
           exports[next2.text] = true
         end
+      elseif not (before ~= nil and before.text == "local" and next1 ~= nil and next1.text == "=")
+        and not (before ~= nil and before.text == "return" and next1 ~= nil and next1.kind == "eof") then
+        escapes = true
       end
     end
   end
+  if reaches and escapes then return nil end
   if next(exports) == nil then return nil end
   return exports
 end

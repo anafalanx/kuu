@@ -1,6 +1,6 @@
 -- text.lua -- strict conversions between UTF-8 and Windows encodings.
 global none
-global <const> require, tostring, pcall, type
+global <const> require, tostring, pcall, type, ipairs
 
 return function(T)
   local check = T.check
@@ -76,4 +76,14 @@ return function(T)
   ok, raised = pcall(text.tobase64, "x", { urll = true })
   check("tobase64 refuses an unknown option as TEXT usage",
     not ok and err.is(raised, "TEXT", "usage") and tostring(raised):find("urll", 1, true) ~= nil, tostring(raised))
+
+  -- encodings names what decode and encode accept, in the manual's order,
+  -- and each name it gives is one they take.
+  local names = text.encodings()
+  check("encodings lists the accepted names", type(names) == "table" and names[1] == "utf-8" and names[#names] == "cpNNN" and #names == 7, tostring(#names))
+  local every = true
+  for _, name in ipairs(names) do
+    if name ~= "cpNNN" and text.encode("x", name) == nil then every = false end
+  end
+  check("every listed encoding encodes", every)
 end
