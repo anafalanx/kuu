@@ -31,7 +31,7 @@ Compressed responses (gzip, deflate) are decompressed transparently.
 |---|---|---|
 | `timeout` | `"30s"` | the whole request, from connect to the last byte; `HTTP timeout` when exceeded; zero is refused because WinHTTP reads it as infinite |
 | `maxbody` | `"64M"`, `"8G"` with `to` | the body is refused as `HTTP toobig` beyond this, never truncated |
-| `to` | | stream the body into this file; written beside it as a temporary and renamed into place, so a failed download leaves the previous file untouched |
+| `to` | | stream the body into this file; written beside it as a temporary and renamed into place, with the same retry as [`fs.write`](fs.md) since 0.10.0, so a failed download leaves the previous file untouched |
 | `sha256` | | 64 hex digits the body must hash to, checked as it arrives; otherwise `HTTP mismatch`, and a `to` file is never placed. A non-2xx answer is then `HTTP status`, because specific bytes were asked for |
 | `headers` | | a table of name = value; names and values may not contain control characters, and names no colon or space |
 | `type` | `application/octet-stream` when there is a body | the `Content-Type`; wins over a `Content-Type` header |

@@ -19,6 +19,7 @@
  */
 #include "err.h"
 #include "http_error.h"
+#include "fs_internal.h"
 #include "fspath.h"
 #include "loop.h"
 #include "values.h"
@@ -488,9 +489,15 @@ static int request_push(lua_State *L, ku_waiter *w)
     if (q->temp_path != NULL) {
         ku_wpath final;
         ku_fail fail;
-        if (ku_wpath_make(q->to_utf8, &final, &fail) != 0 ||
-            !MoveFileExW(q->temp_path, final.text, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-            DWORD error = GetLastError();
+        if (ku_wpath_make(q->to_utf8, &final, &fail) != 0) {
+            /* The same path passed this when the request was made; only memory fails here. */
+            DeleteFileW(q->temp_path);
+            int n = ku_err_fail(L, "HTTP", "oserror", "cannot place the download at '%s': %s", q->to_utf8, fail.message);
+            request_free(q);
+            return n;
+        }
+        DWORD error = 0;
+        if (ku_fs_replace(q->temp_path, final.text, &error) != 0) {
             DeleteFileW(q->temp_path);
             ku_wpath_free(&final);
             char *text = ku_win_error_message(error);

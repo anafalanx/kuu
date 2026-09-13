@@ -1968,7 +1968,11 @@ returns a list, empty when nothing matches; looking for something that is
 not there is not an error. It takes exactly one of `name`, `pid`, `port` and
 raises PROC badvalue otherwise. `tree` answers `nil, PROC notfound` for an
 unknown pid. Process ids are reused, so a `parent` may name a process that
-exited long ago and whose id now belongs to something unrelated.
+exited long ago and whose id now belongs to something unrelated; the field
+reports what the snapshot says. `tree` does not follow such a name: a
+process is listed as a child only when it began no earlier than the parent
+did, which a real child always has and a stranger wearing a dead parent's
+id never has. A process whose start time cannot be read is kept.
 Tree expansion stops after 64 levels; a deepest entry then has no expanded
 children.
 
@@ -2261,7 +2265,7 @@ Compressed responses (gzip, deflate) are decompressed transparently.
 |---|---|---|
 | `timeout` | `"30s"` | the whole request, from connect to the last byte; `HTTP timeout` when exceeded; zero is refused because WinHTTP reads it as infinite |
 | `maxbody` | `"64M"`, `"8G"` with `to` | the body is refused as `HTTP toobig` beyond this, never truncated |
-| `to` | | stream the body into this file; written beside it as a temporary and renamed into place, so a failed download leaves the previous file untouched |
+| `to` | | stream the body into this file; written beside it as a temporary and renamed into place, with the same retry as [`fs.write`](#fs) since 0.10.0, so a failed download leaves the previous file untouched |
 | `sha256` | | 64 hex digits the body must hash to, checked as it arrives; otherwise `HTTP mismatch`, and a `to` file is never placed. A non-2xx answer is then `HTTP status`, because specific bytes were asked for |
 | `headers` | | a table of name = value; names and values may not contain control characters, and names no colon or space |
 | `type` | `application/octet-stream` when there is a body | the `Content-Type`; wins over a `Content-Type` header |
@@ -5083,6 +5087,15 @@ Observations, none of them a kuu defect:
   complete production suite then passed all 1,044 checks. No change to
   process-tree enumeration was made.
 - **Evidence:** [dated validation record](notes/validation-23h2-2026-09-11_094612.md).
+- **Status:** isolated 2026-09-13, closed in 0.10.0. The snapshot's parent
+  id is the number the parent had when the child started, and Windows hands
+  a dead process's id to the next one that needs it; a process orphaned by
+  an earlier test, whose parent's id a chain node later received, appears as
+  that node's second child. `tree` now lists a child only when it began no
+  earlier than its parent. The 23H2 instance itself was not reproduced: 40
+  attempts to provoke id reuse on the owner's machine produced none, so the
+  fix removes the one mechanism the evidence admits, not a reproduced
+  instance.
 
 ### Orphaned I/O completion during console shutdown — 2026-09-11
 

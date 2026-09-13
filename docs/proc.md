@@ -214,7 +214,11 @@ returns a list, empty when nothing matches; looking for something that is
 not there is not an error. It takes exactly one of `name`, `pid`, `port` and
 raises PROC badvalue otherwise. `tree` answers `nil, PROC notfound` for an
 unknown pid. Process ids are reused, so a `parent` may name a process that
-exited long ago and whose id now belongs to something unrelated.
+exited long ago and whose id now belongs to something unrelated; the field
+reports what the snapshot says. `tree` does not follow such a name: a
+process is listed as a child only when it began no earlier than the parent
+did, which a real child always has and a stranger wearing a dead parent's
+id never has. A process whose start time cannot be read is kept.
 Tree expansion stops after 64 levels; a deepest entry then has no expanded
 children.
 

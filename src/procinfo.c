@@ -292,6 +292,22 @@ int ku_proc_find(lua_State *L)
     return 1;
 }
 
+/* When a process began, as a FILETIME count; 0 when it cannot be asked. */
+static int64_t process_started(DWORD pid)
+{
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (h == NULL) {
+        return 0;
+    }
+    FILETIME created, exited, kernel, user;
+    int64_t ticks = 0;
+    if (GetProcessTimes(h, &created, &exited, &kernel, &user)) {
+        ticks = ((int64_t)created.dwHighDateTime << 32) | created.dwLowDateTime;
+    }
+    CloseHandle(h);
+    return ticks;
+}
+
 static void push_tree(lua_State *L, const ku_pentry *list, size_t count, size_t index, int depth)
 {
     /* Each level retains its entry and children while the next level runs. */
@@ -300,8 +316,20 @@ static void push_tree(lua_State *L, const ku_pentry *list, size_t count, size_t 
     lua_newtable(L);
     lua_Integer children = 0;
     if (depth < 64) {
+        /* The snapshot's parent id is the number the parent had when the
+         * child started, and Windows hands a dead process's id to the next
+         * one that needs it.  A real child began no earlier than its parent;
+         * a stranger wearing the parent's old id began after the child did.
+         * Either start time unreadable: the child is kept, as before. */
+        int64_t parent_started = process_started(list[index].pid);
         for (size_t i = 0; i < count; i++) {
             if (list[i].parent == list[index].pid && list[i].pid != list[index].pid && i != index) {
+                if (parent_started != 0) {
+                    int64_t child_started = process_started(list[i].pid);
+                    if (child_started != 0 && child_started < parent_started) {
+                        continue;
+                    }
+                }
                 push_tree(L, list, count, i, depth + 1);
                 lua_rawseti(L, -2, ++children);
             }

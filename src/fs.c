@@ -301,7 +301,7 @@ static BOOL do_copy(void *context)
     return CopyFileExW(op->from, op->to, NULL, NULL, NULL, op->flags);
 }
 
-static int replace_target(const wchar_t *temp, const wchar_t *target, DWORD *error)
+int ku_fs_replace(const wchar_t *temp, const wchar_t *target, DWORD *error)
 {
     move_op op = {temp, target, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH};
     return retry_sharing(do_move, &op, error) ? 0 : -1;
@@ -376,7 +376,7 @@ static int l_fs_write(lua_State *L)
         ku_wpath_free(&path);
         return fail_win(L, error, "write", shown);
     }
-    if (replace_target(temp, path.text, &error) != 0) {
+    if (ku_fs_replace(temp, path.text, &error) != 0) {
         DeleteFileW(temp);
         free(temp);
         ku_wpath_free(&path);

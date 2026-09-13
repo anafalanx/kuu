@@ -468,6 +468,17 @@ int ku_loop_attach_job(ku_loop *lp, HANDLE job, ku_source *src)
                : -1;
 }
 
+/* Windows 8 and later remove the association when the port is NULL; after
+ * this returns the kernel posts nothing more on the job's behalf.  What it
+ * already posted is still in the port, which is why the caller fences. */
+int ku_loop_detach_job(HANDLE job)
+{
+    JOBOBJECT_ASSOCIATE_COMPLETION_PORT none;
+    none.CompletionKey = NULL;
+    none.CompletionPort = NULL;
+    return SetInformationJobObject(job, JobObjectAssociateCompletionPortInformation, &none, sizeof none) ? 0 : -1;
+}
+
 int ku_loop_post(ku_loop *lp, ku_source *src, void *value, DWORD bytes)
 {
     return PostQueuedCompletionStatus(lp->port, bytes, (ULONG_PTR)src, (LPOVERLAPPED)value) ? 0 : -1;

@@ -317,7 +317,13 @@ return function(T)
       while node do
         pids[#pids + 1] = node.pid
         assert(#node.children <= 1)
-        node = node.children[1]
+        local child = node.children[1]
+        if child and node.started and child.started then
+          -- a listed child began no earlier than its parent: the law that keeps
+          -- a stranger wearing a dead parent's pid out of the tree
+          assert(child.started >= node.started, "a child older than its parent")
+        end
+        node = child
       end
       assert(#pids == 31, "wrong depth: " .. #pids)
       root:kill()

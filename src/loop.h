@@ -171,6 +171,7 @@ HANDLE ku_loop_port(ku_loop *loop);
 lua_State *ku_loop_state(ku_loop *loop); /* the main state that owns the loop */
 int ku_loop_attach(ku_loop *loop, HANDLE handle, ku_source *src);      /* file/pipe */
 int ku_loop_attach_job(ku_loop *loop, HANDLE job, ku_source *src);     /* job messages */
+int ku_loop_detach_job(HANDLE job);                                    /* ...and no more of them */
 void ku_loop_expect(ku_loop *loop);   /* a packet will arrive (a job is alive) */
 void ku_loop_received(ku_loop *loop); /* ...and it did */
 

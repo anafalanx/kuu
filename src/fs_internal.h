@@ -1,5 +1,6 @@
 /*
- * fs_internal.h -- shared pieces of the fs module (fs.c, fs_dirs.c, fs_watch.c).
+ * fs_internal.h -- shared pieces of the fs module (fs.c, fs_dirs.c, fs_watch.c),
+ * and the one placement http.c borrows for a download.
  */
 #ifndef KUU_FS_INTERNAL_H
 #define KUU_FS_INTERNAL_H
@@ -70,6 +71,11 @@ int ku_fs_wildcard(const char *pattern, const char *name);
 
 /* FILETIME-as-64-bit -> seconds since the Unix epoch. */
 double ku_fs_time_seconds(LONGLONG filetime);
+
+/* Rename `temp` over `target`, retrying the two transient refusals a scanner
+ * causes (fs.c has the account).  0 on success; otherwise -1 with the Win32
+ * error in `error`. */
+int ku_fs_replace(const wchar_t *temp, const wchar_t *target, DWORD *error);
 
 /* The module's functions implemented in the other files. */
 int ku_fs_dirs(lua_State *L);

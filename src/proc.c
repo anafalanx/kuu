@@ -82,9 +82,11 @@ typedef struct read_request {
 } read_request;
 
 struct ku_child {
-    ku_source job_src, io_src;
+    ku_source job_src, io_src, fence_src;
     ku_loop *loop;
     HANDLE job, process;
+    int attached;          /* the job is associated with the loop's port */
+    int fenced;            /* the marker posted behind the job's last message has come round */
     ku_console *console;
     int legacy_console, close_queued;
     ku_child *close_next;
@@ -610,8 +612,51 @@ static void child_maybe_free(ku_child *c)
         console_finish_close(c);
         child_check_done(c);
     }
-    if (c->closed && c->done && c->out.io == NULL && c->err.io == NULL && c->in_io == NULL && c->woken == 0) {
+    if (c->closed && c->done && c->out.io == NULL && c->err.io == NULL && c->in_io == NULL && c->woken == 0 &&
+        c->fenced) {
         child_free(c);
+    }
+}
+
+/* The job's last message is not necessarily its last packet.  ACTIVE_PROCESS_ZERO
+ * says the count reached zero; the exit notification of the process that
+ * took it there is posted by the same kernel path, and Windows documents no
+ * order between the two -- it calls every job message a notification whose
+ * delivery is not even guaranteed.  A packet dispatched on a freed key would
+ * be read as a ku_source.  So a job is let go in two steps: its association
+ * with the port is removed, after which the kernel posts nothing more for
+ * it, and a marker is posted behind whatever it already posted; the child
+ * is freed only once the marker has come round.  900 rounds of one- and
+ * five-process jobs on the owner's machine showed no packet after ZERO and
+ * the removal succeeding every time; the marker is for the day that changes,
+ * and for a launch that failed after a process had already joined. */
+static void child_on_fence(ku_source *src, void *value, DWORD bytes)
+{
+    (void)value;
+    (void)bytes;
+    ku_child *c = (ku_child *)src->owner;
+    ku_loop_received(c->loop);
+    c->fenced = 1;
+    child_maybe_free(c);
+}
+
+static void child_fence(ku_child *c)
+{
+    if (c->job == NULL) {
+        return; /* already let go */
+    }
+    if (!c->attached) {
+        CloseHandle(c->job); /* never associated: no message was ever posted */
+        c->job = NULL;
+        c->fenced = 1;
+        return;
+    }
+    ku_loop_detach_job(c->job);
+    CloseHandle(c->job);
+    c->job = NULL;
+    ku_loop_expect(c->loop);
+    if (ku_loop_post(c->loop, &c->fence_src, NULL, 0) != 0) {
+        ku_loop_received(c->loop); /* never fenced, so never freed: a leak, not a packet to freed memory */
     }
 }
 
@@ -663,8 +708,7 @@ static void child_check_done(ku_child *c)
                 c->limit = "cpu";
             }
         }
-        CloseHandle(c->job); /* ACTIVE_PROCESS_ZERO was the job's last message */
-        c->job = NULL;
+        child_fence(c);
     }
     if (!c->stream) {
         /* Capture mode: the pipes are at EOF; stream mode keeps them for the reader. */
@@ -1096,6 +1140,9 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
     c->io_src.kind = KU_SRC_IO;
     c->io_src.owner = c;
     c->io_src.on_io = child_on_io;
+    c->fence_src.kind = KU_SRC_POSTED;
+    c->fence_src.owner = c;
+    c->fence_src.on_posted = child_on_fence;
     c->stream = spec->stream;
     c->inherit = spec->inherit;
     c->limits = spec->limits;
@@ -1119,6 +1166,7 @@ static int child_launch(lua_State *L, const ku_spec *spec, ku_child **out, ku_fa
                     (unsigned long)GetLastError());
         goto fail;
     }
+    c->attached = 1;
     if (spec->console) {
         if (make_pipe(1, &c->out.handle, &their_out, fail) != 0 ||
             make_pipe(0, &c->in_handle, &their_in, fail) != 0) {
@@ -1237,21 +1285,20 @@ fail:
     if (nul != NULL) {
         CloseHandle(nul);
     }
-    if (c->out.handle != NULL) {
-        CloseHandle(c->out.handle);
+    if (c->console != NULL) {
+        ku_console_close(c->console);
+        c->console = NULL;
     }
-    if (c->err.handle != NULL) {
-        CloseHandle(c->err.handle);
+    if (c->attached) {
+        /* CreateProcess can add a process to the job and still fail, and the
+         * job then reports it.  Let the job go the way a finished one is let
+         * go, and `c` with it, once the marker has come round. */
+        c->closed = 1;
+        c->done = 1;
+        child_fence(c);
+    } else {
+        child_free(c); /* nothing was ever associated: no message can come */
     }
-    if (c->in_handle != NULL) {
-        CloseHandle(c->in_handle);
-    }
-    if (c->job != NULL) {
-        CloseHandle(c->job); /* no process ever joined it: no message will come */
-    }
-    if (c->console != NULL) ku_console_close(c->console);
-    free(c->in_data);
-    free(c);
     free(exe);
     free(env);
     return rc;

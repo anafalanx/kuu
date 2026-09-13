@@ -2,7 +2,7 @@
 -- headers, bodies, redirects and the zero-request canary, timeouts, limits,
 -- streaming to a file, and concurrency on the loop.
 global none
-global <const> require, ipairs, tostring, tonumber, string, pcall, select
+global <const> require, ipairs, tostring, tonumber, string, pcall, select, io
 
 return function(T)
   local check, contains, starts = T.check, T.contains, T.starts
@@ -100,6 +100,22 @@ return function(T)
   check("a refused download leaves the previous file untouched", none == nil and err.is(e3, "HTTP", "toobig") and #fs.read(target) == 16384, tostring(e3))
   r = http.get(base .. "/files/missing.bin", { to = target })
   check("a 404 download still writes what the server sent", r and r.status == 404 and fs.read(target) == "no such file")
+
+  -- The rename into place is retried the way fs.write's is (fs.lua has the
+  -- account).  A target held open for the whole window still fails, after
+  -- the window, keeps its bytes, and leaves no temporary beside it.
+  do
+    local handle <close> = io.open(target, "rb")
+    local began = sched.clock()
+    local held, e4 = http.get(base .. "/files/blob.bin", { to = target })
+    local elapsed = (sched.clock() - began) * 1000
+    check("a download onto a held target fails after the retry window and keeps the old bytes",
+      held == nil and err.is(e4, "HTTP", "oserror") and elapsed >= 10 and fs.read(target) == "no such file",
+      tostring(e4) .. string.format(" after %.0f ms", elapsed))
+    leftovers = 0
+    for _, entry in ipairs(fs.list(T.work).entries) do if entry.name:find("downloaded.bin.kuu-", 1, true) then leftovers = leftovers + 1 end end
+    check("no temporary file remains after a refused placement", leftovers == 0)
+  end
 
   -- A scope deadline can arrive before the worker publishes its WinHTTP
   -- handle, or during the request. Neither path may replace the old file or
