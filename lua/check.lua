@@ -387,6 +387,8 @@ end
 -- like options must be ones the declaration names: the same kind of finding
 -- as an option a palette call does not take. A call with no `tool` at all
 -- is a warning: the door still runs it, but nothing describes it.
+local TOOL_ATTRIBUTES = { exe = true, args = true, output = true, emits = true, timeout = true, reach = true }
+
 local function tool_findings(contracts, declared, context, report)
   -- A file's own declarations serve its own calls, wherever it is; the
   -- manifest's serve every file under the root. Only the manifest is told
@@ -395,6 +397,20 @@ local function tool_findings(contracts, declared, context, report)
   local known = {}
   report.tools = {}
   for _, t in ipairs(declared) do
+    -- An attribute the declaration cannot hold, found here rather than when
+    -- the manifest runs: `task.tool "x" { ... }` is two calls, so the
+    -- description's option check never sees its table.
+    if context.is_manifest and t.node.keys then
+      for _, key in ipairs(t.node.keys) do
+        if TOOL_ATTRIBUTES[key.name] == nil then
+          local suggestion = nearest(key.name, TOOL_ATTRIBUTES)
+          local message = key.name .. " is not an attribute of task.tool"
+          if suggestion then message = message .. "; did you mean " .. suggestion .. "?" end
+          report.errors[#report.errors + 1] = { kind = "option", line = key.line, message = message,
+            module = "task", name = key.name, suggestion = suggestion }
+        end
+      end
+    end
     local decl = literal_of(t.node)
     if known[t.name] ~= nil then
       -- Declared more than once -- one arm of an `if` each, say -- the text

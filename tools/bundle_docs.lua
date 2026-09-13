@@ -8,10 +8,11 @@
 --   kuu tools/bundle_docs.lua            print the bundle
 --   kuu tools/bundle_docs.lua --write    rewrite kuu.md's Part III in place
 global none
-global <const> require, ipairs, error, os, io, table, tostring, assert
+global <const> require, ipairs, pairs, error, os, io, table, tostring, type, string, assert
 
 local fs = require "fs"
 local rt = require "rt"
+local proc = require "proc"
 
 local rtrim_both = require("text").trim
 local function rtrim(s) return rtrim_both(s, "right") end
@@ -35,6 +36,61 @@ local ORDER = {
 
 local function root()
   return fs.dirname(fs.dirname(fs.canon(rt.program).path))
+end
+
+-- Part I's figures, produced from the executable and the tree rather than
+-- by hand: every wrong figure found on 2026-09-12 was one a hand wrote and
+-- nothing generated.  --write puts them between the markers in Part I,
+-- --figures prints them, and the suite holds the two equal.
+local FIGURES_OPEN, FIGURES_CLOSE = "<!-- figures -->", "<!-- /figures -->"
+
+local function count_lines(pattern)
+  local lines = 0
+  for _, path in ipairs(fs.glob(pattern)) do
+    for _ in (fs.read(path) or ""):gmatch("\n") do lines = lines + 1 end
+  end
+  return lines
+end
+
+local function thousands(n)
+  local reversed = tostring(n):reverse():gsub("(%d%d%d)", "%1,")
+  return (reversed:reverse():gsub("^,", ""))
+end
+
+local function figures(here)
+  local palette = require "_palette"
+  local functions = 0
+  for _, name in ipairs(palette.public) do
+    for _, value in pairs(require(name)) do
+      if type(value) == "function" then functions = functions + 1 end
+    end
+  end
+  local pages = 0
+  for _, entry in ipairs(fs.list(here .. "/docs").entries) do
+    if entry.name:match("%.md$") then pages = pages + 1 end
+  end
+  local help = proc.run { rt.exe, "--help", timeout = "30s" }
+  local verbs = help and rtrim((help.out:gsub("\r\n", "\n"))) or "(kuu --help did not run)"
+  local c = count_lines(here .. "/src/*.c")
+  local lua = count_lines(here .. "/lua/*.lua") + count_lines(here .. "/lua/*/*.lua")
+  local suite = count_lines(here .. "/test/*.lua") + count_lines(here .. "/test/cases/*.lua")
+  local manual = count_lines(here .. "/docs/*.md")
+  return table.concat({
+    FIGURES_OPEN,
+    string.format("By the numbers, %s is %s lines of authored host C, %s lines of kuu's own", rt.version, thousands(c), thousands(lua)),
+    string.format("Lua, a suite of %s lines, and %s lines of manual in %d pages that ship", thousands(suite), thousands(manual), pages),
+    string.format("inside the executable. The palette is %d public modules and %d functions,", #palette.public, functions),
+    "plus methods on handles. The suite's own count is what `make test` prints.",
+    "These figures are produced by `tools/bundle_docs.lua` from the executable",
+    "and the tree, and the suite holds them.",
+    "",
+    "The verbs, as `kuu --help` prints them:",
+    "",
+    "```text",
+    verbs,
+    "```",
+    FIGURES_CLOSE,
+  }, "\n")
 end
 
 -- GitHub's anchor for a heading: lower case, dots dropped, spaces to dashes.
@@ -118,8 +174,16 @@ if rt.args[1] == "--write" then
   local current = fs.read(path)
   if not current then error("no kuu.md at " .. path) end
   local head = current:match("^(.-)\n" .. MARKER) or rtrim(current)
+  local open_at = head:find(FIGURES_OPEN, 1, true)
+  local close_at = head:find(FIGURES_CLOSE, 1, true)
+  if not open_at or not close_at then
+    error("kuu.md's Part I has no figures block between " .. FIGURES_OPEN .. " and " .. FIGURES_CLOSE)
+  end
+  head = head:sub(1, open_at - 1) .. figures(here) .. head:sub(close_at + #FIGURES_CLOSE)
   assert(fs.write(path, rtrim(head) .. "\n\n" .. bundle .. "\n"))
-  io.write("kuu.md: Part III regenerated from ", tostring(#ORDER), " pages\n")
+  io.write("kuu.md: Part I's figures and Part III regenerated from ", tostring(#ORDER), " pages\n")
+elseif rt.args[1] == "--figures" then
+  io.write(figures(here), "\n")
 else
   io.write(bundle, "\n")
 end

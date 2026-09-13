@@ -453,6 +453,33 @@ other.custom()
       r = T.kuu({ "check", "--json" }, { cwd = dir })
       check("check --json spells a declaration's empty lists as arrays, as capabilities does",
         contains(r.out, '"emits":[]') and not contains(r.out, '"emits":{}'), r.out:sub(1, 400))
+      -- The description now names the options of every option-taking call,
+      -- so a misspelt one is found in any module, and a declaration's
+      -- attribute is held to task.tool's set.
+      put("described.lua", table.concat({
+        'global none', 'global <const> require',
+        'local hash, time, csv, task = require "hash", require "time", require "csv", require "task"',
+        'local a = hash.sum("sha256", "x", { raww = true })',
+        'local b = time.make { year = 2026, mnth = 2 }',
+        'local c = csv.decode("a,b", { separater = ";" })',
+        'task.tool "described" { exe = "x.exe", outputt = "lines" }',
+        'return a, b, c',
+      }, "\n") .. "\n")
+      r = T.kuu({ "check", "--json", "described.lua" }, { cwd = dir })
+      local described = json.decode(r.out)
+      local found = {}
+      for _, e in ipairs(described and described.result.files[1].errors or {}) do found[#found + 1] = e.kind .. ":" .. e.name .. ">" .. tostring(e.suggestion) end
+      table.sort(found)
+      check("an option a described call does not take is found in hash, time and csv alike",
+        #found == 3 and found[1] == "option:mnth>month" and found[2] == "option:raww>raw" and found[3] == "option:separater>separator",
+        table.concat(found, " "))
+      put("manifest.lua", 'global none\nglobal <const> require\nlocal task = require "task"\ntask.tool "declared" { exe = "x.exe", outputt = "lines" }\n')
+      r = T.kuu({ "check", "--json", "manifest.lua" }, { cwd = dir })
+      local declared = json.decode(r.out)
+      local attribute = declared and declared.result.files[1].errors[1]
+      check("an attribute a tool declaration cannot hold is an option finding in the manifest, with the nearest attribute",
+        attribute ~= nil and attribute.kind == "option" and attribute.name == "outputt" and attribute.suggestion == "output", r.out:sub(1, 300))
+
       -- The root however it is spelled: the manifest is recognised as itself
       -- under backslashes, a trailing slash, and a `..`, where a text compare
       -- once recursed until the stack ran out.

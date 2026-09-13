@@ -98,7 +98,7 @@ Building and verifying kuu itself, from the repository root:
 |---|---|
 | `kuu.md` (this file) | why kuu is shaped this way, what was learned, where it is going |
 | `README.md` | the short introduction and the build |
-| `docs/` — 42 pages, shipped inside the executable | the reference: one page per module, plus the pages below |
+| `docs/` — every page, shipped inside the executable | the reference: one page per module, plus the pages below; the count is in the figures |
 | `docs/pitfalls.md` | what an agent's Lua priors get wrong here. Read once, first |
 | `docs/capabilities.md` | `kuu capabilities`: the verbs, the palette, and this project's tasks and modules, in one command |
 | `docs/adopting.md` | how a repository comes to be driven by kuu: `manifest.lua`, prerequisites by URL and hash |
@@ -151,10 +151,29 @@ follows from it:
   Portability was never a goal and its absence is what allows the palette to
   tell the truth about the platform.
 
-By the numbers, 0.9.0 is 16,461 lines of authored host C, 2,724 lines of kuu's
-own Lua, a suite of 1,062 checks in 4,320 lines, and 4,692 lines of manual that
-ships inside the executable. The palette is 26 modules and 98 registered
-functions, plus methods on handles.
+<!-- figures -->
+By the numbers, 0.9.0 is 15,990 lines of authored host C, 4,787 lines of kuu's own
+Lua, a suite of 5,728 lines, and 6,072 lines of manual in 45 pages that ship
+inside the executable. The palette is 27 public modules and 172 functions,
+plus methods on handles. The suite's own count is what `make test` prints.
+These figures are produced by `tools/bundle_docs.lua` from the executable
+and the tree, and the suite holds them.
+
+The verbs, as `kuu --help` prints them:
+
+```text
+kuu 0.9.0 -- a Lua 5.5 runtime for agents on Windows
+usage: kuu FILE [arg ...]        run a Lua program file
+       kuu - [arg ...]           run a program read from standard input
+       kuu -e SCRIPT [arg ...]   run an inline script
+       kuu docs [PAGE | search TEXT]   the manual, from inside the executable
+       kuu run [TASK [arg ...]]  run a task from the nearest manifest.lua
+       kuu list [--json]         list those tasks
+       kuu check [--json] [PATH ...]   parse, global declarations, requires
+       kuu capabilities [--json] the palette, the verbs, and this project
+       kuu version | --version | --help
+```
+<!-- /figures -->
 
 ## The shape of a program
 
@@ -321,7 +340,8 @@ There is no PowerShell anywhere in the repository.
 
 Verification is layered and all of it runs locally:
 
-- `make test` — the suite, 1,062 checks.
+- `make test` — the suite; its count is what it prints, and nothing here
+  repeats it.
 - `make analyze` — GCC's static analyzer over every authored host file, with
   warnings as errors.
 - `make fuzz` — deterministic parser fuzzing, 10,000 cases per family across
@@ -2398,7 +2418,11 @@ exited long ago and whose id now belongs to something unrelated; the field
 reports what the snapshot says. `tree` does not follow such a name: a
 process is listed as a child only when it began no earlier than the parent
 did, which a real child always has and a stranger wearing a dead parent's
-id never has. A process whose start time cannot be read is kept.
+id never has. A process whose start time cannot be read — one this user may
+not ask about — is listed only under a parent whose start time cannot be
+read either, since nothing kuu can open starts a process it cannot; `csrss`
+and `wininit` name the boot-time pid 1000 as their parent, and whatever
+wears that pid today did not start them.
 Tree expansion stops after 64 levels; a deepest entry then has no expanded
 children.
 
@@ -5042,7 +5066,27 @@ add to it is a tool the project builds, called through the door.
      `cli.duration` and `cli.size` and left `re` and `text` where they were.
      The `fs.c` raise-path leak the review named did not reproduce under two
      scans and is recorded as such.
-   - The suite is at 1187 checks, with four new cases: `_palette` held to the
+   - The front door, as the plan of 2026-09-13 laid it out, landed through its
+     fourth phase the same day. The declaration file is `manifest.lua`, with
+     `tasks.lua` still found for this release and warned about. A project's
+     tools are declared in it, `task.tool "name" { exe, args, output, emits,
+     timeout, reach }`, called with `task.exec { tool = "name", ... }` and
+     resolved with `task.command`; `check` reads the declarations from the
+     manifest's text and holds every call to them, `capabilities` lists them
+     from the registry, and the suite holds the two readings equal —
+     [tools](#tools), and [confined tools](#confined) for what a tool
+     that confines itself must provide and the junction that walks out of any
+     lexical grant. `kuu run --json` is a stream, each event as it happens
+     and the envelope last. The door keeps a [ledger](#ledger): one record
+     per crossing under `.kuu/ledger`, chained by hash, ninety days, with the
+     tree delta since the previous run and the repository's head read from
+     `.git` itself. Part I's figures are produced by the bundler and held by
+     the suite, and `_palette` describes the options of every option-taking
+     call, so "an option the call does not take" holds everywhere. A
+     three-lens review with a skeptic per finding ran over the tool change
+     and confirmed twenty, all fixed with checks. What is left of the plan is
+     `kuu watch`, deferred by design until something runs unattended.
+   - The suite is at 1278 checks, with four new cases: `_palette` held to the
      runtime, to the manual in both directions and to itself; `capabilities`;
      the fixer's invariant, which keeps every declaration outside
      `test/fixtures` correct so a name that falls out of use fails instead of
@@ -5564,18 +5608,20 @@ Observations, none of them a kuu defect:
   complete production suite then passed all 1,044 checks. No change to
   process-tree enumeration was made.
 - **Evidence:** [dated validation record](notes/validation-23h2-2026-09-11_094612.md).
-- **Status:** one mechanism closed 2026-09-13, the observation open. The
-  snapshot's parent id is the number the parent had when the child started,
-  and Windows hands a dead process's id to the next one that needs it; a
-  process orphaned by an earlier test, whose parent's id a chain node later
-  received, would appear as that node's second child, and `tree` now lists
-  a child only when it began no earlier than its parent. That did not end
-  it: the same assertion failed once more the same day, under the sanitizer
-  build inside the full suite, and not in 24 isolated rounds of the chain
-  under either build. The assertion now names every child it sees — pid,
-  name, parent, start time — so the next failure says what the second
-  child is. It is tolerated in no sense but that: the suite fails when it
-  happens.
+- **Status:** closed 2026-09-13, on evidence. The snapshot's parent id is
+  the number the parent had when the child started, and Windows hands a dead
+  process's id to the next one that needs it. `tree` first learned to list a
+  child only when it began no earlier than its parent, keeping a child whose
+  start time it could not read; the assertion failed again that day, twice,
+  and once the assertion named what it saw, the second and third children of
+  chain node 1000 were `csrss.exe` and `wininit.exe` — system processes whose
+  recorded parent is the boot-time pid 1000, unreadable to this user, worn
+  that afternoon by a `kuu.exe` the chain had just started. A process kuu can
+  open never starts one it cannot, so an unreadable child under a readable
+  parent is a stranger, and `tree` leaves it out; only a parent that cannot
+  be read keeps every child. The proc case holds the rule against whatever
+  the machine offers: every readable process whose snapshot children include
+  an unreadable one shows it no such child.
 
 ### Orphaned I/O completion during console shutdown — 2026-09-11
 

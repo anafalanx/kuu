@@ -352,7 +352,27 @@ add to it is a tool the project builds, called through the door.
      `cli.duration` and `cli.size` and left `re` and `text` where they were.
      The `fs.c` raise-path leak the review named did not reproduce under two
      scans and is recorded as such.
-   - The suite is at 1187 checks, with four new cases: `_palette` held to the
+   - The front door, as the plan of 2026-09-13 laid it out, landed through its
+     fourth phase the same day. The declaration file is `manifest.lua`, with
+     `tasks.lua` still found for this release and warned about. A project's
+     tools are declared in it, `task.tool "name" { exe, args, output, emits,
+     timeout, reach }`, called with `task.exec { tool = "name", ... }` and
+     resolved with `task.command`; `check` reads the declarations from the
+     manifest's text and holds every call to them, `capabilities` lists them
+     from the registry, and the suite holds the two readings equal —
+     [tools](tools.md), and [confined tools](confined.md) for what a tool
+     that confines itself must provide and the junction that walks out of any
+     lexical grant. `kuu run --json` is a stream, each event as it happens
+     and the envelope last. The door keeps a [ledger](ledger.md): one record
+     per crossing under `.kuu/ledger`, chained by hash, ninety days, with the
+     tree delta since the previous run and the repository's head read from
+     `.git` itself. Part I's figures are produced by the bundler and held by
+     the suite, and `_palette` describes the options of every option-taking
+     call, so "an option the call does not take" holds everywhere. A
+     three-lens review with a skeptic per finding ran over the tool change
+     and confirmed twenty, all fixed with checks. What is left of the plan is
+     `kuu watch`, deferred by design until something runs unattended.
+   - The suite is at 1278 checks, with four new cases: `_palette` held to the
      runtime, to the manual in both directions and to itself; `capabilities`;
      the fixer's invariant, which keeps every declaration outside
      `test/fixtures` correct so a name that falls out of use fails instead of

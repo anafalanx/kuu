@@ -277,6 +277,83 @@ modules = {
     is  = { result = "boolean", domain_arg = 2, code_arg = 3 },
   },
 
+  archive = {
+    unpack = { options_at = 3, options = { strip = "integer?", timeout = "Duration?" }, result = "boolean",
+               errors = { "notfound", "failed", "badvalue", "timeout", "encoding", "toobig", "oserror" } },
+    pack   = { options_at = 4, options = { timeout = "Duration?" }, result = "boolean",
+               errors = { "notfound", "failed", "badvalue", "timeout", "encoding", "oserror" } },
+    list   = { options_at = 2, options = { timeout = "Duration?" }, result = "table",
+               errors = { "notfound", "failed", "timeout", "encoding", "toobig", "oserror" } },
+  },
+
+  csv = {
+    decode = { options_at = 2, options = { separator = "string?", header = "boolean?", ragged = "boolean?" },
+               result = "table", errors = { "parse", "badvalue" } },
+    encode = { options_at = 2, options = { separator = "string?", columns = "table?", header = "boolean?",
+                                           bom = "boolean?", newline = "string?" },
+               result = "string", errors = { "badvalue" } },
+  },
+
+  evt = {
+    read = { options_at = 2, options = { since = "Instant?", level = "EvtLevel?", provider = "string?", limit = "integer?" },
+             result = "table", errors = { "notfound", "access", "badvalue", "oserror" } },
+    logs = { result = "table", errors = { "oserror" } },
+  },
+
+  hash = {
+    sum  = { options_at = 3, options = { raw = "boolean?" }, result = "string", errors = { "badvalue", "oserror" } },
+    hmac = { options_at = 4, options = { raw = "boolean?" }, result = "string", errors = { "badvalue", "oserror" } },
+    file = { options_at = 3, options = { raw = "boolean?" }, result = "string",
+             errors = { "badvalue", "encoding", "notfound", "access", "oserror" } },
+  },
+
+  ini = {
+    encode = { options_at = 2, options = { newline = "string?" }, result = "string", errors = { "badvalue" } },
+  },
+
+  log = {
+    configure = { options_at = 1, options = { level = "LogLevel?", file = "string|boolean?", json = "boolean?",
+                                              sink = "function|boolean?" },
+                  errors = { "badvalue", "usage", "oserror" } },
+  },
+
+  pty = {
+    spawn = { options_at = 1, options = { cols = "integer?", rows = "integer?", cwd = "string?", env = "table?",
+                                          timeout = "Duration?", maxout = "Size?", limits = "Limits?" },
+              result = "handle", errors = { "badvalue", "notfound", "encoding", "launch", "oserror" } },
+  },
+
+  sys = {
+    signature = { options_at = 2, options = { revocation = "boolean?" }, result = "table",
+                  errors = { "notfound", "access", "badvalue", "oserror" } },
+    info      = { result = "table" },
+  },
+
+  task = {
+    exec     = { options_at = 1,
+                 options = { tool = "string?", cwd = "string?", env = "table?", timeout = "Duration?", stdin = "string?",
+                             maxout = "Size?", inherit = "boolean?", stream = "boolean?", limits = "Limits?" },
+                 result = "boolean", errors = { "failed", "exit", "unknown", "badvalue" } },
+    command  = { options_at = 1,
+                 options = { tool = "string?", cwd = "string?", env = "table?", timeout = "Duration?", stdin = "string?",
+                             maxout = "Size?", inherit = "boolean?", stream = "boolean?", limits = "Limits?" },
+                 result = "table", errors = { "unknown", "badvalue" } },
+    defaults = { options_at = 1, options = { timeout = "Duration?" }, errors = { "badvalue", "usage" } },
+    tool     = { options_at = 2,
+                 options = { exe = "string", args = "table?", output = "string?", emits = "table?",
+                             timeout = "Duration?", reach = "table?" },
+                 result = "table", errors = { "badvalue", "usage" } },
+  },
+
+  time = {
+    iso  = { options_at = 2, options = { zone = "string?", ms = "boolean?" }, result = "string", errors = { "badvalue" } },
+    make = { options_at = 1,
+             options = { year = "integer", month = "integer?", day = "integer?", hour = "integer?", min = "integer?",
+                         sec = "integer?", ms = "integer?", wday = "integer?", yday = "integer?", offset = "integer?",
+                         zone = "string?", dst = "boolean?" },
+             result = "Instant", errors = { "badvalue", "usage" } },
+  },
+
   text = {
     trim       = { result = "string" },
     upper      = { result = "string" },

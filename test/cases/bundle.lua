@@ -35,6 +35,15 @@ return function(T)
         string.format("committed %d bytes, generated %d bytes", #present, #fresh))
     end
 
+    -- Part I's figures are produced, not written: what the executable and
+    -- the tree say now must be what the file says.
+    local f = proc.run { rt.exe, generator, "--figures", timeout = "60s" }
+    local produced = f and f.code == 0 and f.out:gsub("\r\n", "\n"):gsub("%s+$", "") or nil
+    local block = current:match("<!%-%- figures %-%->.-<!%-%- /figures %-%->")
+    check("kuu.md's Part I figures are what the executable and the tree say -- run tools/bundle_docs.lua --write",
+      produced ~= nil and block ~= nil and block == produced,
+      (block or "no figures block") .. "\n--- vs ---\n" .. tostring(produced))
+
     -- Every page must appear. A page's own title is its own wording, so the
     -- count of separators is what is checked; the generator refuses outright
     -- when a page under docs/ is absent from its order.
