@@ -138,7 +138,7 @@ subjective half; an entry may cite the record it is about.
 | batch | state |
 |---|---|
 | 1 | done 2026-09-13. `docs/agent.md` and the routing from `--help`, the `docs` footer, both forms of `capabilities` (`next`, `project.eval`), index.md, kuu.md, README; task.md's canonical manifest declares its tools. A three-lens review of the page, a skeptic per finding, confirmed twenty (the timeout wording, the sample output, the heading contract stated exactly, fenced output not counted, a file present but empty told apart, the literal-name rule, the two laws, the short form) — all folded in before the gate |
-| 2 | — |
+| 2 | done 2026-09-13. `rt.page`; `lua/cmd/docs.lua` replaces the C route: descriptions, sections by heading or GitHub anchor, search over all its words, `--json` for each, `--help`, the unknown-option and surplus-word laws; proc.md heads its code set `## Errors`; index.md documents the verb with four schemas. A two-lens review confirmed eleven (a `## ` inside a fence taken for a section, anchors keeping punctuation, a blank search printing the manual, pty's description a code line, the capabilities verbs row overflowing its column, README's usage line, surplus words accepted) — all folded in before the gate |
 | 3 | — |
 | 4 | — |
 | 5 | — |

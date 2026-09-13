@@ -228,7 +228,7 @@ local function listing(column, indent, label, items)
 end
 
 local function fact(label, value, hint)
-  io.write(string.format("  %-" .. (LABEL - 2) .. "s%-34s%s\n", label, value, hint))
+  io.write(string.format("  %-" .. (LABEL - 2) .. "s%-38s%s\n", label, value, hint))
 end
 
 io.write("kuu ", rt.version, " (", rt.lua, ") at ", rt.exe, "\n\n")

@@ -154,6 +154,39 @@ static int l_rt_source(lua_State *L)
     return 1;
 }
 
+/* rt.page(name) -> the text of one of the manual's pages, or nil.  A
+ * program with no shell reads the manual the way `kuu docs` does; the
+ * name is a page's bare name, and anything that could leave docs/ -- a
+ * separator, a dot-dot -- is simply no page. */
+static int l_rt_page(lua_State *L)
+{
+    size_t length;
+    const char *name = luaL_checklstring(L, 1, &length);
+    char embedded[KU_PATH_MAX];
+    if (length == 0 || length > 200 || strstr(name, "..") != NULL) {
+        lua_pushnil(L);
+        return 1;
+    }
+    for (size_t i = 0; i < length; i++) {
+        char c = name[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')) {
+            lua_pushnil(L);
+            return 1;
+        }
+    }
+    if (snprintf(embedded, sizeof embedded, "docs/%s.md", name) >= (int)sizeof embedded) {
+        lua_pushnil(L);
+        return 1;
+    }
+    const ku_payload_entry *entry = ku_payload_find(embedded);
+    if (entry == NULL) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushlstring(L, (const char *)entry->bytes, entry->length);
+    return 1;
+}
+
 /* The names carried under `prefix` and ending in `suffix`, at that level
  * only, in order.  Selection over the payload rather than a sort buffer: the
  * sets are small, and this way there is nothing to allocate and nothing to
@@ -330,6 +363,8 @@ static void push_rt_table(lua_State *L, const ku_launch *launch)
     lua_setfield(L, -2, "root");
     lua_pushcfunction(L, l_rt_source);
     lua_setfield(L, -2, "source");
+    lua_pushcfunction(L, l_rt_page);
+    lua_setfield(L, -2, "page");
     lua_pushcfunction(L, l_rt_verbs);
     lua_setfield(L, -2, "verbs");
     lua_pushcfunction(L, l_rt_pages);

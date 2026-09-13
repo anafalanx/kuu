@@ -46,7 +46,7 @@ static void usage(FILE *to)
           "usage: kuu FILE [arg ...]        run a Lua program file\n"
           "       kuu - [arg ...]           run a program read from standard input\n"
           "       kuu -e SCRIPT [arg ...]   run an inline script\n"
-          "       kuu docs [PAGE | search TEXT]   the manual, from inside the executable\n"
+          "       kuu docs [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable\n"
           "       kuu run [TASK [arg ...]]  run a task from the nearest manifest.lua\n"
           "       kuu list [--json]         list those tasks\n"
           "       kuu check [--json] [PATH ...]   parse, global declarations, requires\n"
@@ -54,75 +54,6 @@ static void usage(FILE *to)
           "       kuu version | --version | --help\n"
           "kuu docs agent says what is expected of an agent here; then pitfalls, once; kuu docs index is the map.\n",
           to);
-}
-
-/* ---- the manual, carried in the executable ------------------------------- */
-
-static int page_name_length(const char *name)
-{
-    /* "docs/proc.md" -> the length of "proc" */
-    const char *slash = strchr(name, '/');
-    const char *base = slash != NULL ? slash + 1 : name;
-    const char *dot = strrchr(base, '.');
-    return (int)((dot != NULL ? dot : base + strlen(base)) - base);
-}
-
-static int docs_route(int argc, const char *const *argv)
-{
-    if (argc == 0) {
-        printf("kuu %s manual. Pages:\n", KUU_VERSION);
-        for (const ku_payload_entry *e = ku_payload; e->name != NULL; e++) {
-            if (strncmp(e->name, "docs/", 5) == 0) {
-                printf("  %.*s\n", page_name_length(e->name), e->name + 5);
-            }
-        }
-        printf("\nkuu docs PAGE prints a page; kuu docs search TEXT finds lines.\n"
-               "Start with agent, what is expected of you here; then pitfalls, once; index is the map.\n");
-        return KUU_EXIT_OK;
-    }
-    if (strcmp(argv[0], "search") == 0) {
-        if (argc < 2) {
-            return usage_fail("docs search needs text to look for");
-        }
-        const char *needle = argv[1];
-        size_t needle_length = strlen(needle);
-        int hits = 0;
-        for (const ku_payload_entry *e = ku_payload; e->name != NULL; e++) {
-            if (strncmp(e->name, "docs/", 5) != 0) {
-                continue;
-            }
-            const char *text = (const char *)e->bytes;
-            int line = 1;
-            for (const char *p = text; *p != '\0'; line++) {
-                const char *end = strchr(p, '\n');
-                size_t length = end != NULL ? (size_t)(end - p) : strlen(p);
-                for (size_t i = 0; i + needle_length <= length; i++) {
-                    if (_strnicmp(p + i, needle, needle_length) == 0) {
-                        printf("%.*s:%d: %.*s\n", page_name_length(e->name), e->name + 5, line, (int)length, p);
-                        hits++;
-                        break;
-                    }
-                }
-                if (end == NULL) {
-                    break;
-                }
-                p = end + 1;
-            }
-        }
-        if (hits == 0) {
-            printf("nothing in the manual mentions '%s'\n", needle);
-        }
-        return KUU_EXIT_OK;
-    }
-    char name[256];
-    snprintf(name, sizeof name, "docs/%s.md", argv[0]);
-    const ku_payload_entry *e = ku_payload_find(name);
-    if (e == NULL) {
-        fprintf(stderr, "%s: ENTRY notfound: no manual page '%s'; kuu docs lists them\n", KUU_NAME, argv[0]);
-        return KUU_EXIT_ENTRY;
-    }
-    fwrite(e->bytes, 1, e->length, stdout);
-    return KUU_EXIT_OK;
 }
 
 static int report_fail(const ku_fail *fail)
@@ -372,9 +303,6 @@ static int run_entry(int argc, wchar_t **argv, char **words)
     if (strcmp(first, "--help") == 0) {
         usage(stdout);
         return KUU_EXIT_OK;
-    }
-    if (strcmp(first, "docs") == 0) {
-        return docs_route(argc - 2, (const char *const *)(words + 2));
     }
     if (strcmp(first, "--crash-test") == 0) {
         /* The crash handler's own test: a real access violation, raised. */

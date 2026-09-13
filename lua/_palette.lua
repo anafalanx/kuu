@@ -268,6 +268,7 @@ modules = {
     args             = { field = "table" },
     root             = { result = "string" },
     source           = { result = "string?" },
+    page             = { result = "string?" },
     verbs            = { result = "table" },
     pages            = { result = "table" },
   },

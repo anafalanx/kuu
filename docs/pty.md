@@ -1,9 +1,9 @@
 # pty -- provisional console automation
 
-`local pty = require "pty"`
-
 `pty` drives Windows console programs through ConPTY. It is **provisional**
 and outside the planned 1.0 API freeze. Use `proc` for ordinary subprocesses.
+
+`local pty = require "pty"`
 
 ```lua
 global none

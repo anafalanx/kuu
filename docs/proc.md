@@ -227,7 +227,7 @@ wears that pid today did not start them.
 Tree expansion stops after 64 levels; a deepest entry then has no expanded
 children.
 
-## Complete error codes
+## Errors
 
 | PROC code | when |
 |---|---|

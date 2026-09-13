@@ -52,10 +52,10 @@ a different question, and an expensive one to answer by accident.
 ```text
 kuu 0.9.0 (Lua 5.5.1) at C:\work\app\kuu.exe
 
-  verbs      capabilities, check, list, run    kuu VERB --help
-  manual     46 pages                          kuu docs PAGE | search TEXT
-  modules    27, 181 names                     require "NAME"
-  errors     27 domains, codes in --json       err.is(e, DOMAIN, code)
+  verbs      capabilities, check, docs, list, run  kuu VERB --help
+  manual     46 pages                              kuu docs PAGE | search TEXT
+  modules    27, 182 names                         require "NAME"
+  errors     27 domains, codes in --json           err.is(e, DOMAIN, code)
 
 modules
   proc       alive, detach, find, kill, list, run, start, tree, wait_all,
@@ -136,10 +136,10 @@ type CapabilityReport = {
 task's dependencies and arguments; they are not repeated here.
 
 `verbs` lists the verbs kuu carries as programs, which is what it can
-enumerate. `docs` and `version` are answered in C before that dispatch and are
-not in the list: `pages` is how the manual shows up in the report, and
-`kuu --help` is the complete usage. A reader of the text form sees both,
-since the manual has a line of its own there.
+enumerate; `docs` is one of them. `version` is answered in C before that
+dispatch and is not in the list, and `kuu --help` is the complete usage.
+`pages` is how the manual shows up in the report, and the text form has a
+line of its own for it.
 
 `errors` is every domain kuu raises and the complete set of codes in it, which
 is what `err.is(e, DOMAIN, code)` matches against: a code a domain does not

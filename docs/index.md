@@ -40,7 +40,7 @@ door's. The
 kuu FILE [arg ...]        run a Lua program file
 kuu - [arg ...]           run a program read from standard input
 kuu -e SCRIPT [arg ...]   run an inline script
-kuu docs [PAGE | search TEXT]   this manual, from inside the executable
+kuu docs [PAGE [SECTION] | search TEXT ...]   this manual, from inside the executable
 kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua      (see Tasks)
 kuu list [--json]         those tasks
 kuu check [--json] [PATH ...]   syntax, globals, requires, palette names, without running  (see check)
@@ -71,7 +71,9 @@ cmd route, and nil otherwise. `rt.root([dir])` reads or moves the directory
 one of kuu's own Lua modules. `rt.verbs()` and `rt.pages()` are the verbs this
 executable answers to and the manual's pages, both sorted; they are carried in
 the executable where nothing else can see them, and
-[capabilities](capabilities.md) reports them.
+[capabilities](capabilities.md) reports them. `rt.page(name)` is the text of
+one manual page, or nil for a name that is not one, so a program with no
+shell reads the manual the way `kuu docs` does.
 
 ## Modules
 
@@ -146,6 +148,39 @@ closed before exit, whether the program finished or failed.
 Failures kuu detects before the program runs are spelled
 `kuu: DOMAIN code: message`. The ENTRY codes are `usage`, `notfound`, `access`,
 `badvalue`, `toobig`, `encoding`, `stdin`, and `oserror`.
+
+## The manual, from inside the executable
+
+```text
+kuu docs                      the pages, each with its first sentence, and where to start
+kuu docs PAGE                 one page, the text of docs/PAGE.md
+kuu docs PAGE SECTION         one ## section of it, by its heading or its anchor; PAGE#anchor is the same
+kuu docs search TEXT ...      every line mentioning the words, joined by spaces, matched literally, ignoring case
+kuu docs --json ...           the same three, as one envelope
+```
+
+`kuu docs` is a verb like the others: `--help` prints its usage, an unknown
+option or a surplus word is `CLI usage`, exit 2, a page that is not there is
+`ENTRY notfound`, exit 2, pointing at the list, and a section that is not
+there is the same, naming the sections there are. A section is named by its
+heading, whole or as a prefix, ignoring case, or by its anchor — GitHub's
+spelling, the one the manual's own links use: lower case, punctuation
+dropped, spaces to dashes — and `kuu docs sched deadlines` and `kuu docs
+sched#deadlines` print the same. A heading inside a fenced code block is
+text, not a section. Every module page heads its code set `## Errors`, so
+`kuu docs MODULE errors` is the code table of any module. Search hits are
+`page:line: text`, one per line; a search that finds nothing says so and
+exits 0, and one given no text, or only blank text, is `ENTRY usage`.
+
+```typescript
+type DocsList = { ok: true; result: { version: string;
+  pages: { name: string; description: string; lines: number }[] } }; // description: the page's first sentence
+type DocsPage = { ok: true; result: { name: string; lines: number; text: string;
+  sections: { heading: string; anchor: string; line: number }[] } };
+type DocsSection = { ok: true; result: { name: string; heading: string; anchor: string; line: number; text: string } };
+type DocsSearch = { ok: true; result: { text: string;
+  hits: { page: string; line: number; heading?: string; text: string }[] } }; // heading: the nearest one above the hit
+```
 
 ## Pages
 

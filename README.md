@@ -41,7 +41,7 @@ kuu run [--json] [--dry-run] [TASK [arg ...]]  a task from the nearest manifest.
 kuu list [--json]         those tasks
 kuu check [--json] [PATH ...]  syntax, globals, requires, palette names, without running
 kuu capabilities [--json]  what a program can reach from here; provisional
-kuu docs [PAGE | search TEXT]   the manual
+kuu docs [PAGE [SECTION] | search TEXT ...]   the manual
 kuu version | --version | --help
 ```
 

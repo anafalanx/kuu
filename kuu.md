@@ -64,6 +64,7 @@ binary in front of you:
 kuu docs                       the page list
 kuu docs agent                 what is expected of you here
 kuu docs fs                    one page
+kuu docs proc errors           one section of a page: its error codes
 kuu docs search "junction"     find lines across all pages
 kuu --help                     the verbs
 ```
@@ -155,9 +156,9 @@ follows from it:
   tell the truth about the platform.
 
 <!-- figures -->
-By the numbers, 0.9.0 is 15,992 lines of authored host C, 4,957 lines of kuu's own
-Lua, a suite of 5,912 lines, and 6,246 lines of manual in 46 pages that ship
-inside the executable. The palette is 27 public modules and 172 functions,
+By the numbers, 0.9.0 is 15,955 lines of authored host C, 5,168 lines of kuu's own
+Lua, a suite of 6,039 lines, and 6,281 lines of manual in 46 pages that ship
+inside the executable. The palette is 27 public modules and 173 functions,
 plus methods on handles. The suite's own count is what `make test` prints.
 These figures are produced by `tools/bundle_docs.lua` from the executable
 and the tree, and the suite holds them.
@@ -169,7 +170,7 @@ kuu 0.9.0 -- a Lua 5.5 runtime for agents on Windows
 usage: kuu FILE [arg ...]        run a Lua program file
        kuu - [arg ...]           run a program read from standard input
        kuu -e SCRIPT [arg ...]   run an inline script
-       kuu docs [PAGE | search TEXT]   the manual, from inside the executable
+       kuu docs [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
        kuu run [TASK [arg ...]]  run a task from the nearest manifest.lua
        kuu list [--json]         list those tasks
        kuu check [--json] [PATH ...]   parse, global declarations, requires
@@ -665,7 +666,7 @@ door's. The
 kuu FILE [arg ...]        run a Lua program file
 kuu - [arg ...]           run a program read from standard input
 kuu -e SCRIPT [arg ...]   run an inline script
-kuu docs [PAGE | search TEXT]   this manual, from inside the executable
+kuu docs [PAGE [SECTION] | search TEXT ...]   this manual, from inside the executable
 kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua      (see Tasks)
 kuu list [--json]         those tasks
 kuu check [--json] [PATH ...]   syntax, globals, requires, palette names, without running  (see check)
@@ -696,7 +697,9 @@ cmd route, and nil otherwise. `rt.root([dir])` reads or moves the directory
 one of kuu's own Lua modules. `rt.verbs()` and `rt.pages()` are the verbs this
 executable answers to and the manual's pages, both sorted; they are carried in
 the executable where nothing else can see them, and
-[capabilities](#capabilities) reports them.
+[capabilities](#capabilities) reports them. `rt.page(name)` is the text of
+one manual page, or nil for a name that is not one, so a program with no
+shell reads the manual the way `kuu docs` does.
 
 ### Modules
 
@@ -771,6 +774,39 @@ closed before exit, whether the program finished or failed.
 Failures kuu detects before the program runs are spelled
 `kuu: DOMAIN code: message`. The ENTRY codes are `usage`, `notfound`, `access`,
 `badvalue`, `toobig`, `encoding`, `stdin`, and `oserror`.
+
+### The manual, from inside the executable
+
+```text
+kuu docs                      the pages, each with its first sentence, and where to start
+kuu docs PAGE                 one page, the text of docs/PAGE.md
+kuu docs PAGE SECTION         one ## section of it, by its heading or its anchor; PAGE#anchor is the same
+kuu docs search TEXT ...      every line mentioning the words, joined by spaces, matched literally, ignoring case
+kuu docs --json ...           the same three, as one envelope
+```
+
+`kuu docs` is a verb like the others: `--help` prints its usage, an unknown
+option or a surplus word is `CLI usage`, exit 2, a page that is not there is
+`ENTRY notfound`, exit 2, pointing at the list, and a section that is not
+there is the same, naming the sections there are. A section is named by its
+heading, whole or as a prefix, ignoring case, or by its anchor — GitHub's
+spelling, the one the manual's own links use: lower case, punctuation
+dropped, spaces to dashes — and `kuu docs sched deadlines` and `kuu docs
+sched#deadlines` print the same. A heading inside a fenced code block is
+text, not a section. Every module page heads its code set `## Errors`, so
+`kuu docs MODULE errors` is the code table of any module. Search hits are
+`page:line: text`, one per line; a search that finds nothing says so and
+exits 0, and one given no text, or only blank text, is `ENTRY usage`.
+
+```typescript
+type DocsList = { ok: true; result: { version: string;
+  pages: { name: string; description: string; lines: number }[] } }; // description: the page's first sentence
+type DocsPage = { ok: true; result: { name: string; lines: number; text: string;
+  sections: { heading: string; anchor: string; line: number }[] } };
+type DocsSection = { ok: true; result: { name: string; heading: string; anchor: string; line: number; text: string } };
+type DocsSearch = { ok: true; result: { text: string;
+  hits: { page: string; line: number; heading?: string; text: string }[] } }; // heading: the nearest one above the hit
+```
 
 ### Pages
 
@@ -1146,10 +1182,10 @@ a different question, and an expensive one to answer by accident.
 ```text
 kuu 0.9.0 (Lua 5.5.1) at C:\work\app\kuu.exe
 
-  verbs      capabilities, check, list, run    kuu VERB --help
-  manual     46 pages                          kuu docs PAGE | search TEXT
-  modules    27, 181 names                     require "NAME"
-  errors     27 domains, codes in --json       err.is(e, DOMAIN, code)
+  verbs      capabilities, check, docs, list, run  kuu VERB --help
+  manual     46 pages                              kuu docs PAGE | search TEXT
+  modules    27, 182 names                         require "NAME"
+  errors     27 domains, codes in --json           err.is(e, DOMAIN, code)
 
 modules
   proc       alive, detach, find, kill, list, run, start, tree, wait_all,
@@ -1230,10 +1266,10 @@ type CapabilityReport = {
 task's dependencies and arguments; they are not repeated here.
 
 `verbs` lists the verbs kuu carries as programs, which is what it can
-enumerate. `docs` and `version` are answered in C before that dispatch and are
-not in the list: `pages` is how the manual shows up in the report, and
-`kuu --help` is the complete usage. A reader of the text form sees both,
-since the manual has a line of its own there.
+enumerate; `docs` is one of them. `version` is answered in C before that
+dispatch and is not in the list, and `kuu --help` is the complete usage.
+`pages` is how the manual shows up in the report, and the text form has a
+line of its own for it.
 
 `errors` is every domain kuu raises and the complete set of codes in it, which
 is what `err.is(e, DOMAIN, code)` matches against: a code a domain does not
@@ -2602,7 +2638,7 @@ wears that pid today did not start them.
 Tree expansion stops after 64 levels; a deepest entry then has no expanded
 children.
 
-### Complete error codes
+### Errors
 
 | PROC code | when |
 |---|---|
@@ -4178,10 +4214,10 @@ instants, levels, or limits), `usage` (raised for an unknown option), and
 
 ## pty -- provisional console automation
 
-`local pty = require "pty"`
-
 `pty` drives Windows console programs through ConPTY. It is **provisional**
 and outside the planned 1.0 API freeze. Use `proc` for ordinary subprocesses.
+
+`local pty = require "pty"`
 
 ```lua
 global none

@@ -23,7 +23,7 @@ return function(T)
   check("and points at the conduct page", contains(r.out, "kuu docs agent"), r.out)
   r = kuu { "docs" }
   check("the page list carries the conduct page and says where to start",
-    r.code == 0 and contains(r.out, "  agent\n") and contains(r.out, "Start with agent"), describe(r))
+    r.code == 0 and contains(r.out, "  agent ") and contains(r.out, "Start with agent"), describe(r))
   r = kuu { "docs", "agent" }
   check("the conduct page prints from inside the executable", r.code == 0 and contains(r.out, "# For the agent") and contains(r.out, "kuu-eval.md"), describe(r))
 
