@@ -264,9 +264,9 @@ add to it is a tool the project builds, called through the door.
      co-evolved with the runtime, so it does not answer the cold-adopter
      amendment. Recorded in the
      [release handoff](../notes/handoff-2026-09-11_145745.md).
-10. **0.10.0, the interface described, and no language.** On main, and
-   what the executable reports; tagging, signing and publishing are the
-   owner's. The owner decided on
+10. **0.10.0, the interface described, and no language.** Released on
+   2026-09-13, tagged on the tested commit, signed and verified. The owner
+   decided on
    2026-09-11 that there is no successor language, no compiler and no emission
    subset; kuu is a runtime for Lua 5.5, and grows capabilities in the palette
    and options on the calls already there. `kuu.md` lost the part that

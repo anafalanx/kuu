@@ -21,16 +21,20 @@ about itself can be read in one sitting without querying the executable.
 
 ## Where things stand
 
-**kuu 0.10.0 is what this tree reports**, and the gate — suite, sanitizer,
-analysis, fuzzing, soak — is green on it. It is the front-door release:
-`manifest.lua` declares a project's tasks and the tools they call, every
-crossing is recorded in a ledger under `.kuu/`, `kuu run --json` is a
-stream, `check` reads what can be known without running, `capabilities`
-says what is here, and the executable explains itself — a page that states
-what is expected of an agent and asks it to report back, a `docs` verb like
-the others, and every verb pointing onward at the moment a next step is
-needed. Tagging, signing and publishing are the owner's; the previous
-release, 0.9.0, is the one on the releases page until then.
+**kuu 0.10.0 is released.** Tagged on the tested commit, signed, published,
+and verified: the gate — suite, sanitizer, analysis, fuzzing, soak — green
+on that commit, the tag on it rather than on whatever the branch later
+points at, and the downloaded asset, its sidecar and the local signed file
+in agreement, with the released binary reporting its own certificate
+identity through `sys.signature`.
+
+It is the front-door release: `manifest.lua` declares a project's tasks and
+the tools they call, every crossing is recorded in a ledger under `.kuu/`,
+`kuu run --json` is a stream, `check` reads what can be known without
+running, `capabilities` says what is here, and the executable explains
+itself — a page that states what is expected of an agent and asks it to
+report back, a `docs` verb like the others, and every verb pointing onward
+at the moment a next step is needed.
 
 The version break of 0.9.0 landed as predicted. A project carrying the guard
 published through 0.8 — `rt.version:match("^(%d+)%.(%d+)$")` — refuses 0.9.0
@@ -5538,9 +5542,9 @@ add to it is a tool the project builds, called through the door.
      co-evolved with the runtime, so it does not answer the cold-adopter
      amendment. Recorded in the
      [release handoff](notes/handoff-2026-09-11_145745.md).
-10. **0.10.0, the interface described, and no language.** On main, and
-   what the executable reports; tagging, signing and publishing are the
-   owner's. The owner decided on
+10. **0.10.0, the interface described, and no language.** Released on
+   2026-09-13, tagged on the tested commit, signed and verified. The owner
+   decided on
    2026-09-11 that there is no successor language, no compiler and no emission
    subset; kuu is a runtime for Lua 5.5, and grows capabilities in the palette
    and options on the calls already there. `kuu.md` lost the part that
