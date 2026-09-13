@@ -98,7 +98,10 @@ table.sort(sets, function(a, b) return a.name < b.name end)
 local here = nil
 local root, file = project.find()
 if root then
-  here = { root = root, file = file, tasks = json.array {}, tools = json.array {}, modules = json.array {}, files = 0 }
+  here = { root = root, file = file, tasks = json.array {}, tools = json.array {}, modules = json.array {}, files = 0,
+           notes = json.array {} }
+  -- What the text form says beside the inventory is carried here too.
+  if file == project.LEGACY then here.notes[#here.notes + 1] = project.LEGACY_NOTE end
 
   -- Tasks are declared by running manifest.lua, which is project code; `kuu
   -- list` and `kuu run` already do that. A failure costs the task list and
@@ -125,7 +128,7 @@ if root then
         emits = json.array(t.emits), timeout = t.timeout, reach = reach }
     end
   else
-    here.note = "manifest.lua did not load: " .. tostring(why)
+    here.note = file .. " did not load: " .. tostring(why)
   end
 
   -- The door's memory: the last crossings, the chain held to itself --
@@ -261,9 +264,15 @@ else
       names[#names + 1] = t.name == here.default and (t.name .. "*") or t.name
     end
     listing(LABEL, 2, "tasks", names)
-    io.write(string.rep(" ", LABEL),
-      here.default and "* the default. kuu run TASK; kuu list describes them\n"
-        or "kuu run TASK; kuu list describes them\n")
+    if #task.all() == 0 then
+      io.write(string.rep(" ", LABEL), here.file, " declares no task; declare one with task \"name\" { ... } (kuu docs task)\n")
+    elseif #names == 0 then
+      io.write(string.rep(" ", LABEL), here.file, " declares only hidden tasks; kuu list --json shows them\n")
+    else
+      io.write(string.rep(" ", LABEL),
+        here.default and "* the default. kuu run TASK; kuu list describes them\n"
+          or "kuu run TASK; kuu list describes them\n")
+    end
   end
   if #here.tools > 0 then
     local names = {}

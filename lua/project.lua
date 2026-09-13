@@ -53,7 +53,8 @@ function project.find(start)
     if up == nil then break end
     dir = up
   end
-  return nil, err.new("TASK", "noproject", "no " .. project.MANIFEST .. " here or in any directory above")
+  return nil, err.new("TASK", "noproject", "no " .. project.MANIFEST .. " here or in any directory above; "
+    .. "kuu docs adopting says how a project is set up")
 end
 
 function project.enter(root)
@@ -69,7 +70,9 @@ end
 -- sentence to show when the file read was tasks.lua.
 function project.load_tasks(root)
   local name = declaration_in(root)
-  if name == nil then return nil, err.new("TASK", "noproject", "no " .. project.MANIFEST .. " in " .. root) end
+  if name == nil then
+    return nil, err.new("TASK", "noproject", "no " .. project.MANIFEST .. " in " .. root .. "; kuu docs adopting says how a project is set up")
+  end
   local path = join(root, name)
   local text, e = fs.read(path, { encoding = "utf-8" })
   if not text then return nil, e end

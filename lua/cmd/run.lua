@@ -9,6 +9,16 @@ local task = require "task"
 local sched = require "sched"
 local json = require "json"
 local err = require "err"
+local fs = require "fs"
+
+-- What the run says on standard error beside the work -- a tasks.lua read
+-- as the manifest, a .kuu/ the repository does not ignore -- is also
+-- carried on the envelope as `notes`, for a reader that sees only --json.
+local notes = json.array {}
+local function note(text)
+  notes[#notes + 1] = text
+  io.stderr:write("kuu: warning: ", text, "\n")
+end
 
 local USAGE = "usage: kuu run [--json] [--dry-run] [TASK [arg ...]]\n  runs TASK, or the default task, after its dependencies; kuu list shows them\n  --dry-run shows the plan, in order, and runs nothing\n"
 
@@ -85,12 +95,44 @@ local ledger = require "_ledger"
 local book = nil
 local run_began = sched.clock()
 local run_at = require("time").now()
+-- Whether git ignores .kuu/ under the root: a .gitignore at the root or in
+-- any directory above it up to the repository's, with a line naming .kuu
+-- the ways git reads them -- `.kuu`, `/.kuu/`, `**/.kuu`, `.kuu/*`, any
+-- case, trailing blanks dropped, a leading one kept as git keeps it.
+local function lists_kuu(text)
+  text = text:gsub("^\239\187\191", "")
+  for line in text:gmatch("[^\r\n]+") do
+    local rule = line:gsub("%s+$", ""):lower()
+    if rule:match("^/?%.kuu/?%*?$") or rule:match("^%*%*/%.kuu/?%*?$") then return true end
+  end
+  return false
+end
+
+local function ignored(root)
+  local dir = root
+  for _ = 1, 64 do
+    if lists_kuu(fs.read(fs.join(dir, ".gitignore")) or "") then return true end
+    if fs.exists(fs.join(dir, ".git")) then return false end
+    local up = fs.dirname(dir)
+    if up == nil or up == dir then return false end
+    dir = up
+  end
+  return false
+end
+
 local function crossing(fields)
   if book == nil then return end
   local ok, e = ledger.record(book, clean(fields))
   if not ok then
     io.stderr:write("kuu: warning: the ledger was not written: ", tostring(e), "\n")
     book = nil
+    return
+  end
+  -- The first crossing creates .kuu/ under the root; the one thing to do
+  -- about that is said once, the first time, when the repository does not
+  -- yet ignore it.
+  if book.written == 1 and book.fresh and not ignored(book.root) then
+    note(".kuu/ was created under " .. book.root .. " and no .gitignore up to the repository's lists it; add /.kuu/, it is the machine's (kuu docs adopting)")
   end
 end
 -- Installed once the plan is checked and something is about to run: a
@@ -99,8 +141,9 @@ end
 -- argument -- writes nothing, so the next real run's delta still names
 -- the edits it ran against.
 local function open_the_door(root)
+  local fresh = fs.exists(fs.join(root, ".kuu")) == false
   local opened, result = pcall(ledger.open, root)
-  if opened then book = result
+  if opened then book = result book.fresh = fresh
   else io.stderr:write("kuu: warning: the ledger was not opened: ", tostring(result), "\n") end
   task.observer = function(record)
     record.task = current
@@ -133,7 +176,7 @@ local function finish(ok, e, extra)
     if not closed then io.stderr:write("kuu: warning: the ledger's tree was not written: ", tostring(e7), "\n") end
   end
   if want_json then
-    local envelope = { ok = ok, result = { tasks = ran } }
+    local envelope = { ok = ok, result = { tasks = ran, notes = notes } }
     if extra ~= nil then for k, v in pairs(extra) do envelope.result[k] = v end end
     if not ok then envelope.error = { domain = e.domain, code = e.code, message = e.message, exit = e.exit } end
     io.stdout:write(json.encode(clean(envelope)), "\n")
@@ -144,26 +187,49 @@ local function finish(ok, e, extra)
   os.exit(ok and 0 or exit_code_for(e))
 end
 
-local root, e = project.find()
-if not root then finish(false, e) end
+local root, found = project.find()
+if not root then finish(false, found) end
+local file = found
 local entered, e2 = project.enter(root)
 if not entered then finish(false, e2) end
 local loaded, e3 = project.load_tasks(root)
 if not loaded then finish(false, e3) end
-if e3 then io.stderr:write("kuu: warning: ", e3, "\n") end -- a tasks.lua read as the manifest
+if e3 then note(e3) end -- a tasks.lua read as the manifest
 
+local defaulted = false
 if name == nil then
   name = task.default_task()
+  defaulted = name ~= nil
   if name == nil then
-    local lines = { "no task named and manifest.lua declares no default; the tasks in " .. root .. ":" }
+    local lines
+    local visible = {}
     for _, t in ipairs(task.all()) do
-      if not t.hidden then lines[#lines + 1] = string.format("  %-20s %s", t.name, t.desc) end
+      if not t.hidden then visible[#visible + 1] = string.format("  %-20s %s", t.name, t.desc) end
+    end
+    if #task.all() == 0 then
+      -- A manifest that loaded and declared nothing is told apart from
+      -- one with no default: the next step is the declaration's shape.
+      lines = { "no task named and " .. file .. " declares none; declare one with task \"name\" { ... } (kuu docs task)" }
+    elseif #visible == 0 then
+      lines = { "no task named and " .. file .. " declares no default; its tasks are hidden, and kuu list --json shows them" }
+    else
+      lines = { "no task named and " .. file .. " declares no default; the tasks in " .. root .. ":" }
+      for _, line in ipairs(visible) do lines[#lines + 1] = line end
     end
     finish(false, err.new("TASK", "usage", table.concat(lines, "\n")), { root = root })
   end
 end
 
 local plan, e4 = task.plan(name)
+if not plan and defaulted and err.is(e4, "TASK", "unknown") then
+  -- The name came from the manifest's own task.default, not the command
+  -- line: the mistake is in the file, and the message says so.
+  local declared = {}
+  for _, t in ipairs(task.all()) do declared[t.name] = true end
+  local suggestion = require("_nearest")(name, declared)
+  e4 = err.new("TASK", "unknown", file .. " names '" .. name .. "' as its default and declares no such task"
+    .. (suggestion and ("; did you mean '" .. suggestion .. "'?") or ""))
+end
 if not plan then finish(false, e4, { root = root }) end
 
 -- Every argument is checked before anything runs: the named task's against
@@ -184,7 +250,7 @@ if dry_run then
     for _, entry in ipairs(plan) do
       steps[#steps + 1] = { name = entry.name, desc = entry.desc, deps = json.array(entry.deps) }
     end
-    io.stdout:write(json.encode { ok = true, result = { root = root, task = name, plan = steps } }, "\n")
+    io.stdout:write(json.encode { ok = true, result = { root = root, task = name, plan = steps, notes = notes } }, "\n")
   else
     for k, entry in ipairs(plan) do
       io.stdout:write(string.format("%d. %s%s\n", k, entry.name, entry.desc ~= "" and ("  " .. entry.desc) or ""))

@@ -156,8 +156,8 @@ follows from it:
   tell the truth about the platform.
 
 <!-- figures -->
-By the numbers, 0.9.0 is 15,955 lines of authored host C, 5,168 lines of kuu's own
-Lua, a suite of 6,039 lines, and 6,281 lines of manual in 46 pages that ship
+By the numbers, 0.9.0 is 15,960 lines of authored host C, 5,334 lines of kuu's own
+Lua, a suite of 6,159 lines, and 6,314 lines of manual in 46 pages that ship
 inside the executable. The palette is 27 public modules and 173 functions,
 plus methods on handles. The suite's own count is what `make test` prints.
 These figures are produced by `tools/bundle_docs.lua` from the executable
@@ -773,7 +773,10 @@ closed before exit, whether the program finished or failed.
 
 Failures kuu detects before the program runs are spelled
 `kuu: DOMAIN code: message`. The ENTRY codes are `usage`, `notfound`, `access`,
-`badvalue`, `toobig`, `encoding`, `stdin`, and `oserror`.
+`badvalue`, `toobig`, `encoding`, `stdin`, and `oserror`. A first argument
+that is neither a verb nor an existing file — a verb misspelt, most often —
+is `ENTRY notfound` naming both and where the verbs are listed; a name with
+a dot or a separator in it is looked for as a file only.
 
 ### The manual, from inside the executable
 
@@ -1219,7 +1222,12 @@ Then kuu docs pitfalls, once; it is where kuu differs from the Lua you know.
 
 Modules are listed in the order the manual's table introduces them, which is
 roughly the order they are reached for. Everything goes to standard output;
-there is no summary on standard error.
+there is no summary on standard error. A project whose manifest loads and
+declares no task shows `tasks      none` and, on the line beneath, the shape
+of a declaration and the page that has it, since an empty manifest is
+seldom meant; one whose tasks are all hidden shows `none` and names the
+listing that has them. A `tasks.lua` not yet renamed is said in the project
+section and carried as `notes` in the descriptor.
 
 `--json` prints one envelope instead. The structural schema below uses `?` for
 an omitted optional field; array fields are present even when empty:
@@ -1250,7 +1258,8 @@ type CapabilityReport = {
       tools: { name: string; exe: string; output: string; args?: { [name: string]: string };
                emits: string[]; timeout?: number | string; reach: { [kind: string]: string[] } }[];
       default?: string; // the task kuu run alone runs
-      note?: string; // why manifest.lua did not load; tasks is then empty
+      note?: string; // why the manifest did not load, naming the file read; tasks is then empty
+      notes: string[]; // what the text form says beside the inventory: a tasks.lua read as the manifest
       ledger: { last: { at: number; kind: string; name: string; status: string; seconds: number }[]; // the last five crossings, oldest first
                 records: number; intact: boolean; broken?: string; // the chain, walked every time: how many, whether each hashes the one before it, and where not
                 unaccounted: number }; // changes no crossing accounts for; zero until something watches
@@ -1326,6 +1335,11 @@ Add to `.gitignore`:
 /.kuu/
 /build/
 ```
+
+The first `kuu run` that creates `.kuu/` under a root that no `.gitignore`
+ignores it in — the root's own, or one in a directory above it up to the
+repository's — says so once, on standard error and as a note in its
+`--json` envelope; nothing else reminds you, and nothing fails over it.
 
 ### 2. Write manifest.lua
 
@@ -1542,7 +1556,14 @@ point `require` at it. A task's relative paths are therefore relative to the
 project root wherever the command was typed, children started by a task begin
 there, and `require "lib.helper"` in `manifest.lua` reads `lib/helper.lua` of the
 project. Without a `manifest.lua` anywhere above, both verbs exit 2 with
-`TASK noproject`.
+`TASK noproject`, naming [Adopting](#adopting). A manifest that loads and
+declares no task is not an empty project by accident: `kuu list`, `kuu run`
+and `kuu capabilities` say so and name the declaration's shape and this
+page; one whose tasks are all hidden is said to be that, with `kuu list
+--json` named. A task the command line names that is not declared is `TASK
+unknown` with the nearest declared name suggested, and `kuu list` named; a
+`task.default` naming a task the manifest does not declare is the same
+code, saying it is the manifest's own mistake.
 
 Through 0.9 the file was `tasks.lua`. 0.10 still finds a `tasks.lua` where no
 `manifest.lua` is, reads it as the manifest, and says so on standard error
@@ -1684,18 +1705,22 @@ it is optional.
 type RunError = { domain: string; code: string; message: string; exit?: number };
 type TaskRun = { name: string; seconds: number; ok: boolean };
 type RunReport =
-  | { ok: true; result: { root: string; task: string; tasks: TaskRun[] } }
-  | { ok: false; result: { root?: string; task?: string; tasks: TaskRun[] };
+  | { ok: true; result: { root: string; task: string; tasks: TaskRun[]; notes: string[] } }
+  | { ok: false; result: { root?: string; task?: string; tasks: TaskRun[]; notes: string[] };
       error: RunError };
 type DryRunReport = {
   ok: true;
   result: { root: string; task: string;
-    plan: { name: string; desc: string; deps: string[] }[] };
+    plan: { name: string; desc: string; deps: string[] }[]; notes: string[] };
 };
 ```
 
 `root` is absolute. `tasks` lists completed attempts in execution order,
 including the failed task; it is empty for a failure before execution.
+`notes` carries what the verb also said on standard error beside the work,
+for a reader that sees only the envelope: a `tasks.lua` read as the
+manifest, a `.kuu/` created under a root whose `.gitignore` does not list
+it. It is empty when there was nothing to say.
 Failure fields `root`, `task`, and `error.exit` appear only when supplied by
 that failure path. The process exits as in the table above even when
 `error.exit` is absent. A successful `--dry-run --json` produces
@@ -1715,7 +1740,7 @@ type ListReport =
   | { ok: true; result: { root: string; default?: string; tasks: {
       name: string; desc: string; deps: string[]; hidden: boolean;
       args: TaskArgument[];
-    }[] } }
+    }[]; notes: string[] } }
   | { ok: false; error: { domain: string; code: string; message: string } };
 ```
 
@@ -1751,10 +1776,10 @@ The tools a manifest declares with `task.tool "name" { ... }`, and
 
 | code | meaning |
 |---|---|
-| `TASK noproject` | no `manifest.lua` here or above |
+| `TASK noproject` | no `manifest.lua` here or above; the message names `kuu docs adopting` |
 | `TASK badvalue` | a bad declaration, or `manifest.lua` failed to load |
-| `TASK usage` | no task or default was selected, a runner option is unknown, or a declaration holds an attribute or option that is not known |
-| `TASK unknown`, `TASK cycle` | the dependency graph; `unknown` also a tool the manifest does not declare |
+| `TASK usage` | no task or default was selected — the message says when the manifest declares no task at all — a runner option is unknown, or a declaration holds an attribute or option that is not known |
+| `TASK unknown`, `TASK cycle` | the dependency graph; `unknown` for the task the command named suggests the nearest declared one and names `kuu list`, and is also a tool the manifest does not declare |
 | `CLI usage` | wrong arguments for a task, or `--help` |
 | `TASK failed` | a task raised something that is not an `err`, or its child did not exit normally |
 | `TASK exit` | a `task.exec` child exited non-zero; `err.exit` is the code |
@@ -2096,8 +2121,10 @@ kuu check [--json] [--fix [--adopt]] [PATH ...]
 ```
 
 Without paths it checks every `.lua` file below the nearest project (the
-directory holding `manifest.lua`), or below the current directory when there is
-no project, skipping `.git`, `.tools`, `build`, and `node_modules`. Paths may
+directory holding `manifest.lua`, or a `tasks.lua` not yet renamed, which it
+then says on standard error and as `notes` under `--json`), or below the
+current directory when there is no project, skipping `.git`, `.tools`,
+`build`, and `node_modules`. Paths may
 be files or directories; `require` names always resolve against the project
 root.
 
@@ -2263,6 +2290,7 @@ type CheckReport = {
   ok: boolean; // true exactly when result.errors is zero
   result: {
     root: string; // absolute path
+    notes: string[]; // what was also said on standard error: a tasks.lua read as the manifest
     fixed?: { path: string; added: string[]; removed: string[] }[];   // --fix only
     unfixed?: { path: string; message: string }[];                    // --fix only
     files: {
@@ -2295,7 +2323,12 @@ Each error and warning carries `line` (0 when it is about the whole file) and
 `syntax` (Lua compilation, including undeclared globals), `name` (an unknown
 palette export), `code` (an error code its domain does not have), `option`
 (an option a call does not take), and `value` (a closed set compared with a
-literal outside it, `rt.version` compared by text included). Warning kinds
+literal outside it, `rt.version` compared by text or matched to its end by
+a two-component pattern included — that is the guard published through
+0.8, which refuses every release from 0.9.0 on, and this is where a project
+still carrying it is told, naming [upgrading to 0.9](#upgrading-09); a
+pattern that reads three components, or one, is left alone). For `value`,
+`name` is the literal that was written. Warning kinds
 are `globals` (no declaration), `require` (unresolved module), and `tool` (a
 tool declaration the text does not bound, or a program run through the door
 with no declaration). For `name`,

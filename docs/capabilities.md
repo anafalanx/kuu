@@ -89,7 +89,12 @@ Then kuu docs pitfalls, once; it is where kuu differs from the Lua you know.
 
 Modules are listed in the order the manual's table introduces them, which is
 roughly the order they are reached for. Everything goes to standard output;
-there is no summary on standard error.
+there is no summary on standard error. A project whose manifest loads and
+declares no task shows `tasks      none` and, on the line beneath, the shape
+of a declaration and the page that has it, since an empty manifest is
+seldom meant; one whose tasks are all hidden shows `none` and names the
+listing that has them. A `tasks.lua` not yet renamed is said in the project
+section and carried as `notes` in the descriptor.
 
 `--json` prints one envelope instead. The structural schema below uses `?` for
 an omitted optional field; array fields are present even when empty:
@@ -120,7 +125,8 @@ type CapabilityReport = {
       tools: { name: string; exe: string; output: string; args?: { [name: string]: string };
                emits: string[]; timeout?: number | string; reach: { [kind: string]: string[] } }[];
       default?: string; // the task kuu run alone runs
-      note?: string; // why manifest.lua did not load; tasks is then empty
+      note?: string; // why the manifest did not load, naming the file read; tasks is then empty
+      notes: string[]; // what the text form says beside the inventory: a tasks.lua read as the manifest
       ledger: { last: { at: number; kind: string; name: string; status: string; seconds: number }[]; // the last five crossings, oldest first
                 records: number; intact: boolean; broken?: string; // the chain, walked every time: how many, whether each hashes the one before it, and where not
                 unaccounted: number }; // changes no crossing accounts for; zero until something watches

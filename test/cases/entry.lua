@@ -26,6 +26,11 @@ return function(T)
     r.code == 0 and contains(r.out, "  agent ") and contains(r.out, "Start with agent"), describe(r))
   r = kuu { "docs", "agent" }
   check("the conduct page prints from inside the executable", r.code == 0 and contains(r.out, "# For the agent") and contains(r.out, "kuu-eval.md"), describe(r))
+  r = kuu { "chekc" }
+  check("a bare word that is no verb and no file is said to be neither, and where the verbs are",
+    r.code == 2 and contains(r.err, "ENTRY notfound: no verb or program file 'chekc'; kuu --help lists the verbs"), describe(r))
+  r = kuu { "nothere.lua" }
+  check("a name with a dot is looked for as a file only", r.code == 2 and contains(r.err, "ENTRY notfound: cannot find program file 'nothere.lua'"), describe(r))
 
   r = kuu {}
   check("no arguments is a usage error", r.code == 2 and contains(r.err, "usage:") and r.out == "", describe(r))

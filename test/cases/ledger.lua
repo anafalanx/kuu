@@ -31,6 +31,50 @@ return function(T)
 
   local r = T.kuu({ "run" }, { cwd = project })
   check("the run succeeds and says nothing about the ledger", r.code == 0 and not contains(r.err, "ledger"), T.describe(r))
+  check("a .kuu/ that was already there is not announced", not contains(r.err, ".kuu/ was created"), r.err)
+
+  -- The first crossing creates .kuu/; a root whose .gitignore does not list
+  -- it hears so once, on stderr and on the envelope, and never again.
+  local function small_project(name, gitignore)
+    local dir = fs.absolute(T.work .. "/" .. name)
+    fs.remove(dir, { recursive = true })
+    fs.mkdir(dir)
+    if gitignore then fs.write(dir .. "/.gitignore", gitignore) end
+    fs.write(dir .. "/manifest.lua", 'local task = require "task"\ntask "t" { run = function() end }\ntask.default "t"\n')
+    return dir
+  end
+  local function last_line(text) return json.decode(text:match("([^\n]+)\n?$") or "null") end
+  local fresh = small_project("ledger-fresh", nil)
+  local first = T.kuu({ "run", "--json" }, { cwd = fresh })
+  local first_envelope = last_line(first.out) or { result = {} }
+  check("the first crossing says once that .kuu/ was created and .gitignore does not list it, on stderr and on the envelope",
+    first.code == 0 and contains(first.err, "warning: .kuu/ was created under " .. fresh .. " and no .gitignore up to the repository's lists it; add /.kuu/")
+      and contains(first.err, "kuu docs adopting") and first_envelope.result.notes and #first_envelope.result.notes == 1
+      and contains(first_envelope.result.notes[1], ".kuu/ was created"), T.describe(first))
+  local second = T.kuu({ "run", "--json" }, { cwd = fresh })
+  local second_envelope = last_line(second.out) or { result = {} }
+  check("the second crossing says nothing, and its envelope carries no note",
+    second.code == 0 and not contains(second.err, ".kuu/ was created") and second_envelope.result.notes and #second_envelope.result.notes == 0, second.err)
+  local ignored = small_project("ledger-ignored", "/build/\n.kuu/\n")
+  local quiet = T.kuu({ "run", "--json" }, { cwd = ignored })
+  local quiet_envelope = last_line(quiet.out) or { result = {} }
+  check("a root whose .gitignore lists .kuu/ hears nothing", quiet.code == 0 and not contains(quiet.err, ".kuu/ was created")
+    and quiet_envelope.result.notes and #quiet_envelope.result.notes == 0, T.describe(quiet))
+  -- The spellings git honours are honoured, and the one it does not is not.
+  local starred = small_project("ledger-starred", "\239\187\191**/.KUU\r\n")
+  local starred_run = T.kuu({ "run" }, { cwd = starred })
+  check("**/.kuu behind a BOM, in any case, ignores it for git and so for kuu", starred_run.code == 0 and not contains(starred_run.err, ".kuu/ was created"), starred_run.err)
+  local spaced = small_project("ledger-spaced", " .kuu \n")
+  local spaced_run = T.kuu({ "run" }, { cwd = spaced })
+  check("a leading space is part of the pattern for git, so that line does not count", spaced_run.code == 0 and contains(spaced_run.err, ".kuu/ was created"), spaced_run.err)
+  local above = fs.absolute(T.work .. "/ledger-above")
+  fs.remove(above, { recursive = true })
+  fs.mkdir(above .. "/proj")
+  fs.write(above .. "/.gitignore", ".kuu/\n")
+  fs.write(above .. "/proj/manifest.lua", 'local task = require "task"\ntask "t" { run = function() end }\ntask.default "t"\n')
+  local below = T.kuu({ "run" }, { cwd = above .. "/proj" })
+  check("a .gitignore in a directory above the root counts too", below.code == 0 and not contains(below.err, ".kuu/ was created"), below.err)
+  for _, dir in ipairs { fresh, ignored, starred, spaced, above } do fs.remove(dir, { recursive = true }) end
   local day = time.iso():sub(1, 10)
   local file = project .. "/.kuu/ledger/" .. day .. ".ndjson"
   local text = fs.read(file, { encoding = "utf-8" })

@@ -22,7 +22,7 @@
 -- these.
 global none
 global <const> require, ipairs, pairs, tostring, tonumber, type, table, load,
-               package, pcall, math, error, string, next
+               package, pcall, error, string, next
 
 local fs = require "fs"
 local rt = require "rt"
@@ -250,33 +250,9 @@ end
 -- worse than reporting none.
 check.exports = project_exports
 
-local function nearest(name, exports)
-  local best, distance
-  for candidate in pairs(exports) do
-    local before, previous = nil, {}
-    for j = 0, #candidate do previous[j] = j end
-    for i = 1, #name do
-      local current = { [0] = i }
-      for j = 1, #candidate do
-        local d = math.min(current[j - 1] + 1, previous[j] + 1,
-          previous[j - 1] + (name:sub(i, i) == candidate:sub(j, j) and 0 or 1))
-        -- Two letters the wrong way round is one mistake, not two. It is the
-        -- commonest typo there is, and counting it as two put "file" out of
-        -- reach of "flie" and "notfound" out of reach of "notfuond".
-        if before and i > 1 and j > 1
-          and name:sub(i, i) == candidate:sub(j - 1, j - 1)
-          and name:sub(i - 1, i - 1) == candidate:sub(j, j) then
-          d = math.min(d, before[j - 2] + 1)
-        end
-        current[j] = d
-      end
-      before, previous = previous, current
-    end
-    local d = previous[#candidate]
-    if distance == nil or d < distance or (d == distance and candidate < best) then best, distance = candidate, d end
-  end
-  if distance ~= nil and distance <= math.max(1, math.min(3, #name // 3)) then return best end
-end
+-- The nearest real spelling of a misspelt name, shared with the runner's
+-- own "no task" message.
+local nearest = require "_nearest"
 
 local function set_of(list)
   local set = {}
@@ -332,6 +308,23 @@ local function contract_findings(contracts, report)
                 message = message, module = entry.module, name = key.name, suggestion = suggestion }
             end
           end
+        end
+
+      -- The version matched by a pattern: the guard published through 0.8,
+      -- `rt.version:match("^(%d+)%.(%d+)$")`, refuses every release from
+      -- 0.9.0 on, whatever minimum it asks for, and a manifest carrying it
+      -- fails with a message that names neither the cause nor the fix.
+      elseif entry.kind == "pattern" and spec and spec.field == "Version" and type(entry.pattern) == "string" then
+        -- Only the guard's own shape is judged -- two numeric components
+        -- matched to the end of the text -- since a pattern that reads
+        -- three, or one, or rewrites the dots, matches 0.9.0 as it should.
+        local _, components = entry.pattern:gsub("%%d%+", "")
+        if components == 2 and entry.pattern:match("%$$") then
+          report.errors[#report.errors + 1] = { kind = "value", line = entry.line,
+            message = entry.alias .. "." .. entry.member .. " is Major.Minor.Patch, and this pattern matches two components"
+              .. " to its end: the guard published through 0.8, which refuses every release from 0.9.0 on; use "
+              .. entry.alias .. ".version_at_least(...) (kuu docs upgrading-0.9)",
+            module = entry.module, name = entry.pattern }
         end
 
       -- A closed set compared with a literal outside it, and the version,
@@ -577,6 +570,11 @@ local function inspect(tokens, report, root, context)
                  member = name.text, alias = base.name, line = name.line }
       end
     end
+    -- `string.match` and its kin, the standard library reached by name:
+    -- carried as a free name so a call through it can be read.
+    if base.name == "string" and (base.binding == nil or base.binding.call == nil) then
+      return { free = "string." .. name.text, line = name.line }
+    end
     return {}
   end
   -- The body of a table constructor, after its `{`. The named keys are kept
@@ -638,10 +636,28 @@ local function inspect(tokens, report, root, context)
     while true do
       if consume(".") then result = field(result)
       elseif consume("[") then expression(0) expect("]") result = {}
-      elseif consume(":") then result = field(result) arguments() result = {}
+      elseif consume(":") then
+        -- `rt.version:match(...)`: a module field matched by pattern is
+        -- recorded with the pattern, so the version guard of 0.8 is found
+        -- before it runs.
+        local method, target = token().text, result
+        result = field(result)
+        local args = arguments()
+        if target.module and (method == "match" or method == "find") then
+          contracts[#contracts + 1] = { kind = "pattern", binding = target.binding, module = target.module,
+            member = target.member, alias = target.alias, line = target.line, method = method,
+            pattern = args[1] and args[1].literal }
+        end
+        result = {}
       elseif is("(") or is("{") or token().kind == "string" then
         local args, original = arguments(), result
         result = {}
+        -- The same guard spelled `string.match(rt.version, ...)`.
+        if (original.free == "string.match" or original.free == "string.find") and args[1] and args[1].module then
+          contracts[#contracts + 1] = { kind = "pattern", binding = args[1].binding, module = args[1].module,
+            member = args[1].member, alias = args[1].alias, line = args[1].line, method = original.free,
+            pattern = args[2] and args[2].literal }
+        end
         if original.binding == native_require and #args == 1 and type(args[1].literal) == "string" then
           local call = { name = args[1].literal, line = t.line }
           calls[#calls + 1] = call

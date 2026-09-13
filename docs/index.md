@@ -147,7 +147,10 @@ closed before exit, whether the program finished or failed.
 
 Failures kuu detects before the program runs are spelled
 `kuu: DOMAIN code: message`. The ENTRY codes are `usage`, `notfound`, `access`,
-`badvalue`, `toobig`, `encoding`, `stdin`, and `oserror`.
+`badvalue`, `toobig`, `encoding`, `stdin`, and `oserror`. A first argument
+that is neither a verb nor an existing file — a verb misspelt, most often —
+is `ENTRY notfound` naming both and where the verbs are listed; a name with
+a dot or a separator in it is looked for as a file only.
 
 ## The manual, from inside the executable
 

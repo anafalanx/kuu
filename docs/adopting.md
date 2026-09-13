@@ -37,6 +37,11 @@ Add to `.gitignore`:
 /build/
 ```
 
+The first `kuu run` that creates `.kuu/` under a root that no `.gitignore`
+ignores it in — the root's own, or one in a directory above it up to the
+repository's — says so once, on standard error and as a note in its
+`--json` envelope; nothing else reminds you, and nothing fails over it.
+
 ## 2. Write manifest.lua
 
 `manifest.lua` sits at the repository root. It states the minimum kuu version

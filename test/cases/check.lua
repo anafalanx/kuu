@@ -505,6 +505,23 @@ other.custom()
         every_way = every_way and ok2 and #result.errors == 1
       end
       check("a root spelled any way finds the manifest, and never recurses", every_way)
+      -- The version guard published through 0.8 matches rt.version by
+      -- pattern and refuses every release from 0.9.0 on; check says so
+      -- before the manifest runs, naming the fix and the page.
+      put("guard.lua", 'global none\nglobal <const> require, tonumber, string\nlocal rt = require "rt"\nlocal major, minor = rt.version:match("^(%d+)%.(%d+)$")\n'
+        .. 'local again = string.match(rt.version, "^(%d+)%.(%d+)$")\n'
+        .. 'local a, b, c = rt.version:match("^(%d+)%.(%d+)%.(%d+)$")\nlocal first = rt.version:match("^(%d+)")\nlocal spelled = rt.version:gsub("%.", "_")\n'
+        .. 'return tonumber(major), tonumber(minor), again, a, b, c, first, spelled\n')
+      r = T.kuu({ "check", "--json", "guard.lua" }, { cwd = dir })
+      local guard = json.decode(r.out)
+      local found_guard = {}
+      for _, e in ipairs(guard and guard.result.files[1].errors or {}) do found_guard[#found_guard + 1] = e.kind .. "@" .. e.line .. ":" .. tostring(e.name) end
+      check("the two-component guard is a value error naming version_at_least and upgrading-0.9, in both spellings, and a three-component or one-component pattern is left alone",
+        r.code == 1 and table.concat(found_guard, " ") == "value@4:^(%d+)%.(%d+)$ value@5:^(%d+)%.(%d+)$"
+          and contains(guard.result.files[1].errors[1].message, "two components")
+          and contains(guard.result.files[1].errors[1].message, "rt.version_at_least") and contains(guard.result.files[1].errors[1].message, "kuu docs upgrading-0.9"),
+        table.concat(found_guard, " ") .. " " .. r.out:sub(1, 300))
+
       -- A number or a boolean where a literal may stand is not a string, and
       -- nothing downstream may take it for one.
       put("literals.lua", 'global none\nglobal <const> require\nlocal rt = require "rt"\nlocal m = require(42)\nif rt.route == 1 or rt.route == true then return m end\n')

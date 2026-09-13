@@ -20,7 +20,15 @@ local opts, e = cli.parse(rt.args, spec, "kuu check")
 if not opts then io.stderr:write("kuu: ", tostring(e), "\n") os.exit(2) end
 if opts.help then io.write(cli.usage(spec, "kuu check")) os.exit(0) end
 
-local root = project.find() or fs.absolute(".")
+local root, file = project.find()
+root = root or fs.absolute(".")
+-- A tasks.lua not yet renamed is found the way run and list find it, and
+-- said the same way: on standard error, and as `notes` on the envelope.
+local notes = json.array {}
+if file == project.LEGACY then
+  notes[#notes + 1] = project.LEGACY_NOTE
+  io.stderr:write("kuu: warning: ", project.LEGACY_NOTE, "\n")
+end
 
 local reports = {}
 if #opts.paths == 0 then
@@ -116,7 +124,7 @@ if opts.json then
     files[#files + 1] = { path = shown(r.path), errors = json.array(r.errors), warnings = json.array(r.warnings),
       requires = json.array(r.requires), tools = tools }
   end
-  local result = { root = root, files = files, errors = errors, warnings = warnings }
+  local result = { root = root, files = files, errors = errors, warnings = warnings, notes = notes }
   if opts.fix then
     result.fixed, result.unfixed = json.array {}, json.array {}
     for _, f in ipairs(fixed) do

@@ -415,6 +415,11 @@ static int run_entry(int argc, wchar_t **argv, char **words)
         int read_status = ku_program_read_file(program_path.text, what, &program, &fail);
         ku_wpath_free(&program_path);
         if (read_status != 0) {
+            /* A bare word that is no verb and no file is most often a verb
+             * misspelt; say so, and where the verbs are listed. */
+            if (strcmp(fail.code, "notfound") == 0 && strpbrk(first, "./\\") == NULL) {
+                ku_fail_set(&fail, "ENTRY", "notfound", "no verb or program file '%s'; kuu --help lists the verbs", first);
+            }
             exit_code = report_fail(&fail);
             goto done;
         }

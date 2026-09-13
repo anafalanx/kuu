@@ -8,8 +8,10 @@ kuu check [--json] [--fix [--adopt]] [PATH ...]
 ```
 
 Without paths it checks every `.lua` file below the nearest project (the
-directory holding `manifest.lua`), or below the current directory when there is
-no project, skipping `.git`, `.tools`, `build`, and `node_modules`. Paths may
+directory holding `manifest.lua`, or a `tasks.lua` not yet renamed, which it
+then says on standard error and as `notes` under `--json`), or below the
+current directory when there is no project, skipping `.git`, `.tools`,
+`build`, and `node_modules`. Paths may
 be files or directories; `require` names always resolve against the project
 root.
 
@@ -175,6 +177,7 @@ type CheckReport = {
   ok: boolean; // true exactly when result.errors is zero
   result: {
     root: string; // absolute path
+    notes: string[]; // what was also said on standard error: a tasks.lua read as the manifest
     fixed?: { path: string; added: string[]; removed: string[] }[];   // --fix only
     unfixed?: { path: string; message: string }[];                    // --fix only
     files: {
@@ -207,7 +210,12 @@ Each error and warning carries `line` (0 when it is about the whole file) and
 `syntax` (Lua compilation, including undeclared globals), `name` (an unknown
 palette export), `code` (an error code its domain does not have), `option`
 (an option a call does not take), and `value` (a closed set compared with a
-literal outside it, `rt.version` compared by text included). Warning kinds
+literal outside it, `rt.version` compared by text or matched to its end by
+a two-component pattern included — that is the guard published through
+0.8, which refuses every release from 0.9.0 on, and this is where a project
+still carrying it is told, naming [upgrading to 0.9](upgrading-0.9.md); a
+pattern that reads three components, or one, is left alone). For `value`,
+`name` is the literal that was written. Warning kinds
 are `globals` (no declaration), `require` (unresolved module), and `tool` (a
 tool declaration the text does not bound, or a program run through the door
 with no declaration). For `name`,

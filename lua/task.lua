@@ -21,6 +21,7 @@ global <const> require, ipairs, pairs, tostring, type, error, setmetatable,
                pcall, table
 
 local err = require "err"
+local nearest = require "_nearest"
 local proc = require "proc"
 local sched = require "sched"
 local fs = require "fs"
@@ -204,8 +205,14 @@ function task.plan(name)
   local function visit(n, chain)
     local entry = registry.byname[n]
     if entry == nil then
-      local needed = chain ~= "" and (" (needed by " .. chain .. ")") or ""
-      return nil, err.new("TASK", "unknown", "no task '" .. tostring(n) .. "'" .. needed)
+      if chain ~= "" then
+        return nil, err.new("TASK", "unknown", "no task '" .. tostring(n) .. "' (needed by " .. chain .. ")")
+      end
+      -- The name the command line gave: the nearest declared one is
+      -- offered, and the list is named, so the next step is on the line.
+      local suggestion = nearest(tostring(n), registry.byname)
+      local hint = suggestion and ("; did you mean '" .. suggestion .. "'? kuu list shows the tasks") or "; kuu list shows the tasks"
+      return nil, err.new("TASK", "unknown", "no task '" .. tostring(n) .. "'" .. hint)
     end
     if state[n] == "done" then return true end
     if state[n] == "active" then

@@ -206,6 +206,45 @@ task.default "build"
   fs.write(bare .. "/manifest.lua", 'local task = require "task"\ntask "only" { desc = "the one", run = function() end }\n')
   r = T.kuu({ "run" }, { cwd = bare })
   check("kuu run with no default lists the tasks and exits 2", r.code == 2 and contains(r.err, "declares no default") and contains(r.err, "only"), T.describe(r))
+  r = T.kuu({ "run", "buidl" }, { cwd = project })
+  check("a task the command names and the manifest does not declare gets the nearest name and the list",
+    r.code == 2 and contains(r.err, "TASK unknown: no task 'buidl'; did you mean 'build'? kuu list shows the tasks"), T.describe(r))
+  r = T.kuu({ "run", "zzzz" }, { cwd = project })
+  check("and only the list when nothing is near", r.code == 2 and contains(r.err, "no task 'zzzz'; kuu list shows the tasks") and not contains(r.err, "did you mean"), T.describe(r))
+  r = T.kuu({ "run" }, { cwd = T.work })
+  check("outside a project the failure names the adopting page", r.code == 2 and contains(r.err, "TASK noproject") and contains(r.err, "kuu docs adopting"), T.describe(r))
+  -- A manifest that loads and declares nothing is told apart from an empty
+  -- project: every verb names the declaration's shape.
+  local empty = T.work .. "/project-empty"
+  fs.remove(empty, { recursive = true })
+  fs.mkdir(empty)
+  fs.write(empty .. "/manifest.lua", 'return { tasks = { hello = {} } }\n')
+  r = T.kuu({ "list" }, { cwd = empty })
+  check("kuu list on a manifest that declares no task says so and names the shape",
+    r.code == 0 and contains(r.out, 'manifest.lua declares no task; declare one with task "name" { ... } (kuu docs task)'), T.describe(r))
+  r = T.kuu({ "run" }, { cwd = empty })
+  check("kuu run says the same, exit 2", r.code == 2 and contains(r.err, "declares none; declare one with task") and contains(r.err, "kuu docs task"), T.describe(r))
+  r = T.kuu({ "list", "--json" }, { cwd = empty })
+  local quiet = json.decode(r.out)
+  check("list --json carries an empty notes array when there is nothing to say", quiet and quiet.ok == true and type(quiet.result.notes) == "table" and #quiet.result.notes == 0, r.out)
+  r = T.kuu({ "capabilities" }, { cwd = empty })
+  check("capabilities says so beneath tasks none", r.code == 0 and contains(r.out, "tasks      none") and contains(r.out, "declares no task; declare one with task"), T.describe(r))
+  -- A manifest whose tasks are all hidden declared them: the listing that
+  -- shows them is named, and nothing says it declares none.
+  fs.write(empty .. "/manifest.lua", 'local task = require "task"\ntask "secret" { hidden = true, run = function() end }\n')
+  r = T.kuu({ "list" }, { cwd = empty })
+  check("a manifest of hidden tasks is said to be that, not empty", r.code == 0 and contains(r.out, "declares only hidden tasks; kuu list --json shows them")
+    and not contains(r.out, "declares no task"), T.describe(r))
+  r = T.kuu({ "run" }, { cwd = empty })
+  check("kuu run without a default says its tasks are hidden", r.code == 2 and contains(r.err, "its tasks are hidden, and kuu list --json shows them"), T.describe(r))
+  r = T.kuu({ "capabilities" }, { cwd = empty })
+  check("and capabilities says the same", r.code == 0 and contains(r.out, "declares only hidden tasks"), T.describe(r))
+  -- A task.default naming a task the manifest does not declare is the
+  -- manifest's mistake, and the message says whose.
+  fs.write(empty .. "/manifest.lua", 'local task = require "task"\ntask "build" { run = function() end }\ntask.default "buidl"\n')
+  r = T.kuu({ "run" }, { cwd = empty })
+  check("a wrong task.default is reported as the manifest's own, with the nearest name",
+    r.code == 2 and contains(r.err, "TASK unknown: manifest.lua names 'buidl' as its default and declares no such task; did you mean 'build'?"), T.describe(r))
   fs.write(bare .. "/manifest.lua", 'local task = require "task"\ntask "x" { desc = 1, run = function() end }\n')
   r = T.kuu({ "list" }, { cwd = bare })
   check("a bad attribute in manifest.lua exits 2 with TASK badvalue and the line", r.code == 2 and contains(r.err, "TASK badvalue") and contains(r.err, "desc must be a string"), T.describe(r))
@@ -226,6 +265,21 @@ task.default "build"
   fs.remove(legacy, { recursive = true })
   fs.mkdir(legacy)
   fs.write(legacy .. "/tasks.lua", 'local task = require "task"\ntask "old" { desc = "still found", run = function() end }\n')
+  r = T.kuu({ "list", "--json" }, { cwd = legacy })
+  local legacy_listing = json.decode(r.out)
+  check("under --json the rename note is on the envelope too", r.code == 0 and legacy_listing and #legacy_listing.result.notes == 1
+    and contains(legacy_listing.result.notes[1], "rename it to manifest.lua"), r.out)
+  r = T.kuu({ "run", "--json", "old" }, { cwd = legacy })
+  local legacy_run = envelope_of(r.out)
+  check("and on kuu run's envelope", r.code == 0 and legacy_run and legacy_run.result.notes[1] ~= nil
+    and contains(legacy_run.result.notes[1], "rename it to manifest.lua"), r.out)
+  r = T.kuu({ "check", "--json" }, { cwd = legacy })
+  local legacy_check = json.decode(r.out)
+  check("and check finds the same root and says the same", legacy_check and #legacy_check.result.notes == 1
+    and contains(r.err, "rename it to manifest.lua"), T.describe(r))
+  r = T.kuu({ "capabilities", "--json" }, { cwd = legacy })
+  local legacy_here = json.decode(r.out)
+  check("and capabilities carries it under the project", legacy_here and #legacy_here.result.project.notes == 1, r.out:sub(1, 200))
   r = T.kuu({ "list" }, { cwd = legacy })
   check("a project with only tasks.lua is still found, with a warning to rename it",
     r.code == 0 and contains(r.out, "old") and contains(r.err, "rename it to manifest.lua"), T.describe(r))
