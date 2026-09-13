@@ -95,7 +95,7 @@ static int l_logs(lua_State *L)
         if (error == ERROR_NO_MORE_ITEMS) return 1;
         if (error != ERROR_INSUFFICIENT_BUFFER) return fail(L, error, "enumerate channels");
         void *next = realloc(s->wide, (size_t)needed * sizeof(wchar_t));
-        if (!next) return fail(L, ERROR_OUTOFMEMORY, "enumerate channels");
+        if (!next) return ku_err_raise(L, "EVT", "oserror", "out of memory");
         s->wide = next;
         if (!EvtNextChannelPath(s->query, needed, s->wide, &needed)) return fail(L, GetLastError(), "enumerate channels");
         push_wide(L, s, s->wide);
@@ -187,10 +187,10 @@ static int l_read(lua_State *L)
     event_scope *s = scope_new(L);
     s->channel = ku_utf8_to_wide(channel);
     if (provider) s->provider = ku_utf8_to_wide(provider);
-    if (!s->channel || (provider && !s->provider)) return fail(L, ERROR_OUTOFMEMORY, channel);
+    if (!s->channel || (provider && !s->provider)) return ku_err_raise(L, "EVT", "oserror", "out of memory");
     size_t capacity = (s->provider ? wcslen(s->provider) : 0) + 512;
     s->xpath = calloc(capacity, sizeof(wchar_t));
-    if (!s->xpath) return fail(L, ERROR_OUTOFMEMORY, channel);
+    if (!s->xpath) return ku_err_raise(L, "EVT", "oserror", "out of memory");
     wcscpy(s->xpath, L"*[System[");
     int terms = 0;
     if (has_since) {

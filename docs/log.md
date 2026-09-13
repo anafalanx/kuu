@@ -45,6 +45,6 @@ program that never logs opens nothing.
 
 | LOG code | when |
 |---|---|
-| `badvalue` | raised: an unknown level, or a `file` or `sink` of the wrong kind |
-| `usage` | raised: an unknown option, or a non-table argument |
+| `badvalue` | raised: a non-table argument, an unknown level, or a `file` or `sink` of the wrong kind |
+| `usage` | raised: an unknown option |
 | `oserror` | raised: the log file cannot be opened |

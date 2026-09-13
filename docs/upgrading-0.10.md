@@ -256,26 +256,29 @@ are reading a file's requires as evidence about an unfamiliar program, treat a
 
 ## An unknown option is refused everywhere
 
-Eleven calls accepted an option they did not know and went on as if it had
+Fourteen calls accepted an option they did not know and went on as if it had
 not been given: `fs.dirs`, `fs.glob`, `hash.sum`, `hash.file`,
-`text.tobase64`, `time.iso`, `json.encode`, `archive.list` (with `pack` and
-`unpack`), `ini.encode`, `csv.encode` and `csv.decode`. A misspelt `prune`
-walked the whole tree; a misspelt `pretty` printed compact JSON. Each now
-raises `usage` in its own domain, naming the key, as `fs.read` and `proc.run`
-always did. Four more refused the key but called it `badvalue`: `evt.read`,
-`sys.signature`, `task.defaults`, and an attribute a `cli` spec entry or a
-task declaration cannot hold. Those raise `usage` now, and `badvalue` keeps
-its one meaning, a known option with a wrong value.
+`text.tobase64`, `time.iso`, `time.make`, `json.encode`, `archive.list` (with
+`pack` and `unpack`), `ini.encode`, `csv.encode`, `csv.decode`, `proc.find`,
+and `proc.detach` given a `maxout` it never honoured. A misspelt `prune`
+walked the whole tree; a misspelt `pretty` printed compact JSON; a misspelt
+`month` made January. Each now raises `usage` in its own domain, naming the
+key, as `fs.read` and `proc.run` always did. Six more refused the key but
+called it `badvalue`: `evt.read`, `sys.signature`, `task.defaults`, the
+`limits` table of a `proc` command, `pty.spawn`, and an attribute a `cli`
+spec entry or a task declaration cannot hold. Those raise `usage` now, and
+`badvalue` keeps its one meaning, a known option with a wrong value.
 
 A program that never misspelt an option sees nothing. One that did has been
 running with that option silently dropped, and now stops at the line; the
 message names the key.
 
-## Three calls follow the raise-or-return rule
+## The raise-or-return rule, applied
 
 [err](err.md) now states where the line falls: a function whose job is to
 validate or convert input returns for input that fails; one that assumes its
-input is well formed raises. Three calls were on the wrong side of it.
+input is well formed raises. A sweep of every module against that line found
+these on the wrong side of it.
 
 - `hash.file` returned `nil, err` for a path `fs` refuses — drive-relative,
   a device, a trailing dot or space, not UTF-8 — where `fs.read` of the same
@@ -286,6 +289,30 @@ input is well formed raises. Three calls were on the wrong side of it.
 - `cli.duration` and `cli.size` returned a bare `nil` for text they could not
   parse. They return `nil, err` with `CLI badvalue` now, so the reason can be
   shown. Nothing that tested the first value changes.
+- `fs` took a path holding a NUL byte and used the part before it —
+  `fs.exists("a.bin\0zzz")` said the file was there — where `hash` and `sys`
+  refused. Every path, name, prefix and encoding `fs` takes raises
+  `FS badvalue` for a NUL now.
+- `proc.run`, `proc.start` and `proc.detach` returned `nil, err` for a
+  command, path or environment entry that is not UTF-8, where every other
+  module raises for the same mistake; they raise `PROC encoding` now. An
+  environment naming one variable twice (`a` and `A`) is refused as
+  `PROC badvalue` before the launch, and a `cwd` spelled in a way Windows
+  would silently rewrite — drive-relative, a trailing dot or space — is
+  refused as `fs` refuses it. A program not on `PATH`, a working directory
+  that is not there, and Windows refusing the launch are still returned.
+- `proc.alive` answered `false` and `proc.kill` returned `nil, err` for a pid
+  outside the range, where `proc.find` and `proc.tree` raise; all four raise
+  `PROC badvalue` now, and 0 is a pid to all four.
+- `sys.signature` raised for a directory where `fs` and `hash` return for the
+  wrong kind of object; it returns `nil, SYS badvalue`. `fs.read` of a
+  directory was `FS access` in Windows' words; it is `nil, FS badvalue`
+  saying what it is.
+- `http.get` with a `to` whose directory is not there raised `HTTP oserror`,
+  with the literal word `to` where the path belonged; it returns
+  `nil, HTTP notfound`, or `access`, naming the path, as `fs.write` does.
+- Out of memory raises everywhere; `sys`, `evt`, `svc` and `archive`
+  returned it from some calls and raised from others.
 
 `re` and `text` stay as they were: a subject that is not UTF-8 raises in
 `re`, which assumes text, and returns from `text.decode`, which exists to say

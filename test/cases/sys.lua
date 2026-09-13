@@ -35,6 +35,8 @@ return function(T)
     and unsigned.valid == nil and unsigned.signer == nil, tostring(ue))
   local absent, ae = sys.signature(T.work .. "/signature-no-such-file.exe")
   check("a missing signature path is SYS notfound", absent == nil and err.is(ae, "SYS", "notfound"), tostring(ae))
+  local folder, de = sys.signature(T.work)
+  check("a directory is nil, SYS badvalue: the wrong kind of object, returned as fs returns it", folder == nil and err.is(de, "SYS", "badvalue"), tostring(de))
   for _, options in ipairs({ { revocation = "true" }, true, { ["revocation\0other"] = true } }) do
     local ok, be = pcall(sys.signature, rt.exe, options)
     check("bad signature options raise SYS badvalue", not ok and err.is(be, "SYS", "badvalue"), tostring(be))

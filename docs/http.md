@@ -54,7 +54,8 @@ is sent with the next. A caller who wants a cookie sends the `Cookie` header.
 | HTTP code | when |
 |---|---|
 | `timeout` | the request did not complete within `timeout` |
-| `notfound` | the host name does not resolve |
+| `notfound` | the host name does not resolve, or the directory `to` points into is not there |
+| `access` | the download file cannot be created where `to` points |
 | `connect` | the host refused or dropped the connection |
 | `tls` | the certificate or the secure channel was rejected |
 | `toobig` | the body exceeded `maxbody` |

@@ -116,6 +116,13 @@ return function(T)
     for _, entry in ipairs(fs.list(T.work).entries) do if entry.name:find("downloaded.bin.kuu-", 1, true) then leftovers = leftovers + 1 end end
     check("no temporary file remains after a refused placement", leftovers == 0)
   end
+  do
+    -- The destination's directory not being there is the machine's answer,
+    -- returned as fs.write returns it, and it names the path.
+    local none3, e5 = http.get(base .. "/hello", { to = T.work .. "/no-such-dir/x.bin" })
+    check("a download into a directory that is not there is nil, HTTP notfound, naming the path",
+      none3 == nil and err.is(e5, "HTTP", "notfound") and contains(tostring(e5), "no-such-dir"), tostring(e5))
+  end
 
   -- A scope deadline can arrive before the worker publishes its WinHTTP
   -- handle, or during the request. Neither path may replace the old file or

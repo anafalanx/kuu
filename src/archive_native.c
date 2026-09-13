@@ -50,7 +50,7 @@ static int list_native(lua_State *L)
     lua_toclose(L, lua_gettop(L));
     reader *r = calloc(1, sizeof *r);
     hold->ptr = r;
-    if (r == NULL) return ku_err_fail(L, "ARCHIVE", "oserror", "out of memory");
+    if (r == NULL) return ku_err_raise(L, "ARCHIVE", "oserror", "out of memory");
     ku_fail fail;
     if (ku_wpath_make(file, &r->path, &fail) != 0)
         return ku_err_fail(L, "ARCHIVE", fail.code, "%s", fail.message);

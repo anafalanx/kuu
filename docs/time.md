@@ -19,6 +19,7 @@ time.parts(t, "local")
 --   wday = 4, yday = 252, offset = 120, zone = "+02:00", dst = true }
 time.make({ year = 2026, month = 9, day = 9, hour = 14 })          -- UTC unless a zone follows
 time.make({ year = 2026, month = 13, day = 1 })                     -- fields carry: 2027-01-01
+time.make({ year = 2026, mnth = 2 })                                -- raises TIME usage: not a part it has
 time.format(t, "%Y-%m-%d %H:%M:%S %z", "local")                     -- strftime; %z and %Z are the zone asked for
 time.zone()          -- { name = "Romance Daylight Time", key = "Romance Standard Time", standard, daylight, offset = 120, dst = true }
 time.duration("1h30m")   -- 5400; the units ms s m h d, alone or summed, or plain seconds; the same grammar every timeout takes

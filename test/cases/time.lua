@@ -39,6 +39,10 @@ return function(T)
   check("make round-trips parts in the local zone", time.make(lp, "local") == math.floor(t) + (lp.ms / 1000), tostring(time.make(lp, "local")))
   check("make carries overflowing fields, as os.time does", time.iso(time.make({ year = 2026, month = 13, day = 1 })) == "2027-01-01T00:00:00Z"
     and time.iso(time.make({ year = 2026, month = 3, day = 0 })) == "2026-02-28T00:00:00Z" and time.iso(time.make({ year = 2026, month = 1, day = 1, hour = 25 })) == "2026-01-02T01:00:00Z")
+  do
+    local ok2, raised2 = pcall(time.make, { year = 2026, mnth = 2 })
+    check("make refuses a part it does not have as TIME usage", not ok2 and err.is(raised2, "TIME", "usage") and contains(tostring(raised2), "mnth"), tostring(raised2))
+  end
   check("format is strftime with the zone asked for", time.format(t, "%Y-%m-%d %H:%M:%S %z", "+02:00") == "2026-09-09 16:03:05 +0200"
     and time.format(t, "%H:%M %Z") == "14:03 UTC" and time.format(t, "%A %d %B") == "Wednesday 09 September", time.format(t, "%Y-%m-%d %H:%M:%S %z", "+02:00"))
   local z = time.zone()

@@ -57,9 +57,9 @@ the child could not be started, with these codes:
 |---|---|
 | `notfound` | the program is not on `PATH` or does not exist |
 | `launch` | Windows refused to create the process; the message says why |
-| `badvalue` | a bad option value (`nil, err` for `cwd` that does not exist; raised for a malformed value) |
-| `encoding` | a name is not valid UTF-8 |
-| `usage` | raised: no command, a wrong argument shape, an unknown option |
+| `badvalue` | raised: a malformed option value, a `cwd` spelled in a way Windows would rewrite, an environment naming one variable twice; `nil, err` for a `cwd` that is not there |
+| `encoding` | raised: a command, path, or environment entry is not valid UTF-8 |
+| `usage` | raised: no command, a wrong argument shape, an unknown option — in the command table or in `limits` |
 | `oserror` | a job, pipe, or another launch resource could not be created |
 
 Unknown option names raise rather than pass silently, so a typo cannot
@@ -82,8 +82,9 @@ proc.run { "build.exe", timeout = "10m",
 job-wide, across the child and its descendants: `memory` is committed bytes,
 `cpu` is accumulated user-mode CPU time, and `processes` is the number alive
 at once, including the initial child. Each optional bound must be positive;
-unknown names and malformed bounds raise `PROC badvalue`. An empty table
-sets no bounds. `detach` does not accept limits.
+a malformed bound raises `PROC badvalue` and an unknown name `PROC usage`. An empty table
+sets no bounds. `detach` accepts neither limits nor `maxout`, since it reads
+no output.
 
 Windows refuses allocations and child creation that exceed memory and process
 limits; kuu terminates the job when the corresponding notification arrives.
@@ -229,8 +230,8 @@ children.
 | `notfound` | a command or requested process does not exist |
 | `launch` | Windows refused to start the command |
 | `access` | `kill` cannot open the process for termination |
-| `badvalue` | malformed arguments or option values; usually raised, but returned for a refused working directory or invalid `kill` pid |
-| `encoding` | a command, path, environment entry, or process-name filter is not UTF-8 |
+| `badvalue` | raised: malformed arguments or option values, a pid outside the range; returned for a working directory that is not there |
+| `encoding` | raised: a command, path, environment entry, or process-name filter is not UTF-8 |
 | `usage` | raised: an invalid call shape, unknown option, incompatible stream modes, or a read/write without stream mode |
 | `timeout` | a child wait, stream read, `wait_any`, or `wait_all` outlasted its wait duration |
 | `closed` | raised for a closed handle; returned when stdin is closed or a pending read's handle closes |

@@ -515,7 +515,7 @@ void ku_fs_watch_meta(lua_State *L)
 /* fs.watch(dir [, { recursive = true, raw = false }]) */
 int ku_fs_watch(lua_State *L)
 {
-    const char *shown = luaL_checkstring(L, 1);
+    const char *shown = ku_check_cstring(L, 1, "FS", "path");
     int recursive = 1, raw = 0;
     if (!lua_isnoneornil(L, 2)) {
         luaL_checktype(L, 2, LUA_TTABLE);

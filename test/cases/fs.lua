@@ -87,7 +87,7 @@ return function(T)
   none, e = fs.read(root .. "/missing.txt")
   check("reading a missing file is nil, FS notfound", none == nil and err.is(e, "FS", "notfound"), tostring(e))
   none, e = fs.read(root)
-  check("reading a directory is refused", none == nil and err.is(e, "FS"), tostring(e))
+  check("reading a directory is nil, FS badvalue saying so", none == nil and err.is(e, "FS", "badvalue") and contains(tostring(e), "is a directory"), tostring(e))
   none, e = fs.read(root .. "/a.bin", { maxbytes = 3 })
   check("maxbytes refuses a larger file as FS toobig", none == nil and err.is(e, "FS", "toobig"), tostring(e))
   local ok, e2 = pcall(fs.read, root .. "/a.bin", { maxbytez = 3 })
@@ -115,6 +115,20 @@ return function(T)
     local missing, why = fs.chdir(root .. "/no-such-directory")
     check("chdir into a missing directory is nil, FS notfound", missing == nil and err.is(why, "FS", "notfound") and fs.same(fs.cwd(), before), tostring(why))
   end
+
+  -- A NUL inside a path used to name the file before it, silently: the
+  -- worst outcome a path can have, a different file than the one written.
+  -- Every path and name fs takes refuses it now, as hash and sys did.
+  ok, e2 = pcall(fs.exists, root .. "/a.bin\0zzz")
+  check("exists refuses a path holding NUL", not ok and err.is(e2, "FS", "badvalue") and contains(tostring(e2), "NUL"), tostring(e2))
+  ok, e2 = pcall(fs.dirs, root .. "\0zzz")
+  check("dirs refuses a root holding NUL", not ok and err.is(e2, "FS", "badvalue"), tostring(e2))
+  ok, e2 = pcall(fs.watch, root .. "\0zzz")
+  check("watch refuses a directory holding NUL", not ok and err.is(e2, "FS", "badvalue"), tostring(e2))
+  ok, e2 = pcall(fs.read, root .. "/a.bin", { encoding = "utf-8\0zzz" })
+  check("read refuses an encoding name holding NUL", not ok and err.is(e2, "FS", "badvalue"), tostring(e2))
+  ok, e2 = pcall(fs.tempfile, { dir = root, prefix = "kuu-\0x" })
+  check("tempfile refuses a prefix holding NUL", not ok and err.is(e2, "FS", "badvalue"), tostring(e2))
 
   -- stat / exists -----------------------------------------------------------------------
   local st = fs.stat(root .. "/a.bin")

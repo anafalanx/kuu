@@ -56,6 +56,8 @@ return function(T)
   check("an unknown level is refused", not ok and err.is(e, "LOG", "badvalue"), tostring(e))
   ok, e = pcall(log.configure, { colour = true })
   check("an unknown option is refused", not ok and err.is(e, "LOG", "usage"), tostring(e))
+  ok, e = pcall(log.configure, "loud")
+  check("a non-table is LOG badvalue, a wrong value rather than a wrong option", not ok and err.is(e, "LOG", "badvalue"), tostring(e))
   ok, e = pcall(log.configure, { file = T.work .. "/no-such-dir/x.log", level = "debug" })
   check("a file that cannot be opened is refused and nothing changes", not ok and err.is(e, "LOG", "oserror") and log.configure().level == "info", tostring(e))
 end

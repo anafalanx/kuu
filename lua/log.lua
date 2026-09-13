@@ -156,7 +156,7 @@ function log.configure(options)
     }
   end
   if type(options) ~= "table" then
-    error(err.new("LOG", "usage", "configure takes a table of options"))
+    error(err.new("LOG", "badvalue", "configure takes a table of options"))
   end
   -- validate everything first
   local staged = {}

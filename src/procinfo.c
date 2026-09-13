@@ -212,7 +212,8 @@ static int name_matches(const wchar_t *exe_name, const wchar_t *wanted)
 
 int ku_proc_find(lua_State *L)
 {
-    luaL_checktype(L, 1, LUA_TTABLE);
+    static const char *const options[] = {"name", "pid", "port", NULL};
+    ku_check_options(L, 1, "PROC", options);
     lua_getfield(L, 1, "name");
     lua_getfield(L, 1, "pid");
     lua_getfield(L, 1, "port");

@@ -214,10 +214,16 @@ sched.sleep('20s')
   value, e = blocked:join('2s')
   T.check('closing a console wakes its parked reader with PTY closed', value == nil and err.is(e, 'PTY', 'closed'), tostring(e))
 
-  for _, spec in ipairs { {}, { 'cmd.exe', cols = 0 }, { 'cmd.exe', rows = 2.5 }, { 'cmd.exe', maxout = 0 }, { 'cmd.exe', stdin = '' } } do
+  for _, spec in ipairs { { 'cmd.exe', cols = 0 }, { 'cmd.exe', rows = 2.5 }, { 'cmd.exe', maxout = 0 }, { 'cmd.exe', stdin = '' } } do
     ok, raised = pcall(pty.spawn, spec)
     T.check('pty validates command options', not ok and err.is(raised, 'PTY', 'badvalue'), tostring(raised))
   end
+  -- A wrong call shape is usage here as it is in proc: no command, or an
+  -- option the command table does not take.
+  ok, raised = pcall(pty.spawn, {})
+  T.check('a command table without a command is PTY usage', not ok and err.is(raised, 'PTY', 'usage'), tostring(raised))
+  ok, raised = pcall(pty.spawn, { 'cmd.exe', bogus = 1 })
+  T.check('an option pty.spawn does not read is PTY usage, as proc reports it', not ok and err.is(raised, 'PTY', 'usage') and tostring(raised):find('bogus', 1, true) ~= nil, tostring(raised))
   value, e = pty.spawn { 'kuu-pty-missing-09-2026.exe' }
   T.check('pty missing command returns notfound', value == nil and err.is(e, 'PTY', 'notfound'))
 

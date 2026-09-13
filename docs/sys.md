@@ -71,6 +71,7 @@ prevents writes while checking it; it does not reserve the path after return.
 
 The complete SYS code set is `notfound` (missing signature path), `access`
 (the file cannot be read or is open for writing), `badvalue` (raised for a
-malformed path, a directory, or a `revocation` that is not a boolean),
-`usage` (raised for an unknown option), and `oserror` (other Windows or
-allocation failures). `sys.info` has no expected error return.
+malformed path or a `revocation` that is not a boolean; `nil, err` for a
+directory, the wrong kind of object, as `fs` returns it), `usage` (raised for
+an unknown option), and `oserror` (other Windows or allocation failures).
+`sys.info` has no expected error return.

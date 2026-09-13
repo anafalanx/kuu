@@ -609,7 +609,7 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
 /* fs.dirs(root [, { depth = n, prune = { "pattern", ... } }]) */
 int ku_fs_dirs(lua_State *L)
 {
-    const char *root_utf8 = luaL_checkstring(L, 1);
+    const char *root_utf8 = ku_check_cstring(L, 1, "FS", "path");
     walk w;
     memset(&w, 0, sizeof w);
     w.L = L;

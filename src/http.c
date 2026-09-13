@@ -847,14 +847,20 @@ static int build_request(lua_State *L, int idx)
         ku_wpath_free(&target);
         q->file = CreateFileW(q->temp_path, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
         if (q->file == INVALID_HANDLE_VALUE) {
+            /* The machine's answer about the destination, returned as
+             * fs.write returns it: a directory that is not there, a place
+             * this user may not write, or Windows' own reason. */
             DWORD error = GetLastError();
             q->file = NULL;
-            request_free(q);
+            const char *code = (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) ? "notfound"
+                               : error == ERROR_ACCESS_DENIED                                    ? "access"
+                                                                                                 : "oserror";
             char *text = ku_win_error_message(error);
-            ku_err_push(L, "HTTP", "oserror", "cannot create the download file beside '%s': %s", "to",
-                        text != NULL ? text : "");
+            int n = ku_err_fail(L, "HTTP", code, "cannot create the download file beside '%s': %s", q->to_utf8,
+                                text != NULL ? text : "");
             free(text);
-            return lua_error(L);
+            request_free(q);
+            return n;
         }
     }
 

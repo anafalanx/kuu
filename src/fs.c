@@ -42,9 +42,12 @@
 
 /* ---- helpers ------------------------------------------------------------------- */
 
+/* Every path fs takes comes through here, and a NUL inside one is refused:
+ * the C string would name the file before it, and a different file than
+ * the one written is the worst outcome a path can have. */
 static void path_arg(lua_State *L, int idx, ku_wpath *out)
 {
-    const char *utf8 = luaL_checkstring(L, idx);
+    const char *utf8 = ku_check_cstring(L, idx, "FS", "path");
     ku_fail fail;
     if (ku_wpath_make(utf8, out, &fail) != 0) {
         ku_err_raise(L, fail.domain, fail.code, "%s", fail.message);
@@ -121,7 +124,7 @@ static int l_fs_read(lua_State *L)
         lua_pop(L, 1);
         lua_getfield(L, 2, "encoding");
         if (!lua_isnil(L, -1)) {
-            encoding = luaL_checkstring(L, -1);
+            encoding = ku_check_cstring(L, -1, "FS", "encoding");
         }
         lua_pop(L, 1);
     }
@@ -129,6 +132,15 @@ static int l_fs_read(lua_State *L)
                            OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
     if (h == INVALID_HANDLE_VALUE) {
         DWORD error = GetLastError();
+        if (error == ERROR_ACCESS_DENIED) {
+            /* Windows says "denied" for a directory opened as a file; the
+             * wrong kind of object is what it is, in fs's words. */
+            DWORD attributes = GetFileAttributesW(path.text);
+            if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                ku_wpath_free(&path);
+                return ku_err_fail(L, "FS", "badvalue", "'%s' is a directory", shown);
+            }
+        }
         ku_wpath_free(&path);
         return fail_win(L, error, "open", shown);
     }
@@ -1063,11 +1075,11 @@ static int temp_make(lua_State *L, int directory)
     if (lua_istable(L, 1)) {
         lua_getfield(L, 1, "prefix");
         if (!lua_isnil(L, -1)) {
-            prefix = luaL_checkstring(L, -1);
+            prefix = ku_check_cstring(L, -1, "FS", "prefix");
         }
         lua_getfield(L, 1, "suffix");
         if (!lua_isnil(L, -1)) {
-            suffix = luaL_checkstring(L, -1);
+            suffix = ku_check_cstring(L, -1, "FS", "suffix");
         }
         lua_getfield(L, 1, "dir");
         has_dir = !lua_isnil(L, -1);

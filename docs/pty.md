@@ -98,7 +98,8 @@ program blocked on output.
 
 ## Errors
 
-The closed PTY code set is `badvalue` (invalid command/options/dimensions,
+The closed PTY code set is `usage` (an option the command table does not
+take, as `proc` reports it), `badvalue` (invalid command/options/dimensions,
 duration, or a rejected Lua pattern), `notfound` (executable), `encoding`
 (invalid UTF-8 command/environment), `launch` (process creation), `busy`
 (concurrent read or pending input conflict), `closed` (closed handle or EOF

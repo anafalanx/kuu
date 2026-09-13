@@ -235,6 +235,10 @@ task.default "build"
     check("task.default_task and task.arguments answer for a declared project",
       r.status == "exit" and r.code == 0 and r.out == "nil plain app true true true true", T.describe(r))
   end
+  ok, raised = pcall(task.get, 5)
+  check("task.get with a non-string is TASK badvalue", not ok and err.is(raised, "TASK", "badvalue"), tostring(raised))
+  ok, raised = pcall(task.plan, nil)
+  check("task.plan with nil is TASK badvalue, not an unknown task", not ok and err.is(raised, "TASK", "badvalue"), tostring(raised))
   ran, timed = task.exec(slow)
   check("a rejected defaults declaration preserves the preceding default",
     ran == nil and err.is(timed, "TASK", "failed") and contains(timed.message, "timeout"), tostring(timed))

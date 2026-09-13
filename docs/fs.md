@@ -198,7 +198,7 @@ refused before anything is created.
 | `notempty` | `remove` on a non-empty directory without `recursive` |
 | `toobig` | `read` above `maxbytes` |
 | `encoding` | a name cannot be represented |
-| `badvalue` | raised for a refused path or option value; `nil, err` for a wrong kind of object |
+| `badvalue` | raised for a refused path, a path or name holding NUL, or an option value; `nil, err` for a wrong kind of object — a directory given to `read`, a file given to `list` |
 | `usage` | raised: an unknown option |
 | `timeout` | `watch:read` waited its whole duration |
 | `closed` | raised: a closed watch was used |

@@ -124,7 +124,7 @@ static int l_status(lua_State *L)
     const char *name = check_name(L);
     service_scope *s = scope_new(L);
     s->name = ku_utf8_to_wide(name);
-    if (!s->name) return fail(L, ERROR_OUTOFMEMORY, name);
+    if (!s->name) return ku_err_raise(L, "SVC", "oserror", "out of memory");
     s->manager = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
     if (!s->manager) return fail(L, GetLastError(), name);
     DWORD error = open_service(s, s->name, SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG);
@@ -152,7 +152,7 @@ static int l_list(lua_State *L)
     if (!s->manager) return fail(L, GetLastError(), "list");
     DWORD capacity = 256 * 1024, resume = 0, needed = 0, count = 0;
     s->services = malloc(capacity);
-    if (!s->services) return fail(L, ERROR_OUTOFMEMORY, "list");
+    if (!s->services) return ku_err_raise(L, "SVC", "oserror", "out of memory");
     lua_newtable(L);
     lua_Integer index = 0;
     /* SCM caps a buffer at 256 KiB; enumerate all pages before sorting in Lua. */
@@ -183,7 +183,7 @@ static int change(lua_State *L, int start)
     const char *name = check_name(L);
     service_scope *s = scope_new(L);
     s->name = ku_utf8_to_wide(name);
-    if (!s->name) return fail(L, ERROR_OUTOFMEMORY, name);
+    if (!s->name) return ku_err_raise(L, "SVC", "oserror", "out of memory");
     s->manager = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
     if (!s->manager) return fail(L, GetLastError(), name);
     DWORD error = open_service(s, s->name, start ? SERVICE_START : SERVICE_STOP);

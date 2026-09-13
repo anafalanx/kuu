@@ -24,6 +24,7 @@
  * a 23H2 pseudoconsole reserves isolated workers for blocking OS teardown.
  */
 #include "err.h"
+#include "fspath.h"
 #include "launch.h"
 #include "loop.h"
 #include "procinfo.h"
@@ -832,6 +833,7 @@ typedef struct ku_spec {
     int stream;
     int inherit;
     size_t maxout;
+    int has_maxout;
     ku_limits limits;
     int has_limits;
     int console;
@@ -867,7 +869,7 @@ static void parse_limits(lua_State *L, int idx, ku_limits *limits)
             }
             limits->processes = (DWORD)value;
         } else {
-            ku_err_raise(L, "PROC", "badvalue", "unknown limit '%s'", key);
+            ku_err_raise(L, "PROC", "usage", "unknown option '%s' in limits", key);
         }
         lua_pop(L, 1);
     }
@@ -980,6 +982,17 @@ static void parse_spec(lua_State *L, ku_spec *spec, int allow_options)
             if (strlen(s) != len || len == 0) {
                 ku_err_raise(L, "PROC", "badvalue", "cwd must be a non-empty path without NUL bytes");
             }
+            /* Refused by name as fs refuses it -- drive-relative, a device,
+             * a component ending in a dot or a space -- since Windows would
+             * silently make the child's directory something else.  The
+             * spelling checked is the spelling passed; the child sees no
+             * prefix. */
+            ku_wpath checked;
+            ku_fail refused;
+            if (ku_wpath_make(s, &checked, &refused) != 0) {
+                ku_err_raise(L, "PROC", "badvalue", "cwd %s", refused.message);
+            }
+            ku_wpath_free(&checked);
             anchor(L, keep, -1);
             spec->cwd = s;
         } else if (strcmp(key, "timeout") == 0) {
@@ -995,6 +1008,7 @@ static void parse_spec(lua_State *L, ku_spec *spec, int allow_options)
                 ku_err_raise(L, "PROC", "badvalue", "maxout must be a size such as \"16M\"");
             }
             spec->maxout = (size_t)bytes;
+            spec->has_maxout = 1;
         } else if (strcmp(key, "stream") == 0) {
             spec->stream = lua_toboolean(L, -1);
         } else if (strcmp(key, "inherit") == 0) {
@@ -1056,6 +1070,16 @@ static void parse_spec(lua_State *L, ku_spec *spec, int allow_options)
                 }
                 anchor(L, keep, -2);
                 anchor(L, keep, -1);
+                /* Windows reads names ignoring case, so `a` and `A` are one
+                 * variable; a table naming both is a mistake in the table,
+                 * refused here where the mistake is, not at the launch. */
+                for (int i = 0; i < spec->env_count; i++) {
+                    if (_stricmp(spec->env_keys[i], k) == 0) {
+                        ku_err_raise(L, "PROC", "badvalue",
+                                     "the environment names '%s' twice: '%s' and '%s' are one variable to Windows",
+                                     k, spec->env_keys[i], k);
+                    }
+                }
                 spec->env_keys[spec->env_count] = k;
                 spec->env_values[spec->env_count] = v;
                 spec->env_count++;
@@ -1380,6 +1404,19 @@ static int child_wait(lua_State *L, ku_child *c, int64_t timeout_ms)
 }
 
 /* proc.run{...} / proc.run("exe", ...) */
+/* A launch that failed on the caller's spelling -- a command, a path or an
+ * environment entry that is not UTF-8 -- is a mistake in the program, raised
+ * as every other module raises it.  One that failed on the machine -- nothing
+ * of that name on PATH, a working directory that is not there, Windows
+ * refusing the process, a resource that could not be made -- is returned. */
+static int launch_failed(lua_State *L, const ku_fail *fail)
+{
+    if (strcmp(fail->code, "encoding") == 0) {
+        return ku_err_raise(L, fail->domain, fail->code, "%s", fail->message);
+    }
+    return ku_err_fail(L, fail->domain, fail->code, "%s", fail->message);
+}
+
 static int l_proc_run(lua_State *L)
 {
     ku_spec spec;
@@ -1390,7 +1427,7 @@ static int l_proc_run(lua_State *L)
     ku_child *c = NULL;
     ku_fail fail;
     if (child_launch(L, &spec, &c, &fail) != 0) {
-        return ku_err_fail(L, fail.domain, fail.code, "%s", fail.message);
+        return launch_failed(L, &fail);
     }
     push_child_box(L, c);
     lua_pushvalue(L, -1);
@@ -1406,7 +1443,7 @@ static int l_proc_start(lua_State *L)
     ku_child *c = NULL;
     ku_fail fail;
     if (child_launch(L, &spec, &c, &fail) != 0) {
-        return ku_err_fail(L, fail.domain, fail.code, "%s", fail.message);
+        return launch_failed(L, &fail);
     }
     push_child_box(L, c);
     return 1;
@@ -1634,7 +1671,7 @@ static int l_proc_detach(lua_State *L)
 {
     ku_spec spec;
     parse_spec(L, &spec, 1);
-    if (spec.has_stdin || spec.timeout_ms >= 0 || spec.stream || spec.inherit || spec.has_limits) {
+    if (spec.has_stdin || spec.timeout_ms >= 0 || spec.stream || spec.inherit || spec.has_limits || spec.has_maxout) {
         return ku_err_raise(L, "PROC", "usage", "detach accepts only cwd and env options");
     }
     char *exe = NULL;
@@ -1643,7 +1680,7 @@ static int l_proc_detach(lua_State *L)
         return ku_err_fail(L, "PROC", "notfound", "cannot find '%s' on PATH", spec.argv[0]);
     }
     if (resolved == 2) {
-        return ku_err_fail(L, "PROC", "encoding", "the command name is not valid UTF-8");
+        return ku_err_raise(L, "PROC", "encoding", "the command name is not valid UTF-8");
     }
     ku_fail fail;
     wchar_t *env = NULL;
@@ -1676,9 +1713,8 @@ static int l_proc_detach(lua_State *L)
 static int l_proc_alive(lua_State *L)
 {
     lua_Integer pid = luaL_checkinteger(L, 1);
-    if (pid <= 0 || pid > 0xffffffffLL) {
-        lua_pushboolean(L, 0);
-        return 1;
+    if (pid < 0 || pid > 0xffffffffLL) {
+        return ku_err_raise(L, "PROC", "badvalue", "pid out of range");
     }
     HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, (DWORD)pid);
     if (h == NULL) {
@@ -1696,8 +1732,8 @@ static int l_proc_alive(lua_State *L)
 static int l_proc_kill(lua_State *L)
 {
     lua_Integer pid = luaL_checkinteger(L, 1);
-    if (pid <= 0 || pid > 0xffffffffLL) {
-        return ku_err_fail(L, "PROC", "badvalue", "pid must be a positive integer");
+    if (pid < 0 || pid > 0xffffffffLL) {
+        return ku_err_raise(L, "PROC", "badvalue", "pid out of range");
     }
     HANDLE h = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, (DWORD)pid);
     if (h == NULL) {

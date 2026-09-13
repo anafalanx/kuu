@@ -103,12 +103,16 @@ function task.defaults(options)
   default_timeout = timeout
 end
 
-function task.get(name) return registry.byname[name] end
+function task.get(name)
+  if type(name) ~= "string" then bad("a task name must be a string, got " .. type(name)) end
+  return registry.byname[name]
+end
 function task.all() return registry.order end
 function task.default_task() return registry.default_name end
 
 -- task.plan(name) -> the tasks to run, in order, each once | nil, err (TASK unknown | cycle)
 function task.plan(name)
+  if type(name) ~= "string" then bad("a task name must be a string, got " .. type(name)) end
   local order, state = {}, {}
   local function visit(n, chain)
     local entry = registry.byname[n]

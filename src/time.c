@@ -441,7 +441,13 @@ static int64_t field(lua_State *L, int idx, const char *name, int64_t fallback, 
 /* time.make({ year, month, day [, hour, min, sec, ms] } [, zone]) */
 static int l_time_make(lua_State *L)
 {
+    /* A part the table does not have is refused like any option: a misspelt
+     * month silently made January.  Everything `parts` returns is accepted,
+     * so its table round-trips into `make` unchanged. */
+    static const char *const parts[] = {"year", "month", "day", "hour", "min", "sec", "ms",
+                                        "wday", "yday", "offset", "zone", "dst", NULL};
     luaL_checktype(L, 1, LUA_TTABLE);
+    ku_check_options(L, 1, "TIME", parts);
     ku_zone zone = zone_arg(L, 2, "utc");
     int64_t year = field(L, 1, "year", 0, 1), month = field(L, 1, "month", 1, 0), day = field(L, 1, "day", 1, 0);
     int64_t hour = field(L, 1, "hour", 0, 0), min = field(L, 1, "min", 0, 0), sec = field(L, 1, "sec", 0, 0);

@@ -262,7 +262,7 @@ int ku_sys_signature(lua_State *L)
     if (ku_wpath_make(path, &r->path, &failure)) ku_err_raise(L, "SYS", "badvalue", "%s", failure.message);
     DWORD attributes = GetFileAttributesW(r->path.text);
     if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY))
-        ku_err_raise(L, "SYS", "badvalue", "signature needs a file, not a directory");
+        return ku_err_fail(L, "SYS", "badvalue", "signature needs a file, not a directory"); /* the wrong kind of object: returned, as fs returns it */
     r->loop = ku_loop_of(L);
     r->source.kind = KU_SRC_POSTED;
     r->source.owner = r;
@@ -275,7 +275,7 @@ int ku_sys_signature(lua_State *L)
     ku_waiter *waiter = ku_waiter_new(r->loop, r, signature_push);
     if (!waiter) {
         luaL_unref(L, LUA_REGISTRYINDEX, r->ref);
-        return ku_err_fail(L, "SYS", "oserror", "out of memory");
+        return ku_err_raise(L, "SYS", "oserror", "out of memory");
     }
     waiter->on_abandon = signature_abandon;
     waiter->on_timeout = signature_abandon;

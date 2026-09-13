@@ -21,10 +21,12 @@ return function(T)
   local c <close> = proc.start { T.exe, '-e', 'print("within")', limits = { memory = '128M', cpu = '2s', processes = 1 } }
   r = c:wait('5s')
   T.check('start and wait keep an ordinary result below the limits', r and r.status == 'exit' and r.code == 0 and r.limit == nil)
-  for _, limits in ipairs { false, {memory=0}, {memory=-1}, {cpu=0}, {cpu='bad'}, {processes=0}, {processes=1.5}, {unknown=1}, {['cpu\0junk']='1s'}, {[true]=1}, {[1]=1} } do
+  for _, limits in ipairs { false, {memory=0}, {memory=-1}, {cpu=0}, {cpu='bad'}, {processes=0}, {processes=1.5}, {['cpu\0junk']='1s'}, {[true]=1}, {[1]=1} } do
     local ok, e = pcall(proc.run, { T.exe, '-e', '', limits = limits })
     T.check('invalid child limit is PROC badvalue', not ok and err.is(e, 'PROC', 'badvalue'), tostring(e))
   end
+  local ok, e = pcall(proc.run, { T.exe, '-e', '', limits = { unknown = 1 } })
+  T.check('a limit name the table does not have is PROC usage, like any option', not ok and err.is(e, 'PROC', 'usage') and tostring(e):find('unknown', 1, true) ~= nil, tostring(e))
   local ok, e = pcall(proc.detach, { T.exe, '-e', '', limits = {} })
   T.check('detach refuses limits', not ok and err.is(e, 'PROC', 'usage'), tostring(e))
   ok, e = pcall(proc.run, { T.exe, '-e', '', ['limits\0junk'] = {} })

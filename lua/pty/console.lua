@@ -9,9 +9,11 @@ return function(pty)
   pty._spawn, pty._resize = nil, nil
   local methods = {}
   local function problem(code, message) return err.new('PTY', code, message) end
+  -- A failure the launch reports keeps its code and takes this domain: an
+  -- option the command table does not take is usage here as it is in proc.
   local function mapped(e)
     if type(e) == 'table' and e.domain == 'PROC' then
-      return problem(e.code == 'usage' and 'badvalue' or e.code, e.message)
+      return problem(e.code, e.message)
     end
     return e
   end

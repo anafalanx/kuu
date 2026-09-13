@@ -45,6 +45,26 @@ return function(T)
 
   ok, e2 = pcall(proc.run, { "cmd.exe", cwdd = "x" })
   check("an unknown option is a raised usage error", not ok and err.is(e2, "PROC", "usage") and contains(tostring(e2), "cwdd"), tostring(e2))
+  -- The same law inside the command table's own tables, and in find.
+  ok, e2 = pcall(proc.run, { "cmd.exe", limits = { memroy = "1M" } })
+  check("an unknown limit is a raised usage error", not ok and err.is(e2, "PROC", "usage") and contains(tostring(e2), "memroy"), tostring(e2))
+  ok, e2 = pcall(proc.find, { name = "kuu", nmae = 1 })
+  check("find refuses an option it does not read", not ok and err.is(e2, "PROC", "usage") and contains(tostring(e2), "nmae"), tostring(e2))
+  ok, e2 = pcall(proc.detach, { "cmd.exe", maxout = "1M" })
+  check("detach refuses maxout, which it would not honour", not ok and err.is(e2, "PROC", "usage"), tostring(e2))
+  -- What proc assumes well formed it raises on, as fs does: a name that is
+  -- not UTF-8, a working directory spelled in a way Windows would rewrite,
+  -- an environment that names a variable twice, a pid outside the range.
+  ok, e2 = pcall(proc.run, { "cmd.exe\255" })
+  check("a command name that is not UTF-8 raises PROC encoding", not ok and err.is(e2, "PROC", "encoding"), tostring(e2))
+  ok, e2 = pcall(proc.run, { "cmd.exe", cwd = "C:foo" })
+  check("a drive-relative cwd is refused as fs refuses it", not ok and err.is(e2, "PROC", "badvalue") and contains(tostring(e2), "drive-relative"), tostring(e2))
+  ok, e2 = pcall(proc.run, { "cmd.exe", env = { a = "1", A = "2" } })
+  check("an environment naming a variable twice raises PROC badvalue", not ok and err.is(e2, "PROC", "badvalue") and contains(tostring(e2), "twice"), tostring(e2))
+  ok, e2 = pcall(proc.alive, -1)
+  check("alive refuses a pid out of range", not ok and err.is(e2, "PROC", "badvalue"), tostring(e2))
+  ok, e2 = pcall(proc.kill, -1)
+  check("kill refuses a pid out of range", not ok and err.is(e2, "PROC", "badvalue"), tostring(e2))
 
   ok, e2 = pcall(proc.run, { "cmd.exe", timeout = "soon" })
   check("a bad duration is a raised badvalue", not ok and err.is(e2, "PROC", "badvalue"), tostring(e2))
