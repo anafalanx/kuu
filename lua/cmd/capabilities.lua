@@ -117,6 +117,15 @@ if root then
     here.note = "manifest.lua did not load: " .. tostring(why)
   end
 
+  -- The door's memory: the last crossings, and the count of changes no
+  -- crossing accounts for, which is zero until something watches.
+  local ledger = require "_ledger"
+  here.ledger = { last = json.array {}, unaccounted = 0 }
+  for _, record in ipairs(ledger.tail(root, 5)) do
+    here.ledger.last[#here.ledger.last + 1] = { at = record.at, kind = record.kind, name = record.name,
+      status = record.status, seconds = record.seconds }
+  end
+
   local found = check.modules(root)
   here.files = found.files
   for _, module in ipairs(found.modules) do
@@ -220,6 +229,16 @@ else
     for _, t in ipairs(here.tools) do names[#names + 1] = t.name .. " (" .. t.output .. ")" end
     listing(LABEL, 2, "tools", names)
     io.write(string.rep(" ", LABEL), "declared in the manifest; task.exec { tool = NAME } runs one\n")
+  end
+  if #here.ledger.last > 0 then
+    local shown = {}
+    for _, c in ipairs(here.ledger.last) do
+      shown[#shown + 1] = string.format("%s %s %s", c.kind, c.name, tostring(c.status))
+    end
+    listing(LABEL, 2, "ledger", shown)
+    io.write(string.rep(" ", LABEL), "the last crossings, oldest first; .kuu/ledger holds ninety days of them\n")
+  else
+    io.write(string.format("  %-" .. (LABEL - 2) .. "snothing has crossed the door yet; kuu run writes .kuu/ledger\n", "ledger"))
   end
   io.write(string.format("  %-" .. (LABEL - 2) .. "s%d of the %d .lua files below the root bound their exports\n",
     "modules", #here.modules, here.files))

@@ -66,6 +66,8 @@ project C:/work/app
              * the default. kuu run TASK; kuu list describes them
   tools      report (ndjson), signtool (lines)
              declared in the manifest; task.exec { tool = NAME } runs one
+  ledger     child report exit, task weekly ok, verb run ok
+             the last crossings, oldest first; .kuu/ledger holds ninety days of them
   modules    2 of the 4 .lua files below the root bound their exports
     lib.util      VERSION, slug, titlecase
     tools.report  render, write
@@ -110,6 +112,8 @@ type CapabilityReport = {
                emits: string[]; timeout?: number | string; reach: { [kind: string]: string[] } }[];
       default?: string; // the task kuu run alone runs
       note?: string; // why manifest.lua did not load; tasks is then empty
+      ledger: { last: { at: number; kind: string; name: string; status: string; seconds: number }[]; // the last five crossings, oldest first
+                unaccounted: number }; // changes no crossing accounts for; zero until something watches
       modules: { name: string; path: string; names: string[] }[];
       files: number; // .lua files below the root, whether or not they are modules
     };

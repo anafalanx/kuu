@@ -51,9 +51,32 @@ local function emit(record)
   record.v = 1
   io.stdout:write(json.encode(record), "\n")
 end
+
+-- The door remembers what passes through it: the run, each task, each
+-- child, written to .kuu/ledger under the root as it happens.  A ledger
+-- that cannot be written is said once on standard error and the run goes
+-- on; the record is the door's, never a condition on the work.
+local ledger = require "_ledger"
+local book = nil
+local run_began = sched.clock()
+local run_at = require("time").now()
+local function crossing(fields)
+  if book == nil then return end
+  local ok, e = ledger.record(book, fields)
+  if not ok then
+    io.stderr:write("kuu: warning: the ledger was not written: ", tostring(e), "\n")
+    book = nil
+  end
+end
 task.observer = function(record)
   record.task = current
   if record.argv then record.argv = json.array(record.argv) end
+  if record.state == "finished" then
+    crossing { kind = "child", name = record.tool or record.argv[1], task = current, tool = record.tool,
+      argv = record.argv, cwd = record.cwd, pid = record.pid, at = run_at + (record.started - run_began),
+      seconds = record.seconds, status = record.status, code = record.code, bytes = record.bytes }
+  end
+  record.started, record.cwd, record.tool = nil, nil, record.tool
   emit(record)
 end
 
@@ -64,6 +87,16 @@ local function exit_code_for(e)
 end
 
 local function finish(ok, e, extra)
+  if book ~= nil then
+    local argv = json.array {}
+    for _, a in ipairs(rt.args) do argv[#argv + 1] = a end
+    crossing { kind = "verb", name = "run", task = extra and extra.task or nil, argv = argv, cwd = book.root,
+      at = run_at, seconds = sched.clock() - run_began, status = ok and "ok" or "failed",
+      code = ok and 0 or exit_code_for(e),
+      error = (not ok) and { domain = e.domain, code = e.code, message = e.message } or nil }
+    local closed, e7 = ledger.close(book)
+    if not closed then io.stderr:write("kuu: warning: the ledger's tree was not written: ", tostring(e7), "\n") end
+  end
   if want_json then
     local envelope = { ok = ok, result = { tasks = ran } }
     if extra ~= nil then for k, v in pairs(extra) do envelope.result[k] = v end end
@@ -82,6 +115,7 @@ if not entered then finish(false, e2) end
 local loaded, e3 = project.load_tasks(root)
 if not loaded then finish(false, e3) end
 if e3 then io.stderr:write("kuu: warning: ", e3, "\n") end -- a tasks.lua read as the manifest
+book = ledger.open(root)
 
 if name == nil then
   name = task.default_task()
@@ -144,9 +178,12 @@ for _, entry in ipairs(plan) do
     if not (type(e6.exit) == "number" or err.is(e6, "CLI", "usage")) then e6.exit = 1 end
     emit { event = "task", name = entry.name, state = "finished", ok = false, seconds = elapsed,
       error = { domain = e6.domain, code = e6.code, message = e6.message, exit = e6.exit } }
+    crossing { kind = "task", name = entry.name, at = run_at + (started - run_began), seconds = elapsed,
+      status = "failed", error = { domain = e6.domain, code = e6.code, message = e6.message, exit = e6.exit } }
     finish(false, e6, { root = root, task = name })
   end
   emit { event = "task", name = entry.name, state = "finished", ok = true, seconds = elapsed }
+  crossing { kind = "task", name = entry.name, at = run_at + (started - run_began), seconds = elapsed, status = "ok" }
   if not want_json then io.stderr:write(string.format("kuu: %s %.1fs\n", entry.name, elapsed)) end
 end
 finish(true, nil, { root = root, task = name })

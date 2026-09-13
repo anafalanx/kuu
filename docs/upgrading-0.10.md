@@ -83,6 +83,16 @@ declaration does not name is found without running, and `kuu capabilities`
 lists the tool. `CheckWarning.kind` gains `tool` for this, so a reader of
 warnings needs the same default branch a reader of errors does.
 
+## The door keeps a ledger
+
+`kuu run` writes one record per crossing — the run, each task, each child a
+task ran — to `.kuu/ledger/<day>.ndjson` under the project root, chained by
+hash and kept ninety days, with the tree delta since the previous run on the
+first record. Nothing asks for it and nothing depends on it: a ledger that
+cannot be written is one line on standard error and the run goes on. Add
+`.kuu/` to the repository's `.gitignore` if it is not there already for
+`mem`. [The ledger](ledger.md) is the page.
+
 ## `kuu run --json` is a stream
 
 Through 0.9 `kuu run --json` printed one JSON object when the run ended.

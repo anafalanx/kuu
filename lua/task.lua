@@ -280,7 +280,7 @@ end
 -- Two small tasks pump the child's streams to the relay while the child runs,
 -- so nothing waits for it to finish and nothing is capped: maxout is only the
 -- point at which the child is held back until the relay has caught up.
-local function relay_exec(spec, relay)
+local function relay_exec(spec, relay, tool)
   spec.inherit = nil
   spec.stream = true
   local began = sched.clock()
@@ -288,21 +288,24 @@ local function relay_exec(spec, relay)
   if not c then return nil, e end
   local argv = {}
   for i, item in ipairs(spec) do argv[i] = item end
-  observe { event = "child", state = "started", pid = c.pid, argv = argv }
-  local function pump(read)
+  observe { event = "child", state = "started", pid = c.pid, argv = argv, tool = tool, cwd = spec.cwd }
+  local bytes = { out = 0, err = 0 }
+  local function pump(read, which)
     while true do
       local chunk = read(c, "some")
       if chunk == nil then return end
+      bytes[which] = bytes[which] + #chunk
       relay:write(chunk)
     end
   end
-  local out_pump = sched.spawn(function() pump(c.read) end)
-  local err_pump = sched.spawn(function() pump(c.read_err) end)
+  local out_pump = sched.spawn(function() pump(c.read, "out") end)
+  local err_pump = sched.spawn(function() pump(c.read_err, "err") end)
   local r, e2 = c:wait()
   out_pump:join()
   err_pump:join()
-  observe { event = "child", state = "finished", pid = c.pid, status = r and r.status or "error",
-            code = r and r.code or nil, seconds = sched.clock() - began }
+  observe { event = "child", state = "finished", pid = c.pid, argv = argv, tool = tool, cwd = spec.cwd,
+            status = r and r.status or "error", code = r and r.code or nil, seconds = sched.clock() - began,
+            bytes = bytes, started = began }
   return r, e2
 end
 
@@ -343,13 +346,23 @@ function task.exec(spec)
   end
   -- Both console and relay setup change options. Own those changes instead
   -- of changing the caller's reusable table, and let its timeout win.
+  local tool = spec.tool
   spec = task.command(spec)
   local r, e
   if task.relay ~= nil then
-    r, e = relay_exec(spec, task.relay)
+    r, e = relay_exec(spec, task.relay, tool)
   else
+    -- On the console the child has kuu's own streams, so there is nothing to
+    -- count; the crossing is still observed when it ends.
     spec.inherit = true
+    local began = sched.clock()
     r, e = proc.run(spec)
+    if r then
+      local argv = {}
+      for i, item in ipairs(spec) do argv[i] = item end
+      observe { event = "child", state = "finished", pid = r.pid, argv = argv, tool = tool, cwd = spec.cwd,
+                status = r.status, code = r.code, seconds = sched.clock() - began, started = began }
+    end
   end
   if not r then return nil, e end
   if r.status ~= "exit" then

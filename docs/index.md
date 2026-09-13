@@ -168,6 +168,8 @@ Failures kuu detects before the program runs are spelled
   manifest and called through the door.
 - [Confined tools](confined.md): what a tool that confines itself must
   provide, and the junction every lexical sandbox has to be told about.
+- [The ledger](ledger.md): what `kuu run` remembers of every crossing, under
+  `.kuu/ledger`, chained and kept ninety days.
 - [check](check.md): what `kuu check` finds without running a file.
 - [Toolchain](toolchain.md): what kuu's own `.tools` holds and where it comes
   from.

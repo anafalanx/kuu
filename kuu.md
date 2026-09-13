@@ -769,6 +769,8 @@ Failures kuu detects before the program runs are spelled
   manifest and called through the door.
 - [Confined tools](#confined): what a tool that confines itself must
   provide, and the junction every lexical sandbox has to be told about.
+- [The ledger](#ledger): what `kuu run` remembers of every crossing, under
+  `.kuu/ledger`, chained and kept ninety days.
 - [check](#check): what `kuu check` finds without running a file.
 - [Toolchain](#toolchain): what kuu's own `.tools` holds and where it comes
   from.
@@ -1005,6 +1007,8 @@ project C:/work/app
              * the default. kuu run TASK; kuu list describes them
   tools      report (ndjson), signtool (lines)
              declared in the manifest; task.exec { tool = NAME } runs one
+  ledger     child report exit, task weekly ok, verb run ok
+             the last crossings, oldest first; .kuu/ledger holds ninety days of them
   modules    2 of the 4 .lua files below the root bound their exports
     lib.util      VERSION, slug, titlecase
     tools.report  render, write
@@ -1049,6 +1053,8 @@ type CapabilityReport = {
                emits: string[]; timeout?: number | string; reach: { [kind: string]: string[] } }[];
       default?: string; // the task kuu run alone runs
       note?: string; // why manifest.lua did not load; tasks is then empty
+      ledger: { last: { at: number; kind: string; name: string; status: string; seconds: number }[]; // the last five crossings, oldest first
+                unaccounted: number }; // changes no crossing accounts for; zero until something watches
       modules: { name: string; path: string; names: string[] }[];
       files: number; // .lua files below the root, whether or not they are modules
     };
@@ -1454,9 +1460,10 @@ type RunEvent =
   | { v: 1; event: "task"; name: string; state: "started" }
   | { v: 1; event: "task"; name: string; state: "finished"; ok: boolean; seconds: number;
       error?: RunError }
-  | { v: 1; event: "child"; task: string; state: "started"; pid: number; argv: string[] }
-  | { v: 1; event: "child"; task: string; state: "finished"; pid: number;
-      status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number; seconds: number };
+  | { v: 1; event: "child"; task: string; state: "started"; pid: number; argv: string[]; tool?: string }
+  | { v: 1; event: "child"; task: string; state: "finished"; pid: number; argv: string[]; tool?: string;
+      status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number; seconds: number;
+      bytes: { out: number; err: number } };
 ```
 
 These structural schemas use `?` for an omitted optional field. Arrays are
@@ -1783,6 +1790,70 @@ the round trip of a call — was measured once, on one runtime, and lives in
 the repository's notes rather than here, because a number for one technology
 is not a fact about confinement. The manual names no runtime; a project that
 chooses one owns the choice and the measurement.
+
+---
+
+## The ledger
+
+The door remembers what passes through it. Every `kuu run` writes one record
+per crossing — the run itself, each task, each child a task ran — to
+`.kuu/ledger/<day>.ndjson` under the project root, from what kuu observed
+and never from what a tool reported. It is the answer to "what ran here,
+against which edits, and how did it end", kept locally for ninety days.
+
+```text
+.kuu/ledger/2026-09-13.ndjson      one record per line, the day in UTC
+.kuu/ledger/tree.json              the tree as the last run left it
+```
+
+Add `.kuu/` to the project's `.gitignore`, as for [mem](#mem). The ledger
+is the machine's, not the repository's; a summary a project wants to keep
+is the project's to commit.
+
+### A record
+
+```json
+{"v":1,"kuu":"0.10.0","root":"C:/work/app","git":{"ref":"refs/heads/main","head":"7c1a…"},
+ "kind":"child","name":"report","tool":"report","task":"weekly","pid":4120,
+ "argv":["C:/work/app/tools/report/report.exe","--out","build/r.json"],"cwd":null,
+ "at":1789300000.1,"seconds":3.2,"status":"exit","code":0,"bytes":{"out":8192,"err":0},
+ "delta":{"added":0,"changed":2,"removed":0,"paths":[{"path":"src/report.lua","change":"changed","sha256":"…"}]},
+ "prev":"5e9d…"}
+```
+
+| field | |
+|---|---|
+| `v` | the record's schema version, 1 |
+| `kuu`, `root`, `git` | which runtime, which project, and where the repository stood: `git.head` and `git.ref` are read from `.git` itself, no `git.exe` assumed; absent without a repository |
+| `kind`, `name` | `verb` (`run`), `task` (its name), or `child` (the tool's name, else the program) |
+| `task`, `tool` | for a child, the task that ran it and the declaration it ran through, when it did |
+| `argv`, `cwd`, `pid` | what ran, from where, as what; `cwd` only when the call gave one |
+| `at`, `seconds` | when it began, as an instant, and how long it took |
+| `status`, `code`, `bytes`, `error` | how it ended: a child's `exit`, `timeout`, `killed` or `limit` with its code, and the bytes on each stream when kuu relayed them (under `--json`; a child on the console has kuu's own streams and nothing is counted); a task's or the run's `ok` or `failed` with the error |
+| `delta` | on the first record of a run only: what changed under the root since the previous run, by size and mtime, skipping `.git`, `.tools`, `build`, `node_modules` and `.kuu`; the counts are complete, and up to forty paths are named with the content hash of what is there now. That says which edits this run ran against. An edit with no crossing after it is work in progress, not a bypass |
+| `prev` | the SHA-256 of the record line before this one, across days |
+
+The chain is the point of `prev`. Nothing prevents editing a line — the file
+is text, the directory is yours — but an edited line no longer hashes to
+what the next record says, and `verify` finds it. Records older than ninety
+days are removed as new ones are written; the first record kept then names
+a line that is gone, and `verify` takes it as the anchor.
+
+Only the verbs that run project code write the ledger. `kuu list`, `kuu
+check` and `kuu capabilities` read; they are not crossings.
+
+### Reading it
+
+`kuu capabilities` shows the last crossings, oldest first, and in its
+descriptor `project.ledger.last` carries `at`, `kind`, `name`, `status` and
+`seconds` for each, with `unaccounted`, the count of changes under the root
+that no crossing accounts for — zero until something watches the root, which
+nothing does yet. The files are plain NDJSON: `fs.read` and `json.decode`
+one line at a time is the whole reader.
+
+A ledger that cannot be written — a read-only tree, a lock held too long —
+is said once on standard error, and the run goes on: the record is the
+door's, never a condition on the work.
 
 ---
 
@@ -6054,6 +6125,16 @@ declaring the tool ends the warning and starts the checking — an argument the
 declaration does not name is found without running, and `kuu capabilities`
 lists the tool. `CheckWarning.kind` gains `tool` for this, so a reader of
 warnings needs the same default branch a reader of errors does.
+
+### The door keeps a ledger
+
+`kuu run` writes one record per crossing — the run, each task, each child a
+task ran — to `.kuu/ledger/<day>.ndjson` under the project root, chained by
+hash and kept ninety days, with the tree delta since the previous run on the
+first record. Nothing asks for it and nothing depends on it: a ledger that
+cannot be written is one line on standard error and the run goes on. Add
+`.kuu/` to the repository's `.gitignore` if it is not there already for
+`mem`. [The ledger](#ledger) is the page.
 
 ### `kuu run --json` is a stream
 

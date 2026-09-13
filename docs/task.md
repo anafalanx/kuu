@@ -184,9 +184,10 @@ type RunEvent =
   | { v: 1; event: "task"; name: string; state: "started" }
   | { v: 1; event: "task"; name: string; state: "finished"; ok: boolean; seconds: number;
       error?: RunError }
-  | { v: 1; event: "child"; task: string; state: "started"; pid: number; argv: string[] }
-  | { v: 1; event: "child"; task: string; state: "finished"; pid: number;
-      status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number; seconds: number };
+  | { v: 1; event: "child"; task: string; state: "started"; pid: number; argv: string[]; tool?: string }
+  | { v: 1; event: "child"; task: string; state: "finished"; pid: number; argv: string[]; tool?: string;
+      status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number; seconds: number;
+      bytes: { out: number; err: number } };
 ```
 
 These structural schemas use `?` for an omitted optional field. Arrays are
