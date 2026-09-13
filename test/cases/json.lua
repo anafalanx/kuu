@@ -7,6 +7,10 @@ return function(T)
   local check, contains = T.check, T.contains
   local json = require "json"
   local err = require "err"
+  do
+    local ok, raised = pcall(require("json").encode, { a = 1 }, { prettyy = true })
+    check("encode refuses an unknown option as JSON usage", not ok and err.is(raised, "JSON", "usage") and contains(tostring(raised), "prettyy"), tostring(raised))
+  end
   local proc = require "proc"
 
   -- the mapping ------------------------------------------------------------------

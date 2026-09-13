@@ -109,8 +109,9 @@ end
 child timeout. A duration string uses the same units as `proc`, and a number
 is seconds. An explicit `timeout` in the call wins, including zero.
 `task.defaults {}` clears the default. Each call replaces the preceding
-defaults; only `timeout` is accepted, and a malformed duration or unknown key
-raises `TASK badvalue` without changing the preceding setting. Settings are
+defaults; only `timeout` is accepted. A malformed duration raises `TASK
+badvalue` and an unknown key `TASK usage`, either without changing the
+preceding setting. Settings are
 copied, so later changes to the declaration table do not alter the default.
 This bounds each child, not the whole task or its dependency plan; use
 `sched.deadline` for a scope containing several waits.
@@ -219,7 +220,7 @@ task.execute(entry, opts)     -- run it with parsed arguments: true | nil, err
 |---|---|
 | `TASK noproject` | no `tasks.lua` here or above |
 | `TASK badvalue` | a bad declaration, or `tasks.lua` failed to load |
-| `TASK usage` | no task or default was selected, or a runner option is unknown |
+| `TASK usage` | no task or default was selected, a runner option is unknown, or a declaration holds an attribute or option that is not known |
 | `TASK unknown`, `TASK cycle` | the dependency graph |
 | `CLI usage` | wrong arguments for a task, or `--help` |
 | `TASK failed` | a task raised something that is not an `err`, or its child did not exit normally |

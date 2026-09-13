@@ -75,29 +75,6 @@ static int opt_boolean(lua_State *L, int idx, const char *name, int fallback)
     return value;
 }
 
-static void check_options(lua_State *L, int idx, const char *const *allowed)
-{
-    if (lua_isnoneornil(L, idx)) {
-        return;
-    }
-    luaL_checktype(L, idx, LUA_TTABLE);
-    lua_pushnil(L);
-    while (lua_next(L, idx) != 0) {
-        lua_pop(L, 1);
-        const char *key = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : NULL;
-        int known = 0;
-        for (int i = 0; key != NULL && allowed[i] != NULL; i++) {
-            if (strcmp(key, allowed[i]) == 0) {
-                known = 1;
-                break;
-            }
-        }
-        if (!known) {
-            ku_err_raise(L, "FS", "usage", "unknown option '%s'", key != NULL ? key : "?");
-        }
-    }
-}
-
 static const char *kind_of(DWORD attributes, DWORD tag)
 {
     if ((attributes & FILE_ATTRIBUTE_REPARSE_POINT) && ku_tag_is_name(tag)) {
@@ -129,7 +106,7 @@ static HANDLE open_meta(const wchar_t *path, int follow)
 static int l_fs_read(lua_State *L)
 {
     static const char *const options[] = {"encoding", "maxbytes", NULL};
-    check_options(L, 2, options);
+    ku_check_options(L, 2, "FS", options);
     ku_wpath path;
     path_arg(L, 1, &path);
     const char *shown = lua_tostring(L, 1);
@@ -311,7 +288,7 @@ int ku_fs_replace(const wchar_t *temp, const wchar_t *target, DWORD *error)
 static int l_fs_write(lua_State *L)
 {
     static const char *const options[] = {"atomic", "append", NULL};
-    check_options(L, 3, options);
+    ku_check_options(L, 3, "FS", options);
     size_t length = 0;
     const char *data = luaL_checklstring(L, 2, &length);
     int append = opt_boolean(L, 3, "append", 0);
@@ -438,7 +415,7 @@ static HANDLE open_or_fail(lua_State *L, const ku_wpath *path, const char *shown
 static int l_fs_stat(lua_State *L)
 {
     static const char *const options[] = {"follow", NULL};
-    check_options(L, 2, options);
+    ku_check_options(L, 2, "FS", options);
     int follow = opt_boolean(L, 2, "follow", 1);
     ku_wpath path;
     path_arg(L, 1, &path);
@@ -529,7 +506,7 @@ static int is_directory_now(const wchar_t *path)
 static int l_fs_mkdir(lua_State *L)
 {
     static const char *const options[] = {"parents", NULL};
-    check_options(L, 2, options);
+    ku_check_options(L, 2, "FS", options);
     int parents = opt_boolean(L, 2, "parents", 1);
     ku_wpath path;
     path_arg(L, 1, &path);
@@ -705,7 +682,7 @@ static int remove_tree(const wchar_t *root, DWORD *error, wchar_t **failed)
 static int l_fs_remove(lua_State *L)
 {
     static const char *const options[] = {"recursive", NULL};
-    check_options(L, 2, options);
+    ku_check_options(L, 2, "FS", options);
     int recursive = opt_boolean(L, 2, "recursive", 0);
     ku_wpath path;
     path_arg(L, 1, &path);
@@ -757,7 +734,7 @@ static int l_fs_remove(lua_State *L)
 static int l_fs_rename(lua_State *L)
 {
     static const char *const options[] = {"replace", NULL};
-    check_options(L, 3, options);
+    ku_check_options(L, 3, "FS", options);
     int replace = opt_boolean(L, 3, "replace", 0);
     ku_wpath from, to;
     path_arg(L, 1, &from);
@@ -779,7 +756,7 @@ static int l_fs_rename(lua_State *L)
 static int l_fs_copy(lua_State *L)
 {
     static const char *const options[] = {"replace", NULL};
-    check_options(L, 3, options);
+    ku_check_options(L, 3, "FS", options);
     int replace = opt_boolean(L, 3, "replace", 0);
     ku_wpath from, to;
     path_arg(L, 1, &from);
@@ -1080,7 +1057,7 @@ static int temp_make(lua_State *L, int directory)
 {
     static const char *const file_options[] = {"dir", "prefix", "suffix", NULL};
     static const char *const dir_options[] = {"dir", "prefix", NULL};
-    check_options(L, 1, directory ? dir_options : file_options);
+    ku_check_options(L, 1, "FS", directory ? dir_options : file_options);
     const char *prefix = "kuu-", *suffix = "";
     int has_dir = 0;
     if (lua_istable(L, 1)) {

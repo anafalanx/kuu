@@ -12,6 +12,7 @@
  */
 #include "err.h"
 #include "fs_internal.h"
+#include "values.h"
 #include "wintext.h"
 
 #include "lauxlib.h"
@@ -615,7 +616,8 @@ int ku_fs_dirs(lua_State *L)
     w.depthcap = -1;
     const char *prune_storage[64];
     if (!lua_isnoneornil(L, 2)) {
-        luaL_checktype(L, 2, LUA_TTABLE);
+        static const char *const options[] = {"depth", "prune", NULL};
+        ku_check_options(L, 2, "FS", options);
         lua_getfield(L, 2, "depth");
         if (!lua_isnil(L, -1)) {
             int is_integer = 0;

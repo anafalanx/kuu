@@ -271,6 +271,8 @@ static int l_time_iso(lua_State *L)
     ku_zone zone = {0, 0};
     int with_ms = 0;
     if (lua_istable(L, 2)) {
+        static const char *const options[] = {"zone", "ms", NULL};
+        ku_check_options(L, 2, "TIME", options);
         lua_getfield(L, 2, "zone");
         zone = zone_arg(L, lua_gettop(L), "utc");
         lua_pop(L, 1);

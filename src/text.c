@@ -14,6 +14,7 @@
  * oem (the console code page), and cpNNN for any Windows code page number.
  */
 #include "err.h"
+#include "values.h"
 #include "wintext.h"
 
 #include "lauxlib.h"
@@ -369,6 +370,8 @@ static int l_text_tobase64(lua_State *L)
 {
     size_t n = 0;
     const unsigned char *in = (const unsigned char *)luaL_checklstring(L, 1, &n);
+    static const char *const options[] = {"url", NULL};
+    ku_check_options(L, 2, "TEXT", options);
     int url = 0;
     if (lua_istable(L, 2)) {
         lua_getfield(L, 2, "url");

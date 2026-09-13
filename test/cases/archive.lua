@@ -7,6 +7,17 @@ return function(T)
   local check, contains = T.check, T.contains
   local fs = require "fs"
   local err = require "err"
+  do
+    -- An option the call does not read is refused, before the archive is looked for.
+    local a = require "archive"
+    for _, call in ipairs({ { "list", a.list, "nothing.zip" }, { "unpack", a.unpack, "nothing.zip", "nowhere" }, { "pack", a.pack, "nothing.zip", "nowhere", nil } }) do
+      local ok, raised
+      if call[1] == "pack" then ok, raised = pcall(call[2], call[3], call[4], call[5], { timeoutt = "1s" })
+      elseif call[1] == "unpack" then ok, raised = pcall(call[2], call[3], call[4], { timeoutt = "1s" })
+      else ok, raised = pcall(call[2], call[3], { timeoutt = "1s" }) end
+      check(call[1] .. " refuses an unknown option as ARCHIVE usage", not ok and err.is(raised, "ARCHIVE", "usage") and contains(tostring(raised), "timeoutt"), tostring(raised))
+    end
+  end
   local archive = require "archive"
 
   local work = fs.absolute(T.work .. "/archive")

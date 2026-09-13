@@ -62,7 +62,9 @@ return function(T)
     and contains(usage, "one of text, json") and contains(usage, "--help") and contains(usage, "files ") , usage)
 
   local ok, e2 = pcall(cli.parse, {}, { { "--x", typo = 1 } })
-  check("an unknown attribute in the spec raises CLI badvalue", not ok and err.is(e2, "CLI", "badvalue"), tostring(e2))
+  check("an unknown attribute in the spec raises CLI usage", not ok and err.is(e2, "CLI", "usage") and contains(tostring(e2), "typo"), tostring(e2))
+  ok, e2 = pcall(cli.parse, {}, { { "--x", type = "flagg" } })
+  check("an unknown type in the spec raises CLI badvalue", not ok and err.is(e2, "CLI", "badvalue"), tostring(e2))
   ok, e2 = pcall(cli.parse, {}, { { "--x", type = "flag" }, { "x" } })
   check("colliding keys raise", not ok and err.is(e2, "CLI", "badvalue") and contains(tostring(e2), "collides"), tostring(e2))
   ok, e2 = pcall(cli.parse, {}, { { "--n", type = "int", default = "abc" } })
@@ -74,6 +76,14 @@ return function(T)
 
   check("cli.duration and cli.size convert", cli.duration("1.5s") == 1.5 and cli.duration("2h") == 7200 and cli.duration("x") == nil
     and cli.size("2K") == 2048 and cli.size("1MB") == 1048576 and cli.size("10") == 10 and cli.size("x") == nil)
+  do
+    -- What a user typed is theirs to get wrong: the failure is returned, with
+    -- a reason, where time.duration on a literal in the program raises.
+    local none, why = cli.duration("soon")
+    local none2, why2 = cli.size("plenty")
+    check("text that is not a duration is nil, CLI badvalue", none == nil and err.is(why, "CLI", "badvalue") and contains(why.message, "soon"), tostring(why))
+    check("text that is not a size is nil, CLI badvalue", none2 == nil and err.is(why2, "CLI", "badvalue") and contains(why2.message, "plenty"), tostring(why2))
+  end
   do
     local cli = require "cli"
     check("CLI durations share sums and days with the native parser",

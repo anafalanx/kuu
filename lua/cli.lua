@@ -17,7 +17,8 @@
 -- flag, string, int, number, duration (to seconds), and size (to bytes).
 -- Parsing never prints and never exits: `--help` comes back as `opts.help`,
 -- and a wrong command line is `nil, err` with CLI usage whose message ends
--- with the generated usage text.  A wrong spec raises CLI badvalue at once,
+-- with the generated usage text.  A wrong spec raises at once -- CLI usage
+-- for an attribute the spec cannot hold, CLI badvalue for anything else --
 -- so a broken declaration cannot lie dormant until an option is used.
 global none
 global <const> require, ipairs, pairs, tostring, tonumber, type, string,
@@ -32,6 +33,10 @@ local TYPES = { flag = true, string = true, int = true, number = true, duration 
 
 local function bad(message)
   error(err.new("CLI", "badvalue", message))
+end
+
+local function unknown(message)
+  error(err.new("CLI", "usage", message))
 end
 
 -- The native loader supplies the runtime's duration parser. Its result is
@@ -52,8 +57,24 @@ local function parse_size(text)
   return math.floor(tonumber(number) * scale + 0.5)
 end
 
-cli.duration = parse_duration
-cli.size = parse_size
+-- cli.duration(text) -> seconds | nil, err;  cli.size(text) -> bytes | nil, err
+-- These convert what a user typed, so text that is not a value is their
+-- expected failure, returned, where time.duration on a literal raises.
+function cli.duration(text)
+  local seconds = parse_duration(text)
+  if seconds == nil then
+    return nil, err.new("CLI", "badvalue", "not a duration such as 30s or 1h30m: " .. tostring(text))
+  end
+  return seconds
+end
+
+function cli.size(text)
+  local bytes = parse_size(text)
+  if bytes == nil then
+    return nil, err.new("CLI", "badvalue", "not a size such as 16M: " .. tostring(text))
+  end
+  return bytes
+end
 
 -- Convert and check one value against an entry.  Returns value | nil, message.
 local function convert(entry, raw)
@@ -106,7 +127,7 @@ local function normalise(spec)
     local entry = { name = raw[1] }
     for k, v in pairs(raw) do
       if k ~= 1 then
-        if not ATTRIBUTES[k] then bad("unknown attribute '" .. tostring(k) .. "' for '" .. entry.name .. "'") end
+        if not ATTRIBUTES[k] then unknown("unknown attribute '" .. tostring(k) .. "' for '" .. entry.name .. "'") end
         entry[k] = v
       end
     end

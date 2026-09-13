@@ -21,6 +21,7 @@
  * nesting is capped at 512 so a hostile document cannot exhaust the stack.
  */
 #include "err.h"
+#include "values.h"
 #include "wintext.h"
 
 #include "lauxlib.h"
@@ -428,7 +429,8 @@ static int l_json_encode(lua_State *L)
     luaL_checkany(L, 1);
     int pretty = 0;
     if (!lua_isnoneornil(L, 2)) {
-        luaL_checktype(L, 2, LUA_TTABLE);
+        static const char *const options[] = {"pretty", NULL};
+        ku_check_options(L, 2, "JSON", options);
         lua_getfield(L, 2, "pretty");
         pretty = lua_toboolean(L, -1);
         lua_pop(L, 1);

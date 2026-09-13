@@ -33,6 +33,10 @@ local function bad(message)
   error(err.new("TASK", "badvalue", message), 3)
 end
 
+local function unknown(message)
+  error(err.new("TASK", "usage", message), 3)
+end
+
 local function declare(name, spec)
   if type(name) ~= "string" or not name:match("^[%w][%w%._%-]*$") then
     bad("a task name must be a plain word, got " .. tostring(name))
@@ -40,7 +44,7 @@ local function declare(name, spec)
   local where = "task '" .. name .. "'"
   if type(spec) ~= "table" then bad(where .. " needs a task specification table") end
   for k in pairs(spec) do
-    if not ATTRIBUTES[k] then bad(where .. ": unknown attribute '" .. tostring(k) .. "'") end
+    if not ATTRIBUTES[k] then unknown(where .. ": unknown attribute '" .. tostring(k) .. "'") end
   end
   if spec.run ~= nil and type(spec.run) ~= "function" then bad(where .. ": run must be a function") end
   if spec.desc ~= nil and type(spec.desc) ~= "string" then bad(where .. ": desc must be a string") end
@@ -90,7 +94,7 @@ end
 function task.defaults(options)
   if type(options) ~= "table" then bad("defaults needs a table") end
   for name in pairs(options) do
-    if name ~= "timeout" then bad("defaults: unknown option '" .. tostring(name) .. "'") end
+    if name ~= "timeout" then unknown("defaults: unknown option '" .. tostring(name) .. "'") end
   end
   local timeout = options.timeout
   if timeout ~= nil and require("cli").duration(timeout) == nil then

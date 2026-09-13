@@ -207,8 +207,11 @@ task.default "build"
       not ok and err.is(raised, "TASK", "badvalue"), tostring(raised))
   end
   ok, raised = pcall(task.defaults, { timeout = "5s", extra = true })
-  check("unknown default options are rejected before changing any setting",
-    not ok and err.is(raised, "TASK", "badvalue") and contains(raised.message, "unknown option"), tostring(raised))
+  check("unknown default options are TASK usage, refused before changing any setting",
+    not ok and err.is(raised, "TASK", "usage") and contains(raised.message, "unknown option"), tostring(raised))
+  ok, raised = pcall(task("t-unknown-attribute"), { desc = "x", runn = function() end })
+  check("an attribute a declaration cannot hold is TASK usage",
+    not ok and err.is(raised, "TASK", "usage") and contains(raised.message, "unknown attribute 'runn'"), tostring(raised))
   ran, timed = task.exec(slow)
   check("a rejected defaults declaration preserves the preceding default",
     ran == nil and err.is(timed, "TASK", "failed") and contains(timed.message, "timeout"), tostring(timed))

@@ -61,4 +61,5 @@ separator, a quote, a line end, or leading or trailing whitespace.
 
 ## Errors
 
-Domain `CSV`: `parse` (returned) and `badvalue` (raised).
+Domain `CSV`: `parse` (returned), `badvalue` (raised), and `usage` (raised for
+an unknown option).

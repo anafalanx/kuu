@@ -7,6 +7,7 @@ global <const> require, ipairs, tostring, type, table, error, select
 
 return function(fs)
   local err = require "err"
+  local check_options = require "_options"
 
   local function slashes(p) return (p:gsub("\\", "/")) end
 
@@ -134,7 +135,7 @@ return function(fs)
   -- pattern is, and never enter links.  Every directory that could not be
   -- listed is one entry of `errors`.
   function fs.glob(pattern, options)
-    options = options or {}
+    options = check_options(options, { kind = true }, "FS")
     if type(pattern) ~= "string" or pattern == "" then error(err.new("FS", "badvalue", "glob needs a pattern"), 2) end
     local kind = options.kind
     if kind ~= nil and kind ~= "file" and kind ~= "directory" then

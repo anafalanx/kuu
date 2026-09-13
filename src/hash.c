@@ -140,7 +140,8 @@ static int want_raw(lua_State *L, int idx)
     if (lua_isnoneornil(L, idx)) {
         return 0;
     }
-    luaL_checktype(L, idx, LUA_TTABLE);
+    static const char *const options[] = {"raw", NULL};
+    ku_check_options(L, idx, "HASH", options);
     lua_getfield(L, idx, "raw");
     int raw = lua_toboolean(L, -1);
     lua_pop(L, 1);
@@ -197,7 +198,9 @@ static int l_hash_file(lua_State *L)
     ku_wpath wide;
     ku_fail fail;
     if (ku_wpath_make(path, &wide, &fail) != 0) {
-        return ku_err_fail(L, "HASH", fail.code, "%s", fail.message);
+        /* A path fs refuses is refused here the same way: raised, since the
+         * mistake is in the path and not in the file. */
+        return ku_err_raise(L, "HASH", fail.code, "%s", fail.message);
     }
     HANDLE file = CreateFileW(wide.text, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
                               FILE_FLAG_SEQUENTIAL_SCAN, NULL);

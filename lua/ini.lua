@@ -20,6 +20,7 @@ global none
 global <const> require, ipairs, pairs, tostring, type, table, error
 
 local err = require "err"
+local check_options = require "_options"
 
 local ini = {}
 
@@ -111,7 +112,8 @@ end
 -- ini.encode(sections [, { newline = "\n" }]) -> text
 function ini.encode(sections, opts)
   if type(sections) ~= "table" then error(err.new("INI", "badvalue", "encode wants a table of sections"), 2) end
-  local newline = opts and opts.newline or "\n"
+  opts = check_options(opts, { newline = true }, "INI")
+  local newline = opts.newline or "\n"
   local out = {}
   local names = sorted_keys(sections)
   for _, name in ipairs(names) do

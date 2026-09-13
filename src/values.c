@@ -168,3 +168,26 @@ const char *ku_check_cstring(lua_State *L, int idx, const char *domain, const ch
     }
     return text;
 }
+
+void ku_check_options(lua_State *L, int idx, const char *domain, const char *const *allowed)
+{
+    if (lua_isnoneornil(L, idx)) {
+        return;
+    }
+    luaL_checktype(L, idx, LUA_TTABLE);
+    lua_pushnil(L);
+    while (lua_next(L, idx) != 0) {
+        lua_pop(L, 1);
+        const char *key = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : NULL;
+        int known = 0;
+        for (int i = 0; key != NULL && allowed[i] != NULL; i++) {
+            if (strcmp(key, allowed[i]) == 0) {
+                known = 1;
+                break;
+            }
+        }
+        if (!known) {
+            ku_err_raise(L, domain, "usage", "unknown option '%s'", key != NULL ? key : "?");
+        }
+    }
+}

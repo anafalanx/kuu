@@ -73,4 +73,7 @@ return function(T)
   local ok, raised = pcall(text.trim, "x", "middle")
   check("an unknown end raises TEXT badvalue",
     not ok and err.is(raised, "TEXT", "badvalue"), tostring(raised))
+  ok, raised = pcall(text.tobase64, "x", { urll = true })
+  check("tobase64 refuses an unknown option as TEXT usage",
+    not ok and err.is(raised, "TEXT", "usage") and tostring(raised):find("urll", 1, true) ~= nil, tostring(raised))
 end

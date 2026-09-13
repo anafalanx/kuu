@@ -1350,8 +1350,9 @@ end
 child timeout. A duration string uses the same units as `proc`, and a number
 is seconds. An explicit `timeout` in the call wins, including zero.
 `task.defaults {}` clears the default. Each call replaces the preceding
-defaults; only `timeout` is accepted, and a malformed duration or unknown key
-raises `TASK badvalue` without changing the preceding setting. Settings are
+defaults; only `timeout` is accepted. A malformed duration raises `TASK
+badvalue` and an unknown key `TASK usage`, either without changing the
+preceding setting. Settings are
 copied, so later changes to the declaration table do not alter the default.
 This bounds each child, not the whole task or its dependency plan; use
 `sched.deadline` for a scope containing several waits.
@@ -1460,7 +1461,7 @@ task.execute(entry, opts)     -- run it with parsed arguments: true | nil, err
 |---|---|
 | `TASK noproject` | no `tasks.lua` here or above |
 | `TASK badvalue` | a bad declaration, or `tasks.lua` failed to load |
-| `TASK usage` | no task or default was selected, or a runner option is unknown |
+| `TASK usage` | no task or default was selected, a runner option is unknown, or a declaration holds an attribute or option that is not known |
 | `TASK unknown`, `TASK cycle` | the dependency graph |
 | `CLI usage` | wrong arguments for a task, or `--help` |
 | `TASK failed` | a task raised something that is not an `err`, or its child did not exit normally |
@@ -1718,19 +1719,21 @@ malformed ones.
 
 Parsing never prints and never exits. A wrong command line is `nil, err` with
 `CLI usage`, whose message names the problem and ends with the generated usage
-text, ready to print. A wrong spec raises `CLI badvalue` immediately: an
-unknown attribute or type, a default that fails its own type, two entries on
-one key, `--help` redeclared, a flag as a positional, or a positional after the
-rest entry.
+text, ready to print. A wrong spec raises immediately: `CLI usage` for an
+attribute an entry cannot hold, `CLI badvalue` for an unknown type, a default
+that fails its own type, two entries on one key, `--help` redeclared, a flag as
+a positional, or a positional after the rest entry.
 
 ```lua
 cli.usage(spec, "watchit")   -- the text: usage line, arguments, options with defaults and ranges
-cli.duration("1.5s")         -- 1.5; nil when it is not a duration
-cli.size("16M")              -- 16777216
+cli.duration("1.5s")         -- 1.5; nil, err when it is not a duration
+cli.size("16M")              -- 16777216; nil, err when it is not a size
 ```
 Duration arguments and `cli.duration` use the native runtime's grammar,
 including sums (`"1h30m"`, `"1m 30s"`) and days (`"2d"`). Results are
-seconds; an invalid duration returns nil. Numeric defaults, `min`, `max`,
+seconds; text that is not a duration is `nil, err` with `CLI badvalue`, since
+converting what a user typed is what these two are for, where `time.duration`
+on a literal in the program raises. Numeric defaults, `min`, `max`,
 and `choices` for durations use seconds too. `proc`, `sched`, `http`, `sync`,
 and `net` accept these numbers directly, without conversion:
 
@@ -1747,8 +1750,9 @@ floating-point precision match `time.duration`; results are numbers of seconds,
 not exact integer millisecond counts at arbitrarily large magnitudes.
 
 The complete CLI code set is `usage` (returned for invalid command-line
-arguments) and `badvalue` (raised for an invalid specification). `duration`
-and `size` return nil for text they cannot parse.
+arguments; raised for an attribute a spec entry cannot hold) and `badvalue`
+(raised for an invalid specification; returned by `duration` and `size` for
+text they cannot parse).
 
 ---
 
@@ -2598,8 +2602,9 @@ and string keys, non-string keys, strings that are not valid UTF-8, and cycles,
 which surface as `JSON depth`.
 
 The complete code set is `parse`, `duplicate`, and `depth` for decoding;
-`badvalue`, `encoding`, `depth`, and `oserror` for encoding. `oserror` means
-the encoder could not allocate its document.
+`badvalue`, `encoding`, `depth`, `usage`, and `oserror` for encoding. `usage`
+is raised for an unknown option; `oserror` means the encoder could not
+allocate its document.
 
 Output is compact by default, with the seven short escapes, lowercase
 `\u00xx` for other control characters, and UTF-8 left raw.
@@ -2669,7 +2674,8 @@ separator, a quote, a line end, or leading or trailing whitespace.
 
 ### Errors
 
-Domain `CSV`: `parse` (returned) and `badvalue` (raised).
+Domain `CSV`: `parse` (returned), `badvalue` (raised), and `usage` (raised for
+an unknown option).
 
 ---
 
@@ -2734,7 +2740,8 @@ to CRLF if any CRLF is present, otherwise LF.
 ### Errors
 
 Domain `INI`, all raised: `badvalue` for a key holding `=`, a value that
-spans lines, or a table that is not sections of keys.
+spans lines, or a table that is not sections of keys; `usage` for an unknown
+option.
 
 ---
 
@@ -2768,14 +2775,16 @@ Strings are bytes, so what you pass is what is hashed, and
 `HASH badvalue` and says so.
 
 `hash.file` uses the same normalized Unicode paths as `fs`, including paths
-beyond 260 characters. Ambiguous drive-relative, device, or trailing-dot/space
-paths are refused; a path containing NUL raises instead of silently hashing
-the filename before that byte.
+beyond 260 characters, and refuses the same paths the same way: a
+drive-relative, device, or trailing-dot/space path, or one that is not
+UTF-8, raises as it does in `fs.read`, since 0.10.0; a path containing NUL
+raises instead of silently hashing the filename before that byte.
 
 | HASH code | when |
 |---|---|
-| `badvalue` | raised: unknown algorithm, a count out of range, an oversized key, or NUL in a filename; returned for an ambiguous path |
-| `encoding` | `hash.file`: the path is not valid UTF-8 |
+| `badvalue` | raised: unknown algorithm, a count out of range, an oversized key, NUL in a filename, or an ambiguous path |
+| `encoding` | raised: `hash.file`'s path is not valid UTF-8 |
+| `usage` | raised: an unknown option |
 | `notfound`, `access` | `hash.file`: the file cannot be opened or read |
 | `oserror` | file I/O failed, or raised when Windows' cryptographic provider failed |
 | `closed` | raised: a finished hasher was used again |
@@ -2838,6 +2847,7 @@ bytes and paired surrogates; byte-order marks are not interpreted or produced.
 | `unencodable` | the string has characters the target encoding lacks |
 | `unsupported` | the code page is not available on this system |
 | `badvalue` | raised: an unknown encoding name |
+| `usage` | raised: an unknown option |
 | `toobig` | the input is too long for Windows' case mapping |
 | `oserror` | raised: allocation or Windows case mapping failed |
 
@@ -2959,6 +2969,7 @@ offset says what is meant.
 | TIME code | when |
 |---|---|
 | `badvalue` | `nil, err` from `parse` for a text that is not an instant; raised for a bad zone, a bad duration, a bad format, or an instant out of range |
+| `usage` | raised: an unknown option |
 | `oserror` | raised: Windows could not report the zone |
 Malformed text passed to `time.parse`, including signed date/time fields
 or an offset beyond +/-14:00, returns `nil, TIME badvalue`. Invalid
@@ -3004,6 +3015,7 @@ so an unpack stays under the directory you name.
 | `ARCHIVE notfound` | no archive, or no directory, at that path |
 | `ARCHIVE failed` | an invalid archive, unsupported format, or rejected entry; pack/unpack retain tar's diagnostic |
 | `ARCHIVE badvalue` | raised: wrong paths, a negative `strip`, or entries that leave the directory; returned for an empty directory to pack |
+| `ARCHIVE usage` | raised: an unknown option |
 | `ARCHIVE timeout` | the archive operation did not finish within `timeout` (default 30m) |
 | `ARCHIVE encoding` | an entry has no valid Unicode filename |
 | `ARCHIVE toobig` | listing exceeds 64 MiB of names, one million entries, or 64 MiB of encoded output |
@@ -3117,6 +3129,16 @@ convention for classified failures is:
   child that timed out waiting, a file that is not there.
 - A programming mistake raises `e`: a missing command, a duration without a
   unit, an unknown option name.
+
+The line between the two is the function's purpose. A function whose job is
+to validate or convert input — `text.decode`, `time.parse`, `csv.decode`,
+`cli.duration` — returns for input that fails, because failing input is the
+outcome it exists to report. A function that assumes its input is well
+formed — `fs.read` given a malformed path, `re.match` given a subject that
+is not UTF-8, `time.duration` given a bare number in a string — raises,
+because the fix is in the code that called it, not in the data. Every
+module follows this since 0.10.0; where two once disagreed on the same kind
+of failure, the disagreement is named in [upgrading to 0.10](#upgrading-010).
 
 Branch on `err.is(e, "PROC", "notfound")`, never on the message text.
 Messages are for people; domains and codes are for programs.
@@ -3287,8 +3309,9 @@ prevents writes while checking it; it does not reserve the path after return.
 
 The complete SYS code set is `notfound` (missing signature path), `access`
 (the file cannot be read or is open for writing), `badvalue` (raised for a
-malformed path, a directory, or signature options), and `oserror` (other
-Windows or allocation failures). `sys.info` has no expected error return.
+malformed path, a directory, or a `revocation` that is not a boolean),
+`usage` (raised for an unknown option), and `oserror` (other Windows or
+allocation failures). `sys.info` has no expected error return.
 
 ---
 
@@ -3496,7 +3519,7 @@ by `time.now`, between 1601 and 9999. `level` is `critical`, `error`,
 `information` and are included in that filter. `provider` matches the exact
 publisher name. Names are UTF-8 without NUL; a provider containing both single
 and double quote characters is refused because Windows' restricted XPath
-cannot express that literal. Unknown options raise `EVT badvalue`.
+cannot express that literal. An unknown option raises `EVT usage`.
 
 `limit` defaults to 1000 and must be an integer from 1 to 100000. Results are
 the newest records first. An empty query returns an empty table. Each entry
@@ -3523,7 +3546,8 @@ reading `Security`, for example, usually requires administrator rights.
 
 The complete EVT code set is `notfound` (unknown channel), `access`
 (insufficient channel rights), `badvalue` (raised for malformed names,
-options, instants, levels, or limits), and `oserror` (other Windows failures).
+instants, levels, or limits), `usage` (raised for an unknown option), and
+`oserror` (other Windows failures).
 
 ---
 
@@ -4565,7 +4589,25 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      as the record of what was considered and measured; the
      [front-door plan](notes/plan-front-door-2026-09-13_001735.md) is what
      follows, and 0.10.0 is held until it lands.
-   - The suite is at 1140 checks, with four new cases: `_palette` held to the
+   - Great care with the C, as the front-door plan's first phase asks.
+     `make asan` runs inside `make gate`, and the compiler is pinned by hash.
+     Five defects the review of 2026-09-12 confirmed are closed: `fs.rename`
+     and `fs.copy` retry the two transient refusals as `fs.write` does, and
+     so does `http`'s placement of a download; a program or `require` root
+     beyond 260 characters opens at the entry; an error message is as long
+     as it is, 1023 bytes no longer; `proc.tree` lists a child only when it
+     began no earlier than its parent, which closes the 23H2 chain
+     intermittent by removing the one mechanism the evidence admits; and a
+     job is let go behind a marker once its association with the port is
+     removed, since Windows promises no order between its last two messages.
+     Two laws hold in every module: an unknown option raises `usage` —
+     eleven calls ignored one and four called it `badvalue` — through one
+     helper in C and one in Lua; and the raise-or-return line is stated in
+     [err](#err) by the function's purpose, which moved `hash.file`,
+     `cli.duration` and `cli.size` and left `re` and `text` where they were.
+     The `fs.c` raise-path leak the review named did not reproduce under two
+     scans and is recorded as such.
+   - The suite is at 1187 checks, with four new cases: `_palette` held to the
      runtime, to the manual in both directions and to itself; `capabilities`;
      the fixer's invariant, which keeps every declaration outside
      `test/fixtures` correct so a name that falls out of use fails instead of
@@ -5563,9 +5605,13 @@ Before publishing a release:
 
 ## Upgrading to 0.10
 
-0.10.0 is the release after the pre-freeze correction, and it adds rather than
-corrects: no call moved, no result changed shape, and nothing was removed. A
-program that ran on 0.9.0 runs here unchanged.
+0.10.0 is the release after the pre-freeze correction. It adds, and it
+corrects one convention: an unknown option is refused everywhere, where
+eleven calls used to ignore it, and three calls now fall on the right side of
+the raise-or-return rule. No call moved and nothing was removed. A program
+that ran on 0.9.0 runs here unchanged unless it misspelt an option, or
+checked `hash.file`'s second value for a malformed path; the two sections at
+the end name every call.
 
 It is not yet released. It is held until the front-door work recorded in the
 [roadmap](#roadmap) has landed — the declaration file becomes
@@ -5812,6 +5858,43 @@ The `require` gate holds for a program that does not reach around it. If you
 are reading a file's requires as evidence about an unfamiliar program, treat a
 `_ENV` reference as disqualifying. See
 [observed shortcomings](#shortcomings).
+
+### An unknown option is refused everywhere
+
+Eleven calls accepted an option they did not know and went on as if it had
+not been given: `fs.dirs`, `fs.glob`, `hash.sum`, `hash.file`,
+`text.tobase64`, `time.iso`, `json.encode`, `archive.list` (with `pack` and
+`unpack`), `ini.encode`, `csv.encode` and `csv.decode`. A misspelt `prune`
+walked the whole tree; a misspelt `pretty` printed compact JSON. Each now
+raises `usage` in its own domain, naming the key, as `fs.read` and `proc.run`
+always did. Four more refused the key but called it `badvalue`: `evt.read`,
+`sys.signature`, `task.defaults`, and an attribute a `cli` spec entry or a
+task declaration cannot hold. Those raise `usage` now, and `badvalue` keeps
+its one meaning, a known option with a wrong value.
+
+A program that never misspelt an option sees nothing. One that did has been
+running with that option silently dropped, and now stops at the line; the
+message names the key.
+
+### Three calls follow the raise-or-return rule
+
+[err](#err) now states where the line falls: a function whose job is to
+validate or convert input returns for input that fails; one that assumes its
+input is well formed raises. Three calls were on the wrong side of it.
+
+- `hash.file` returned `nil, err` for a path `fs` refuses — drive-relative,
+  a device, a trailing dot or space, not UTF-8 — where `fs.read` of the same
+  path raises. It raises now, `HASH badvalue` or `HASH encoding`, in the same
+  words. A caller that tested the second value for a malformed path must
+  wrap the call in `pcall`; a caller that passed well-formed paths sees
+  nothing.
+- `cli.duration` and `cli.size` returned a bare `nil` for text they could not
+  parse. They return `nil, err` with `CLI badvalue` now, so the reason can be
+  shown. Nothing that tested the first value changes.
+
+`re` and `text` stay as they were: a subject that is not UTF-8 raises in
+`re`, which assumes text, and returns from `text.decode`, which exists to say
+whether bytes are text. The rule explains both.
 
 ---
 

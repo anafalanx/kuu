@@ -325,7 +325,25 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
      as the record of what was considered and measured; the
      [front-door plan](../notes/plan-front-door-2026-09-13_001735.md) is what
      follows, and 0.10.0 is held until it lands.
-   - The suite is at 1140 checks, with four new cases: `_palette` held to the
+   - Great care with the C, as the front-door plan's first phase asks.
+     `make asan` runs inside `make gate`, and the compiler is pinned by hash.
+     Five defects the review of 2026-09-12 confirmed are closed: `fs.rename`
+     and `fs.copy` retry the two transient refusals as `fs.write` does, and
+     so does `http`'s placement of a download; a program or `require` root
+     beyond 260 characters opens at the entry; an error message is as long
+     as it is, 1023 bytes no longer; `proc.tree` lists a child only when it
+     began no earlier than its parent, which closes the 23H2 chain
+     intermittent by removing the one mechanism the evidence admits; and a
+     job is let go behind a marker once its association with the port is
+     removed, since Windows promises no order between its last two messages.
+     Two laws hold in every module: an unknown option raises `usage` —
+     eleven calls ignored one and four called it `badvalue` — through one
+     helper in C and one in Lua; and the raise-or-return line is stated in
+     [err](err.md) by the function's purpose, which moved `hash.file`,
+     `cli.duration` and `cli.size` and left `re` and `text` where they were.
+     The `fs.c` raise-path leak the review named did not reproduce under two
+     scans and is recorded as such.
+   - The suite is at 1187 checks, with four new cases: `_palette` held to the
      runtime, to the manual in both directions and to itself; `capabilities`;
      the fixer's invariant, which keeps every declaration outside
      `test/fixtures` correct so a name that falls out of use fails instead of

@@ -28,14 +28,16 @@ Strings are bytes, so what you pass is what is hashed, and
 `HASH badvalue` and says so.
 
 `hash.file` uses the same normalized Unicode paths as `fs`, including paths
-beyond 260 characters. Ambiguous drive-relative, device, or trailing-dot/space
-paths are refused; a path containing NUL raises instead of silently hashing
-the filename before that byte.
+beyond 260 characters, and refuses the same paths the same way: a
+drive-relative, device, or trailing-dot/space path, or one that is not
+UTF-8, raises as it does in `fs.read`, since 0.10.0; a path containing NUL
+raises instead of silently hashing the filename before that byte.
 
 | HASH code | when |
 |---|---|
-| `badvalue` | raised: unknown algorithm, a count out of range, an oversized key, or NUL in a filename; returned for an ambiguous path |
-| `encoding` | `hash.file`: the path is not valid UTF-8 |
+| `badvalue` | raised: unknown algorithm, a count out of range, an oversized key, NUL in a filename, or an ambiguous path |
+| `encoding` | raised: `hash.file`'s path is not valid UTF-8 |
+| `usage` | raised: an unknown option |
 | `notfound`, `access` | `hash.file`: the file cannot be opened or read |
 | `oserror` | file I/O failed, or raised when Windows' cryptographic provider failed |
 | `closed` | raised: a finished hasher was used again |

@@ -6,6 +6,13 @@ return function(T)
   local check = T.check
   local csv = require "csv"
   local err = require "err"
+  do
+    local m = require "csv"
+    local ok, raised = pcall(m.decode, "a,b\r\n1,2\r\n", { headerr = true })
+    check("decode refuses an unknown option as CSV usage", not ok and err.is(raised, "CSV", "usage") and tostring(raised):find("headerr", 1, true) ~= nil, tostring(raised))
+    ok, raised = pcall(m.encode, { { "a", "b" } }, { separatorr = ";" })
+    check("encode refuses an unknown option as CSV usage", not ok and err.is(raised, "CSV", "usage") and tostring(raised):find("separatorr", 1, true) ~= nil, tostring(raised))
+  end
 
   local rows = csv.decode('a,b,c\r\n1,"two, with comma","three ""quoted"""\r\n4,,6\r\n')
   check("rows decode with quoted separators and doubled quotes",

@@ -59,4 +59,5 @@ to CRLF if any CRLF is present, otherwise LF.
 ## Errors
 
 Domain `INI`, all raised: `badvalue` for a key holding `=`, a value that
-spans lines, or a table that is not sections of keys.
+spans lines, or a table that is not sections of keys; `usage` for an unknown
+option.

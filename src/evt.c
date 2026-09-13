@@ -180,7 +180,7 @@ static int l_read(lua_State *L)
                 if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) < 1 || lua_tointeger(L, -1) > 100000)
                     ku_err_raise(L, "EVT", "badvalue", "limit must be an integer from 1 to 100000");
                 limit = (int)lua_tointeger(L, -1);
-            } else ku_err_raise(L, "EVT", "badvalue", "unknown option '%s'", key);
+            } else ku_err_raise(L, "EVT", "usage", "unknown option '%s'", *key ? key : "?");
             lua_pop(L, 1);
         }
     }

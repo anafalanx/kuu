@@ -16,6 +16,7 @@ global none
 global <const> require, ipairs, tostring, type, table, error
 
 local err = require "err"
+local check_options = require "_options"
 
 local csv = {}
 
@@ -34,6 +35,7 @@ end
 -- csv.decode(text [, { separator = ",", header = false, ragged = false }]) -> rows | nil, err
 function csv.decode(text, opts)
   if type(text) ~= "string" then error(err.new("CSV", "badvalue", "decode wants a string"), 2) end
+  opts = check_options(opts, { separator = true, header = true, ragged = true }, "CSV")
   local sep = check_separator(option(opts, "separator", ","))
   local header = option(opts, "header", false)
   local ragged = option(opts, "ragged", false)
@@ -186,6 +188,7 @@ end
 --   rows are arrays of fields, or records when `columns` (or rows.columns) names the fields
 function csv.encode(rows, opts)
   if type(rows) ~= "table" then error(err.new("CSV", "badvalue", "encode wants a list of rows"), 2) end
+  opts = check_options(opts, { separator = true, columns = true, header = true, bom = true, newline = true }, "CSV")
   local sep = check_separator(option(opts, "separator", ","))
   local columns = option(opts, "columns", rows.columns)
   local header = option(opts, "header", true)

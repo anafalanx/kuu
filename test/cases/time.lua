@@ -17,6 +17,10 @@ return function(T)
   check("iso renders UTC with Z, to the second", time.iso(t) == "2026-09-09T14:03:05Z", time.iso(t))
   check("iso renders milliseconds on request", time.iso(t, { ms = true }) == "2026-09-09T14:03:05.123Z")
   check("iso renders a fixed offset zone", time.iso(t, { zone = "+02:00" }) == "2026-09-09T16:03:05+02:00" and time.iso(t, { zone = "-05:30" }) == "2026-09-09T08:33:05-05:30", time.iso(t, { zone = "-05:30" }))
+  do
+    local ok, raised = pcall(time.iso, t, { zonee = "utc" })
+    check("iso refuses an unknown option as TIME usage", not ok and err.is(raised, "TIME", "usage") and contains(tostring(raised), "zonee"), tostring(raised))
+  end
   check("parse reads back what iso wrote, with and without ms and in any zone", time.parse("2026-09-09T14:03:05Z") == math.floor(t)
     and math.abs(time.parse("2026-09-09T14:03:05.123Z") - t) < 0.0005 and time.parse("2026-09-09T16:03:05+02:00") == math.floor(t)
     and time.parse("2026-09-09T08:33:05-05:30") == math.floor(t) and time.parse("2026-09-09 14:03:05Z") == math.floor(t))

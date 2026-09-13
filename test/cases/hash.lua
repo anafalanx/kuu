@@ -44,12 +44,18 @@ return function(T)
     local ok, raised = pcall(hash.file, "sha256", path .. "\0ignored")
     check("file hashing refuses NUL instead of hashing a different filename",
       not ok and err.is(raised, "HASH", "badvalue"), tostring(raised))
-    local value, failure = hash.file("sha256", path .. ".")
-    check("file hashing rejects ambiguous trailing-dot paths",
-      value == nil and err.is(failure, "HASH", "badvalue"), tostring(failure))
-    value, failure = hash.file("sha256", "\255")
-    check("file hashing reports invalid UTF-8 paths",
-      value == nil and err.is(failure, "HASH", "encoding"), tostring(failure))
+    -- A path fs refuses is raised here too, in fs's words: the mistake is in
+    -- the path, not in the file.  0.9.0 returned these.
+    ok, raised = pcall(hash.file, "sha256", path .. ".")
+    check("file hashing raises HASH badvalue for an ambiguous trailing-dot path",
+      not ok and err.is(raised, "HASH", "badvalue"), tostring(raised))
+    ok, raised = pcall(hash.file, "sha256", "\255")
+    check("file hashing raises HASH encoding for a path that is not UTF-8",
+      not ok and err.is(raised, "HASH", "encoding"), tostring(raised))
+    ok, raised = pcall(hash.file, "sha256", path, { raww = true })
+    check("file hashing refuses an unknown option as HASH usage", not ok and err.is(raised, "HASH", "usage"), tostring(raised))
+    ok, raised = pcall(hash.sum, "sha256", "bytes", { raww = true })
+    check("sum refuses an unknown option as HASH usage", not ok and err.is(raised, "HASH", "usage"), tostring(raised))
   end
 
   local r1, r2 = hash.random(32), hash.random(32)

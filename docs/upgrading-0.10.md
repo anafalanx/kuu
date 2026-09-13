@@ -1,8 +1,12 @@
 # Upgrading to 0.10
 
-0.10.0 is the release after the pre-freeze correction, and it adds rather than
-corrects: no call moved, no result changed shape, and nothing was removed. A
-program that ran on 0.9.0 runs here unchanged.
+0.10.0 is the release after the pre-freeze correction. It adds, and it
+corrects one convention: an unknown option is refused everywhere, where
+eleven calls used to ignore it, and three calls now fall on the right side of
+the raise-or-return rule. No call moved and nothing was removed. A program
+that ran on 0.9.0 runs here unchanged unless it misspelt an option, or
+checked `hash.file`'s second value for a malformed path; the two sections at
+the end name every call.
 
 It is not yet released. It is held until the front-door work recorded in the
 [roadmap](roadmap.md) has landed — the declaration file becomes
@@ -249,3 +253,40 @@ The `require` gate holds for a program that does not reach around it. If you
 are reading a file's requires as evidence about an unfamiliar program, treat a
 `_ENV` reference as disqualifying. See
 [observed shortcomings](shortcomings.md).
+
+## An unknown option is refused everywhere
+
+Eleven calls accepted an option they did not know and went on as if it had
+not been given: `fs.dirs`, `fs.glob`, `hash.sum`, `hash.file`,
+`text.tobase64`, `time.iso`, `json.encode`, `archive.list` (with `pack` and
+`unpack`), `ini.encode`, `csv.encode` and `csv.decode`. A misspelt `prune`
+walked the whole tree; a misspelt `pretty` printed compact JSON. Each now
+raises `usage` in its own domain, naming the key, as `fs.read` and `proc.run`
+always did. Four more refused the key but called it `badvalue`: `evt.read`,
+`sys.signature`, `task.defaults`, and an attribute a `cli` spec entry or a
+task declaration cannot hold. Those raise `usage` now, and `badvalue` keeps
+its one meaning, a known option with a wrong value.
+
+A program that never misspelt an option sees nothing. One that did has been
+running with that option silently dropped, and now stops at the line; the
+message names the key.
+
+## Three calls follow the raise-or-return rule
+
+[err](err.md) now states where the line falls: a function whose job is to
+validate or convert input returns for input that fails; one that assumes its
+input is well formed raises. Three calls were on the wrong side of it.
+
+- `hash.file` returned `nil, err` for a path `fs` refuses — drive-relative,
+  a device, a trailing dot or space, not UTF-8 — where `fs.read` of the same
+  path raises. It raises now, `HASH badvalue` or `HASH encoding`, in the same
+  words. A caller that tested the second value for a malformed path must
+  wrap the call in `pcall`; a caller that passed well-formed paths sees
+  nothing.
+- `cli.duration` and `cli.size` returned a bare `nil` for text they could not
+  parse. They return `nil, err` with `CLI badvalue` now, so the reason can be
+  shown. Nothing that tested the first value changes.
+
+`re` and `text` stay as they were: a subject that is not UTF-8 raises in
+`re`, which assumes text, and returns from `text.decode`, which exists to say
+whether bytes are text. The rule explains both.

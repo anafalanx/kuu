@@ -32,19 +32,21 @@ malformed ones.
 
 Parsing never prints and never exits. A wrong command line is `nil, err` with
 `CLI usage`, whose message names the problem and ends with the generated usage
-text, ready to print. A wrong spec raises `CLI badvalue` immediately: an
-unknown attribute or type, a default that fails its own type, two entries on
-one key, `--help` redeclared, a flag as a positional, or a positional after the
-rest entry.
+text, ready to print. A wrong spec raises immediately: `CLI usage` for an
+attribute an entry cannot hold, `CLI badvalue` for an unknown type, a default
+that fails its own type, two entries on one key, `--help` redeclared, a flag as
+a positional, or a positional after the rest entry.
 
 ```lua
 cli.usage(spec, "watchit")   -- the text: usage line, arguments, options with defaults and ranges
-cli.duration("1.5s")         -- 1.5; nil when it is not a duration
-cli.size("16M")              -- 16777216
+cli.duration("1.5s")         -- 1.5; nil, err when it is not a duration
+cli.size("16M")              -- 16777216; nil, err when it is not a size
 ```
 Duration arguments and `cli.duration` use the native runtime's grammar,
 including sums (`"1h30m"`, `"1m 30s"`) and days (`"2d"`). Results are
-seconds; an invalid duration returns nil. Numeric defaults, `min`, `max`,
+seconds; text that is not a duration is `nil, err` with `CLI badvalue`, since
+converting what a user typed is what these two are for, where `time.duration`
+on a literal in the program raises. Numeric defaults, `min`, `max`,
 and `choices` for durations use seconds too. `proc`, `sched`, `http`, `sync`,
 and `net` accept these numbers directly, without conversion:
 
@@ -61,5 +63,6 @@ floating-point precision match `time.duration`; results are numbers of seconds,
 not exact integer millisecond counts at arbitrarily large magnitudes.
 
 The complete CLI code set is `usage` (returned for invalid command-line
-arguments) and `badvalue` (raised for an invalid specification). `duration`
-and `size` return nil for text they cannot parse.
+arguments; raised for an attribute a spec entry cannot hold) and `badvalue`
+(raised for an invalid specification; returned by `duration` and `size` for
+text they cannot parse).

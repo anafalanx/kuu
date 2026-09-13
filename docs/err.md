@@ -25,5 +25,15 @@ convention for classified failures is:
 - A programming mistake raises `e`: a missing command, a duration without a
   unit, an unknown option name.
 
+The line between the two is the function's purpose. A function whose job is
+to validate or convert input — `text.decode`, `time.parse`, `csv.decode`,
+`cli.duration` — returns for input that fails, because failing input is the
+outcome it exists to report. A function that assumes its input is well
+formed — `fs.read` given a malformed path, `re.match` given a subject that
+is not UTF-8, `time.duration` given a bare number in a string — raises,
+because the fix is in the code that called it, not in the data. Every
+module follows this since 0.10.0; where two once disagreed on the same kind
+of failure, the disagreement is named in [upgrading to 0.10](upgrading-0.10.md).
+
 Branch on `err.is(e, "PROC", "notfound")`, never on the message text.
 Messages are for people; domains and codes are for programs.

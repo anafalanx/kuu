@@ -20,7 +20,7 @@ by `time.now`, between 1601 and 9999. `level` is `critical`, `error`,
 `information` and are included in that filter. `provider` matches the exact
 publisher name. Names are UTF-8 without NUL; a provider containing both single
 and double quote characters is refused because Windows' restricted XPath
-cannot express that literal. Unknown options raise `EVT badvalue`.
+cannot express that literal. An unknown option raises `EVT usage`.
 
 `limit` defaults to 1000 and must be an integer from 1 to 100000. Results are
 the newest records first. An empty query returns an empty table. Each entry
@@ -47,4 +47,5 @@ reading `Security`, for example, usually requires administrator rights.
 
 The complete EVT code set is `notfound` (unknown channel), `access`
 (insufficient channel rights), `badvalue` (raised for malformed names,
-options, instants, levels, or limits), and `oserror` (other Windows failures).
+instants, levels, or limits), `usage` (raised for an unknown option), and
+`oserror` (other Windows failures).

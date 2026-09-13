@@ -6,6 +6,10 @@ return function(T)
   local check = T.check
   local ini = require "ini"
   local err = require "err"
+  do
+    local ok, raised = pcall(require("ini").encode, { Section = { key = "value" } }, { newlinee = "\n" })
+    check("encode refuses an unknown option as INI usage", not ok and err.is(raised, "INI", "usage") and tostring(raised):find("newlinee", 1, true) ~= nil, tostring(raised))
+  end
 
   local text = table.concat({
     "; a comment", "top=1", "", "[Server]", "Host = example.org", "port=8080", "# another",

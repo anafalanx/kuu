@@ -74,8 +74,9 @@ and string keys, non-string keys, strings that are not valid UTF-8, and cycles,
 which surface as `JSON depth`.
 
 The complete code set is `parse`, `duplicate`, and `depth` for decoding;
-`badvalue`, `encoding`, `depth`, and `oserror` for encoding. `oserror` means
-the encoder could not allocate its document.
+`badvalue`, `encoding`, `depth`, `usage`, and `oserror` for encoding. `usage`
+is raised for an unknown option; `oserror` means the encoder could not
+allocate its document.
 
 Output is compact by default, with the seven short escapes, lowercase
 `\u00xx` for other control characters, and UTF-8 left raw.

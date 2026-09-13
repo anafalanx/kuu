@@ -28,4 +28,11 @@ int ku_check_bytes(lua_State *L, int idx, int64_t *bytes);
  * of what the caller supplied.  This check allocates no native memory. */
 const char *ku_check_cstring(lua_State *L, int idx, const char *domain, const char *what);
 
+/* An options table at `idx` -- none or nil is fine -- may hold only the keys
+ * in `allowed`, a NULL-terminated list; any other key raises `<domain> usage`
+ * naming it, and a value that is not a table raises Lua's own type error.
+ * Every option-taking call in the palette goes through this, so a misspelt
+ * option is refused the same way everywhere instead of being ignored. */
+void ku_check_options(lua_State *L, int idx, const char *domain, const char *const *allowed);
+
 #endif /* KUU_VALUES_H */

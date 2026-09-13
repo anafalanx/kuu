@@ -94,6 +94,12 @@ return function(T)
   check("an unknown option is a raised usage error", not ok and err.is(e2, "FS", "usage"), tostring(e2))
   ok, e2 = pcall(fs.write, root .. "/x", "d", { append = true, atomic = true })
   check("append with atomic is refused", not ok and err.is(e2, "FS", "usage"), tostring(e2))
+  -- The two calls that used to walk on with a misspelt option: a `prunee`
+  -- once walked the whole tree.
+  ok, e2 = pcall(fs.dirs, root, { depth = 1, prunee = { ".git" } })
+  check("dirs refuses an unknown option as FS usage", not ok and err.is(e2, "FS", "usage") and contains(tostring(e2), "prunee"), tostring(e2))
+  ok, e2 = pcall(fs.glob, root .. "/*", { kinds = "file" })
+  check("glob refuses an unknown option as FS usage", not ok and err.is(e2, "FS", "usage") and contains(tostring(e2), "kinds"), tostring(e2))
 
   -- stat / exists -----------------------------------------------------------------------
   local st = fs.stat(root .. "/a.bin")

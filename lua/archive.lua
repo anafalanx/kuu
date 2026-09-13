@@ -17,6 +17,7 @@ local proc = require "proc"
 local err = require "err"
 local rt, json = require "rt", require "json"
 local trim = require("text").trim
+local check_options = require "_options"
 
 -- Read Unicode names in a supervised copy of this same executable. Windows
 -- tar's text listing has already replaced names outside its ANSI code page.
@@ -73,7 +74,7 @@ end
 -- archive.unpack(file, dir [, { strip = n, timeout = "30m" }]) -> true | nil, err
 -- The directory is created if needed; existing files are overwritten.
 function archive.unpack(file, dir, options)
-  options = options or {}
+  options = check_options(options, { strip = true, timeout = true }, "ARCHIVE")
   if type(file) ~= "string" or type(dir) ~= "string" then
     error(err.new("ARCHIVE", "badvalue", "unpack needs an archive path and a directory"), 2)
   end
@@ -95,7 +96,7 @@ end
 -- Packs the named entries of `dir`, or everything in it, into `file`, whose
 -- extension chooses the format.  An existing archive is replaced.
 function archive.pack(file, dir, entries, options)
-  options = options or {}
+  options = check_options(options, { timeout = true }, "ARCHIVE")
   if type(file) ~= "string" or type(dir) ~= "string" then
     error(err.new("ARCHIVE", "badvalue", "pack needs an archive path and a directory"), 2)
   end
@@ -134,7 +135,7 @@ end
 
 -- archive.list(file [, { timeout = "30m" }]) -> { entry, ... } | nil, err
 function archive.list(file, options)
-  options = options or {}
+  options = check_options(options, { timeout = true }, "ARCHIVE")
   if type(file) ~= "string" then error(err.new("ARCHIVE", "badvalue", "list needs an archive path"), 2) end
   if fs.exists(file) ~= "file" then return nil, err.new("ARCHIVE", "notfound", "no archive at '" .. file .. "'") end
   local r, e = proc.run { rt.exe, "-e", list_worker, fs.absolute(file),

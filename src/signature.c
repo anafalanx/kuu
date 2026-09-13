@@ -246,8 +246,8 @@ int ku_sys_signature(lua_State *L)
         while (lua_next(L, 2)) {
             const char *key = lua_type(L, -2) == LUA_TSTRING ? lua_tostring(L, -2) : "";
             if (lua_type(L, -2) == LUA_TSTRING) ku_check_cstring(L, -2, "SYS", "option name");
-            if (strcmp(key, "revocation") || lua_type(L, -1) != LUA_TBOOLEAN)
-                ku_err_raise(L, "SYS", "badvalue", "signature accepts only a boolean revocation option");
+            if (strcmp(key, "revocation") != 0) ku_err_raise(L, "SYS", "usage", "unknown option '%s'", *key ? key : "?");
+            if (lua_type(L, -1) != LUA_TBOOLEAN) ku_err_raise(L, "SYS", "badvalue", "revocation must be a boolean");
             revocation = lua_toboolean(L, -1);
             lua_pop(L, 1);
         }

@@ -36,6 +36,7 @@ so an unpack stays under the directory you name.
 | `ARCHIVE notfound` | no archive, or no directory, at that path |
 | `ARCHIVE failed` | an invalid archive, unsupported format, or rejected entry; pack/unpack retain tar's diagnostic |
 | `ARCHIVE badvalue` | raised: wrong paths, a negative `strip`, or entries that leave the directory; returned for an empty directory to pack |
+| `ARCHIVE usage` | raised: an unknown option |
 | `ARCHIVE timeout` | the archive operation did not finish within `timeout` (default 30m) |
 | `ARCHIVE encoding` | an entry has no valid Unicode filename |
 | `ARCHIVE toobig` | listing exceeds 64 MiB of names, one million entries, or 64 MiB of encoded output |

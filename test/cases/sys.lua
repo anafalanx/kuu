@@ -35,9 +35,13 @@ return function(T)
     and unsigned.valid == nil and unsigned.signer == nil, tostring(ue))
   local absent, ae = sys.signature(T.work .. "/signature-no-such-file.exe")
   check("a missing signature path is SYS notfound", absent == nil and err.is(ae, "SYS", "notfound"), tostring(ae))
-  for _, options in ipairs({ { revocation = "true" }, { timeout = "1s" }, true, { ["revocation\0other"] = true } }) do
+  for _, options in ipairs({ { revocation = "true" }, true, { ["revocation\0other"] = true } }) do
     local ok, be = pcall(sys.signature, rt.exe, options)
     check("bad signature options raise SYS badvalue", not ok and err.is(be, "SYS", "badvalue"), tostring(be))
+  end
+  do
+    local ok, be = pcall(sys.signature, rt.exe, { timeout = "1s" })
+    check("an option signature does not read is SYS usage", not ok and err.is(be, "SYS", "usage") and tostring(be):find("timeout", 1, true) ~= nil, tostring(be))
   end
   local ok, be = pcall(sys.signature, rt.exe .. "\0other")
   check("signature refuses NUL in a path", not ok and err.is(be, "SYS", "badvalue"), tostring(be))

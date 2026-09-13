@@ -4,6 +4,10 @@ global <const> require, ipairs, type, tostring, math, pcall
 return function(T)
   local check = T.check
   local evt, err, time = require "evt", require "err", require "time"
+  do
+    local ok, raised = pcall(evt.read, "System", { limitt = 1 })
+    check("read refuses an unknown option as EVT usage", not ok and err.is(raised, "EVT", "usage") and tostring(raised):find("limitt", 1, true) ~= nil, tostring(raised))
+  end
   local logs, le = evt.logs()
   local application, system = false, false
   for _, name in ipairs(logs or {}) do
@@ -39,7 +43,7 @@ return function(T)
   check("a query with no events returns an empty table", future ~= nil and #future == 0, tostring(fe))
   for _, options in ipairs({ { limit = 0 }, { limit = 100001 }, { limit = 1.5 }, { limit = "10" },
       { level = "fatal" }, { since = "yesterday" }, { since = math.huge }, { provider = "bad\0name" },
-      { unknown = true }, { provider = 42 }, { level = true }, { ["limit\0other"] = 1 } }) do
+      { provider = 42 }, { level = true }, { ["limit\0other"] = 1 } }) do
     local ok, be = pcall(evt.read, "System", options)
     check("bad event options raise EVT badvalue", not ok and err.is(be, "EVT", "badvalue"), tostring(be))
   end
