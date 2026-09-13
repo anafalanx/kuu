@@ -52,6 +52,16 @@ task.default "build"
     return text or ""
   end
   local function reset() fs.remove(project .. "/out", { recursive = true }) end
+  -- `kuu run --json` is a stream: every line an event, the last the envelope.
+  local function events_of(text)
+    local lines = {}
+    for line in text:gmatch("[^\n]+") do lines[#lines + 1] = json.decode(line) end
+    return lines
+  end
+  local function envelope_of(text)
+    local lines = events_of(text)
+    return lines[#lines], lines
+  end
 
   -- list ---------------------------------------------------------------------------------
   local r = T.kuu({ "list" }, { cwd = project .. "/sub/deeper" })
@@ -104,15 +114,15 @@ task.default "build"
   r = T.kuu({ "run", "talk" }, { cwd = project })
   check("without --json a task's print and io.write reach standard output", r.code == 0 and contains(r.out, "spoken") and contains(r.out, "written"), T.describe(r))
   r = T.kuu({ "run", "--json", "talk" }, { cwd = project })
-  local spoken = json.decode(r.out)
+  local spoken = envelope_of(r.out)
   check("under --json a task's print and io.write are redirected to standard error", r.code == 0 and spoken and spoken.ok == true
     and contains(r.err, "spoken") and contains(r.err, "written"), T.describe(r))
   r = T.kuu({ "run", "--json", "console" }, { cwd = project })
-  local console = json.decode(r.out)
+  local console = envelope_of(r.out)
   check("under --json a child that asked for the console is relayed to stderr all the same", r.code == 0 and console and console.ok == true
     and contains(r.err, "via-console"), T.describe(r))
   r = T.kuu({ "run", "--json", "big" }, { cwd = project })
-  local big = json.decode(r.out)
+  local big = envelope_of(r.out)
   check("under --json a child's output beyond maxout is relayed whole, nothing dropped", r.code == 0 and big and big.ok == true
     and select(2, r.err:gsub("x", "")) == 200000, T.describe(r):sub(1, 400))
   r = T.kuu({ "run", "gen", "extra" }, { cwd = project })
@@ -133,14 +143,33 @@ task.default "build"
   check("an unknown run option exits 2", r.code == 2 and contains(r.err, "unknown option '--wat'"), T.describe(r))
   reset()
   r = T.kuu({ "run", "--json", "test" }, { cwd = project })
-  local envelope = r.code == 0 and json.decode(r.out) or nil
-  check("kuu run --json reports each task with its timing", envelope and envelope.ok == true and envelope.result.task == "test"
+  local envelope, stream = envelope_of(r.out)
+  check("kuu run --json reports each task with its timing in its last line", r.code == 0 and envelope and envelope.ok == true and envelope.result.task == "test"
     and #envelope.result.tasks == 3 and envelope.result.tasks[1].name == "gen" and type(envelope.result.tasks[1].seconds) == "number"
     and r.err == "", T.describe(r))
+  check("the lines before it are the run and each task starting and finishing, in order, each versioned",
+    #stream == 8 and stream[1].v == 1 and stream[1].event == "run" and stream[1].task == "test" and #stream[1].plan == 3 and stream[1].plan[1] == "gen"
+      and stream[2].event == "task" and stream[2].name == "gen" and stream[2].state == "started"
+      and stream[3].event == "task" and stream[3].name == "gen" and stream[3].state == "finished" and stream[3].ok == true and type(stream[3].seconds) == "number"
+      and stream[6].name == "test" and stream[7].name == "test" and stream[7].state == "finished", r.out)
   r = T.kuu({ "run", "--json", "child" }, { cwd = project })
-  envelope = json.decode(r.out)
-  check("under --json standard output is only the envelope, the child's output is relayed to stderr, and its code passes through", r.code == 7 and envelope
+  envelope, stream = envelope_of(r.out)
+  check("under --json standard output is only the stream, the child's output is relayed to stderr, and its code passes through", r.code == 7 and envelope
     and envelope.ok == false and envelope.error.code == "exit" and envelope.error.exit == 7 and contains(r.err, "from-child"), T.describe(r))
+  local started, finished, ended
+  for _, e in ipairs(stream) do
+    if e.event == "child" and e.state == "started" then started = e end
+    if e.event == "child" and e.state == "finished" then finished = e end
+    if e.event == "task" and e.state == "finished" then ended = e end
+  end
+  check("a child the task runs through the door is two events, with its pid, its argv, and its exit",
+    started ~= nil and started.task == "child" and type(started.pid) == "number" and started.argv[1] == "cmd.exe"
+      and finished ~= nil and finished.pid == started.pid and finished.status == "exit" and finished.code == 7 and type(finished.seconds) == "number",
+    r.out)
+  check("a failed task's finish carries the error before the envelope does",
+    ended ~= nil and ended.ok == false and ended.error.code == "exit" and ended.error.exit == 7, r.out)
+  r = T.kuu({ "run", "--json", "--dry-run", "test" }, { cwd = project })
+  check("--dry-run --json is one envelope, since nothing runs", r.code == 0 and #events_of(r.out) == 1, r.out)
 
   -- a project without a default, and broken declarations ----------------------------------
   local bare = T.work .. "/project-bare"
@@ -181,7 +210,7 @@ task.default "build"
 
   reset()
   r = T.kuu({ "run", "--json", "all" }, { cwd = project })
-  local aggregate = json.decode(r.out)
+  local aggregate = envelope_of(r.out)
   check("a dependency-only aggregate succeeds and runs shared dependencies once",
     r.code == 0 and aggregate and aggregate.ok and order() == "gen helped\nbuild false app\ntest\n", T.describe(r))
   reset()

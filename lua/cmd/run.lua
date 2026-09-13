@@ -39,7 +39,23 @@ if want_json then
   task.relay = io.stderr
 end
 
+-- Under --json, standard output is a stream: one JSON object per line as
+-- things happen -- the run, each task, each child -- and the envelope as
+-- the last line, which is what the whole output used to be.  A reader that
+-- takes the last line sees what it always saw; one that watches sees the
+-- run as it goes.
 local ran = json.array {}
+local current = nil
+local function emit(record)
+  if not want_json then return end
+  record.v = 1
+  io.stdout:write(json.encode(record), "\n")
+end
+task.observer = function(record)
+  record.task = current
+  if record.argv then record.argv = json.array(record.argv) end
+  emit(record)
+end
 
 local function exit_code_for(e)
   if type(e.exit) == "number" then return e.exit end
@@ -108,7 +124,13 @@ if dry_run then
   os.exit(0)
 end
 
+local names = json.array {}
+for _, entry in ipairs(plan) do names[#names + 1] = entry.name end
+emit { event = "run", root = root, task = name, plan = names }
+
 for _, entry in ipairs(plan) do
+  current = entry.name
+  emit { event = "task", name = entry.name, state = "started" }
   local started = sched.clock()
   local ok, e6 = task.execute(entry, opts_for[entry.name])
   local elapsed = sched.clock() - started
@@ -120,8 +142,11 @@ for _, entry in ipairs(plan) do
     -- a failed task's own error is not a usage mistake of the runner: only
     -- argument errors exit 2, a child's code passes through, the rest is 1
     if not (type(e6.exit) == "number" or err.is(e6, "CLI", "usage")) then e6.exit = 1 end
+    emit { event = "task", name = entry.name, state = "finished", ok = false, seconds = elapsed,
+      error = { domain = e6.domain, code = e6.code, message = e6.message, exit = e6.exit } }
     finish(false, e6, { root = root, task = name })
   end
+  emit { event = "task", name = entry.name, state = "finished", ok = true, seconds = elapsed }
   if not want_json then io.stderr:write(string.format("kuu: %s %.1fs\n", entry.name, elapsed)) end
 end
 finish(true, nil, { root = root, task = name })

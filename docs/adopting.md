@@ -133,7 +133,7 @@ Three habits make this work:
 .\kuu.exe run                  the default task, with its dependencies
 .\kuu.exe run test             a named task
 .\kuu.exe run --dry-run test   the plan: what would run, in order, running nothing
-.\kuu.exe run --json test      the outcome as one JSON object on stdout
+.\kuu.exe run --json test      the run as JSON lines on stdout, the outcome the last of them
 .\kuu.exe list                 every task with its description and arguments
 .\kuu.exe check                manifest.lua and the repository's Lua, without running anything
 ```

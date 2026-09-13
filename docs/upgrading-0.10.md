@@ -83,6 +83,17 @@ declaration does not name is found without running, and `kuu capabilities`
 lists the tool. `CheckWarning.kind` gains `tool` for this, so a reader of
 warnings needs the same default branch a reader of errors does.
 
+## `kuu run --json` is a stream
+
+Through 0.9 `kuu run --json` printed one JSON object when the run ended.
+It prints one per line as the run goes — the run once its plan is checked,
+each task as it starts and finishes, each child a task runs through the door
+— and the envelope it used to print is the last line, unchanged. A reader
+that decoded the whole of standard output as one document breaks: take the
+last line for what you had, or read each line for what you did not.
+[Tasks](task.md) has the events. `--dry-run --json` and every failure
+before the run are still one envelope.
+
 ## `check` reports four mistakes it used to pass
 
 Three of them are silent: the call returns, the branch is never taken, and

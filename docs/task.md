@@ -43,7 +43,7 @@ task.default "build"
 kuu run                      the default task, after its dependencies
 kuu run test                 test, after build, after gen; each runs once
 kuu run build --release      arguments after the task name go to that task
-kuu run --json test          the same, with one JSON object on stdout at the end
+kuu run --json test          the same, as JSON lines on stdout: each event as it happens, the outcome last
 kuu run --dry-run test       the plan, in order, arguments checked, nothing run
 kuu list [--json]            the tasks, their descriptions, dependencies, and arguments
 ```
@@ -144,16 +144,49 @@ a duration string), and `processes` (a positive count); see
 
 ## JSON
 
-`kuu run --json` (the flag before the task name) prints one JSON object on
-standard output when it ends, and nothing else there: `print` and `io.write`
-from tasks are redirected to standard error, and the output of a `task.exec`
-child is streamed to standard error as it arrives, whatever `inherit` the
-task asked for, with no cap on its size. Only a direct `io.stdout:write`
-bypasses this, and then the task itself has broken the contract.
+`kuu run --json` (the flag before the task name) prints a stream on standard
+output, one JSON object per line as things happen, and nothing else there:
+`print` and `io.write` from tasks are redirected to standard error, and the
+output of a `task.exec` child is streamed to standard error as it arrives,
+whatever `inherit` the task asked for, with no cap on its size. Only a direct
+`io.stdout:write` bypasses this, and then the task itself has broken the
+contract.
+
+The lines are events — the run once its plan is checked, each task as it
+starts and finishes, each child a task runs through the door — and the last
+line is the envelope, which is what the whole output was through 0.9. A
+reader that takes the last line sees what it always saw; one that reads
+each line sees the run as it goes, which is what a harness watching a long
+task needs.
 
 ```json
+{"v":1,"event":"run","root":"C:/work/app","task":"test","plan":["gen","build","test"]}
+{"v":1,"event":"task","name":"gen","state":"started"}
+{"v":1,"event":"task","name":"gen","state":"finished","ok":true,"seconds":0.01}
+{"v":1,"event":"task","name":"build","state":"started"}
+{"v":1,"event":"child","task":"build","state":"started","pid":4120,"argv":["C:/work/app/.tools/zig/zig.exe","build"]}
+{"v":1,"event":"child","task":"build","state":"finished","pid":4120,"status":"exit","code":0,"seconds":3.1}
+{"v":1,"event":"task","name":"build","state":"finished","ok":true,"seconds":3.2}
+{"v":1,"event":"task","name":"test","state":"started"}
+{"v":1,"event":"task","name":"test","state":"finished","ok":true,"seconds":0.8}
 {"ok":true,"result":{"root":"C:/work/app","task":"test",
   "tasks":[{"name":"gen","seconds":0.01,"ok":true},{"name":"build","seconds":3.2,"ok":true},{"name":"test","seconds":0.8,"ok":true}]}}
+```
+
+Every event carries `v`, the stream's schema version, 1; the envelope
+carries none and is told apart by `ok`. A failure before the run — no
+project, a wrong argument — is the envelope alone. `--dry-run --json` is
+one envelope, since nothing runs.
+
+```typescript
+type RunEvent =
+  | { v: 1; event: "run"; root: string; task: string; plan: string[] }
+  | { v: 1; event: "task"; name: string; state: "started" }
+  | { v: 1; event: "task"; name: string; state: "finished"; ok: boolean; seconds: number;
+      error?: RunError }
+  | { v: 1; event: "child"; task: string; state: "started"; pid: number; argv: string[] }
+  | { v: 1; event: "child"; task: string; state: "finished"; pid: number;
+      status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number; seconds: number };
 ```
 
 These structural schemas use `?` for an omitted optional field. Arrays are

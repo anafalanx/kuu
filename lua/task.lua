@@ -266,14 +266,29 @@ end
 -- so standard output carries only the envelope.
 task.relay = nil
 
+-- task.observer: nil, or a function given one record per crossing the door
+-- sees -- a child started, a child finished -- with `event`, `state`, `pid`,
+-- and for a start the argv, for a finish `status`, `code` and `seconds`.
+-- `kuu run --json` sets it to write each as a line of its stream; it is
+-- called only on the relay path, which is the one that path takes.
+task.observer = nil
+
+local function observe(record)
+  if task.observer ~= nil then task.observer(record) end
+end
+
 -- Two small tasks pump the child's streams to the relay while the child runs,
 -- so nothing waits for it to finish and nothing is capped: maxout is only the
 -- point at which the child is held back until the relay has caught up.
 local function relay_exec(spec, relay)
   spec.inherit = nil
   spec.stream = true
+  local began = sched.clock()
   local c <close>, e = proc.start(spec)
   if not c then return nil, e end
+  local argv = {}
+  for i, item in ipairs(spec) do argv[i] = item end
+  observe { event = "child", state = "started", pid = c.pid, argv = argv }
   local function pump(read)
     while true do
       local chunk = read(c, "some")
@@ -286,6 +301,8 @@ local function relay_exec(spec, relay)
   local r, e2 = c:wait()
   out_pump:join()
   err_pump:join()
+  observe { event = "child", state = "finished", pid = c.pid, status = r and r.status or "error",
+            code = r and r.code or nil, seconds = sched.clock() - began }
   return r, e2
 end
 
