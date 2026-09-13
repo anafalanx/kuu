@@ -10,20 +10,69 @@ return function(T)
   local root = fs.absolute(T.work .. "/cookbook")
   assert(fs.mkdir(root))
   local names = { "wait-port", "install-tool", "tail-build", "stop-port", "signed-installer",
-    "start-service", "event-errors", "bounded-step", "edit-ini", "prompt" }
+    "start-service", "event-errors", "bounded-step", "edit-ini", "prompt",
+    "manifest", "report-module", "watch-run", "last-failure" }
   local paths, count = {}, 0
+  -- The wrapper-module recipe calls a declared tool by name, which check
+  -- holds to the manifest above it; the extraction root declares it.
+  assert(fs.write(root .. "/manifest.lua", 'global none\nglobal <const> require\nlocal task = require "task"\n'
+    .. 'task.tool "report" { exe = "tools/report.cmd", args = { ["--out"] = "path", ["--since"] = "string", ["--verbose"] = "flag" }, output = "ndjson" }\n'))
   for source in assert(fs.read(T.root .. "/docs/cookbook.md")):gmatch("```lua\r?\n(.-)\r?\n```") do
     count = count + 1
     local path = root .. "/" .. (names[count] or tostring(count)) .. ".lua"
     assert(fs.write(path, source))
     paths[count] = path
-    local r = T.kuu { "check", "--json", path }
+    local r = T.kuu({ "check", "--json", path }, { cwd = root })
     local report = json.decode(r.out)
     check("cookbook " .. (names[count] or tostring(count)) .. " passes kuu check",
       r.code == 0 and report and report.result.errors == 0 and report.result.warnings == 0, T.describe(r))
   end
-  check("cookbook contains exactly ten complete Lua programs", count == #names, count)
+  check("cookbook contains exactly fourteen complete Lua programs", count == #names, count)
   if count ~= #names then return end
+
+  -- The four front-door recipes: a manifest that lists, plans and checks
+  -- clean; a wrapper module that decodes a tool's NDJSON through the
+  -- declaration; a reader of the run stream; a reader of the ledger.
+  local door = root .. "/door"
+  fs.remove(door, { recursive = true })
+  assert(fs.mkdir(door .. "/tools"))
+  assert(fs.mkdir(door .. "/build"))
+  assert(fs.write(door .. "/.gitignore", "/.kuu/\n"))
+  assert(fs.copy(paths[11], door .. "/manifest.lua"))
+  local r = T.kuu({ "list", "--json" }, { cwd = door })
+  local listed = json.decode(r.out)
+  check("the manifest recipe declares gen and report, report taking --since and --verbose", r.code == 0 and listed
+    and #listed.result.tasks == 2 and listed.result.default == "report" and listed.result.tasks[2].args[1].name == "--since", T.describe(r))
+  r = T.kuu({ "run", "--dry-run", "report", "--since", "2026-09-01", "--verbose" }, { cwd = door })
+  check("its plan runs gen before report, arguments checked", r.code == 0 and r.out == "1. gen  write build/inputs.json\n2. report  the report, from build/inputs.json\n", T.describe(r))
+  r = T.kuu({ "check" }, { cwd = door })
+  check("and every call in it is held to the declaration", r.code == 0 and contains(r.err, "0 errors, 0 warnings"), T.describe(r))
+  -- the wrapper module, over a tool that is a script printing two records
+  assert(fs.copy(paths[12], door .. "/tools/report.lua"))
+  assert(fs.write(door .. "/tools/report.cmd", "@echo {\"row\":1}\r\n@echo {\"row\":2}\r\n"))
+  assert(fs.write(door .. "/manifest.lua", 'global none\nglobal <const> require, assert, print\nlocal task = require "task"\n'
+    .. 'task.tool "report" { exe = "tools/report.cmd", args = { ["--out"] = "path", ["--since"] = "string" }, output = "ndjson" }\n'
+    .. 'task "rows" { run = function() local rows = assert(require("tools.report").rows("2026-01-01")) print(#rows, rows[2].row) end }\n'
+    .. 'task "direct" { run = function() return task.exec { tool = "report", "--out", "build/r.ndjson" } end }\n'
+    .. 'task.default "rows"\n'))
+  r = T.kuu({ "run" }, { cwd = door })
+  check("the wrapper module runs the declared tool and decodes each line", r.code == 0 and contains(r.out, "2\t2"), T.describe(r))
+  -- the stream reader, fed a real run's stream on standard input
+  local stream = T.kuu({ "run", "--json", "direct" }, { cwd = door })
+  r = proc.run { T.exe, paths[13], stdin = stream.out, timeout = "20s" }
+  check("watch-run narrates the run and exits 0 on a good envelope", r and r.code == 0 and contains(r.out, "run direct in ")
+    and contains(r.out, "direct ok") and contains(r.out, "report.cmd pid"), r and (r.out .. r.err) or "no result")
+  assert(fs.write(door .. "/manifest.lua", 'global none\nglobal <const> require\nlocal task, err = require "task", require "err"\n'
+    .. 'task "bad" { run = function() return nil, err.new("MINE", "stale", "inputs are stale", { exit = 4 }) end }\ntask.default "bad"\n'))
+  stream = T.kuu({ "run", "--json" }, { cwd = door })
+  r = proc.run { T.exe, paths[13], stdin = stream.out, timeout = "20s" }
+  check("and repeats the failure with its exit code", r and r.code == 4 and contains(r.out, "bad failed") and contains(r.err, "MINE stale: inputs are stale"),
+    r and (r.out .. r.err) or "no result")
+  -- the ledger reader, after that failure
+  r = T.kuu { paths[14], door }
+  check("last-failure reads the ledger and names the last failed record", r.code == 0 and contains(r.out, "task\tbad\tMINE stale: inputs are stale"), T.describe(r))
+  r = T.kuu { paths[14], root }
+  check("and says when there is no ledger", r.code == 1 and contains(r.err, "no ledger under"), T.describe(r))
   local function run(index, args)
     local command = { paths[index] }
     for _, value in ipairs(args or {}) do command[#command + 1] = value end

@@ -21,6 +21,10 @@ Four things are checked:
   way kuu would load it. A syntax error is reported with its line. Under a
   global declaration (`global none`, or any `global` statement), the compiler
   also refuses an undeclared global, so the classic typo is an error here.
+  A file that does not compile gets that one error, and the missing-`global`
+  warning below if that applies, and nothing else: its requires are not
+  listed and no other check is made until it parses, since the text they
+  read is not yet a program.
 - **It declares its globals.** A file with no `global` statement at all gets a
   warning, because in that file an undeclared global is silently nil at run
   time. [Pitfalls](pitfalls.md) says how to start a file.

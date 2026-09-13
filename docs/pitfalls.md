@@ -139,5 +139,12 @@ refuses to hide. Read it once.
 
 ## Errors kuu itself prints
 
-Every message kuu produces has the shape `DOMAIN code: text`, and the codes
-are listed per module page. `kuu docs search CODE` finds the page.
+Every classified failure kuu reports has the shape `kuu: DOMAIN code: text`,
+and the codes are listed per module page. `kuu docs search CODE` finds the
+page. Two other shapes reach standard error and are not failures: `kuu run`'s
+progress lines, `kuu: NAME 0.3s` as each task ends, or `kuu: NAME failed
+after 0.3s` ahead of the failure's own line, and notices, `kuu: warning:
+…`, which `--json` also carries as `notes`. A usage failure is followed by
+the usage block it refers to. An uncaught error in a program is `kuu:
+message` with the traceback, and a crash in kuu itself is `kuu: crashed:
+…`, a defect to report.

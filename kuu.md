@@ -156,8 +156,8 @@ follows from it:
   tell the truth about the platform.
 
 <!-- figures -->
-By the numbers, 0.9.0 is 15,960 lines of authored host C, 5,334 lines of kuu's own
-Lua, a suite of 6,159 lines, and 6,314 lines of manual in 46 pages that ship
+By the numbers, 0.9.0 is 15,960 lines of authored host C, 5,343 lines of kuu's own
+Lua, a suite of 6,211 lines, and 6,570 lines of manual in 46 pages that ship
 inside the executable. The palette is 27 public modules and 173 functions,
 plus methods on handles. The suite's own count is what `make test` prints.
 These figures are produced by `tools/bundle_docs.lua` from the executable
@@ -1126,8 +1126,15 @@ refuses to hide. Read it once.
 
 ### Errors kuu itself prints
 
-Every message kuu produces has the shape `DOMAIN code: text`, and the codes
-are listed per module page. `kuu docs search CODE` finds the page.
+Every classified failure kuu reports has the shape `kuu: DOMAIN code: text`,
+and the codes are listed per module page. `kuu docs search CODE` finds the
+page. Two other shapes reach standard error and are not failures: `kuu run`'s
+progress lines, `kuu: NAME 0.3s` as each task ends, or `kuu: NAME failed
+after 0.3s` ahead of the failure's own line, and notices, `kuu: warning:
+…`, which `--json` also carries as `notes`. A usage failure is followed by
+the usage block it refers to. An uncaught error in a program is `kuu:
+message` with the traceback, and a crash in kuu itself is `kuu: crashed:
+…`, a defect to report.
 
 ---
 
@@ -1605,13 +1612,16 @@ while declaring is reported with its line and exits 2.
 ### Running and failing
 
 A task succeeds by returning nothing. It fails by raising, or by returning
-`nil, err`. The runner prints one line per task on standard error when it
+`nil, err` — an error of the project's own domain and code, as [err](#err)
+says; a second value that is a string instead is wrapped as `TASK failed`
+with that text as the message. The runner prints one line per task on standard error when it
 finishes, `kuu: build 1.2s`, and on failure names the task and the error.
 Dependencies that already ran are not run again, and nothing after a failed
 task runs. Every argument is checked before anything runs: the named task's
-against its spec, and each dependency's spec against no arguments. So
-`--help`, a wrong argument, or a dependency that requires an argument exits 2
-with nothing started.
+against its spec, and each dependency's spec against no arguments. So a
+wrong argument, or a dependency that requires an argument, exits 2 with
+nothing started, and `--help` after the task name prints that task's usage
+on standard output and exits 0, as every `--help` does.
 
 ```lua
 run = function(opts)
@@ -1620,7 +1630,10 @@ end
 ```
 
 `task.defaults { timeout = "10m" }` gives every `task.exec` a default
-child timeout. A duration string uses the same units as `proc`, and a number
+child timeout. Without it, and without a `timeout` on the call or on the
+tool's declaration, a child has no time bound at all: the job, the limits
+and the record are unconditional, the deadline is the manifest's to set. A
+duration string uses the same units as `proc`, and a number
 is seconds. An explicit `timeout` in the call wins, including zero.
 `task.defaults {}` clears the default. Each call replaces the preceding
 defaults; only `timeout` is accepted. A malformed duration raises `TASK
@@ -1635,7 +1648,11 @@ as it happens; under `--json` it streams to standard error instead. It takes
 the same table as `proc.run` (`cwd`, `env`, `timeout`, `maxout`, `limits`)
 and returns `true`, or `nil, err` with `TASK exit` and the child's code in
 `err.exit`, which `kuu run` then uses as its own exit code. A child that timed
-out, was killed, or hit a job limit is `TASK failed`. The caller's argv and
+out, was killed, or hit a job limit is `TASK failed`, with the result's
+`status` on the error and, for a limit, which one as `limit`, so a task
+branches on `e.status == "timeout"` or `e.limit == "memory"` and never on
+the message; the child event of the `--json` stream carries `limit` the
+same way. The caller's argv and
 options table is never modified, in either console or JSON mode.
 The `limits` table has `memory` (bytes or a size string), `cpu` (seconds or
 a duration string), and `processes` (a positive count); see
@@ -1652,7 +1669,9 @@ a duration string), and `processes` (a positive count); see
 ### JSON
 
 `kuu run --json` (the flag before the task name) prints a stream on standard
-output, one JSON object per line as things happen, and nothing else there:
+output, one JSON object per line as things happen, and nothing else there
+— `--help` excepted, which prints usage as text and no envelope, before or
+after the task name, as every `--help` does:
 `print` and `io.write` from tasks are redirected to standard error, and the
 output of a `task.exec` child is streamed to standard error as it arrives,
 whatever `inherit` the task asked for, with no cap on its size. Only a direct
@@ -1693,7 +1712,8 @@ type RunEvent =
       error?: RunError }
   | { v: 1; event: "child"; task: string; state: "started"; pid: number; argv: string[]; tool?: string }
   | { v: 1; event: "child"; task: string; state: "finished"; pid: number; argv: string[]; tool?: string;
-      status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number; seconds: number;
+      status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number;
+      limit?: "memory" | "cpu" | "processes"; seconds: number;
       bytes: { out: number; err: number } };
 ```
 
@@ -1750,7 +1770,7 @@ their declared default and choices, not parsed values; bounds such as
 for `list --json` because that verb does not redirect declaration output.
 Malformed command-line options are rejected with a diagnostic on stderr
 before either verb builds a JSON report. `--help` before the task name
-prints usage and exits 0; task-specific `--help` is a `CLI usage` failure.
+prints the verb's usage and exits 0, and after it the task's, the same way.
 
 ### The module in a program
 
@@ -1780,8 +1800,8 @@ The tools a manifest declares with `task.tool "name" { ... }`, and
 | `TASK badvalue` | a bad declaration, or `manifest.lua` failed to load |
 | `TASK usage` | no task or default was selected — the message says when the manifest declares no task at all — a runner option is unknown, or a declaration holds an attribute or option that is not known |
 | `TASK unknown`, `TASK cycle` | the dependency graph; `unknown` for the task the command named suggests the nearest declared one and names `kuu list`, and is also a tool the manifest does not declare |
-| `CLI usage` | wrong arguments for a task, or `--help` |
-| `TASK failed` | a task raised something that is not an `err`, or its child did not exit normally |
+| `CLI usage` | wrong arguments for a task |
+| `TASK failed` | a task raised something that is not an `err`, returned `nil` with a string instead of an `err`, or its child did not exit normally — `status` and `limit` on the error say how |
 | `TASK exit` | a `task.exec` child exited non-zero; `err.exit` is the code |
 
 Errors returned or raised by `proc` while starting a child keep their
@@ -2067,7 +2087,7 @@ is the project's to commit.
 | field | |
 |---|---|
 | `v` | the record's schema version, 1 |
-| `kuu`, `root`, `git` | which runtime, which project, and where the repository stood: `git.head` and `git.ref` are read from `.git` itself, no `git.exe` assumed; absent without a repository |
+| `kuu`, `root`, `git` | which runtime, which project, and where the repository stood: `git.head` and `git.ref` are read from `.git` itself, no `git.exe` assumed; absent without a repository, `ref` alone on a branch not yet born, `head` alone when HEAD is detached |
 | `kind`, `name` | `verb` (`run`), `task` (its name), or `child` (the tool's name, else the program) |
 | `task`, `tool` | for a child, the task that ran it and the declaration it ran through, when it did |
 | `argv`, `cwd`, `pid` | what ran, from where, as what; `cwd` only for a child whose call gave one, and an absent field is absent, never `null` |
@@ -2075,6 +2095,62 @@ is the project's to commit.
 | `status`, `code`, `bytes`, `error` | how it ended: a child's `exit`, `timeout`, `killed` or `limit` with its code, and the bytes on each stream when kuu relayed them (under `--json`; a child on the console has kuu's own streams and nothing is counted); a task's or the run's `ok` or `failed` with the error |
 | `delta` | on the first record of a run only: what changed under the root since the previous run, by size and mtime, skipping `.git`, `.tools`, `build`, `node_modules` and `.kuu`, and not entering a junction or symlink, as [`fs.dirs`](#fs) does not; the counts are complete, and up to forty paths are named, each with the content hash of what is there now when it can be read — a file another process holds open, or a name Windows would rewrite, is named without its `sha256`. That says which edits this run ran against. An edit with no crossing after it is work in progress, not a bypass |
 | `prev` | the SHA-256 of the record line before this one, across days |
+
+The three kinds, as a reader would type them:
+
+```typescript
+type LedgerRecord = Common & (
+  | { kind: "verb"; name: "run"; task?: string;       // the task that ran: the one named, else the default
+      argv: string[];                                  // the arguments after `kuu run`, as typed
+      status: "ok" | "failed"; code: number;           // kuu's exit code
+      error?: LedgerError }
+  | { kind: "task"; name: string;
+      status: "ok" | "failed"; error?: LedgerError }
+  | { kind: "child"; name: string; task: string; tool?: string;
+      argv: string[]; cwd?: string; pid: number;
+      status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number;
+      limit?: "memory" | "cpu" | "processes";
+      bytes?: { out: number; err: number } });
+type Common = { v: 1; kuu: string; root: string;
+  git?: { head?: string; ref?: string };              // a detached HEAD has only head; a branch not yet born has only ref
+  at: number; seconds: number; delta?: Delta; prev?: string };
+type LedgerError = { domain: string; code: string; message: string; exit?: number };
+type Delta = { added: number; changed: number; removed: number;
+  paths: { path: string; change: "added" | "changed" | "removed"; sha256?: string }[] };
+```
+
+A task's `error` is what its `run` returned or raised, with the domain and
+code the project chose, and `exit` set; the verb's carries the same domain,
+code and message, the exit being the verb's own `code`. A child that timed
+out or hit a limit is recorded with that `status` and no `error`: the
+failure is the task's, and its message names the child. `delta` sits on
+the first record the run writes, whichever kind that is — the first child,
+else the first task — and `prev` is absent only on the first record ever
+kept.
+
+The whole reader, and the question it most often answers — which task
+failed last, and why:
+
+```lua
+global none
+global <const> require, ipairs, print, table
+local fs, json = require "fs", require "json"
+local dir = ".kuu/ledger"
+local names = {}
+for _, e in ipairs((fs.list(dir) or { entries = {} }).entries) do
+  if e.name:match("^%d%d%d%d%-%d%d%-%d%d%.ndjson$") then names[#names + 1] = e.name end
+end
+table.sort(names)
+local failed
+for _, name in ipairs(names) do
+  for line in (fs.read(fs.join(dir, name)) or ""):gmatch("[^\n]+") do
+    local record = json.decode(line)
+    -- the task that failed, not the run that ended on it
+    if record and record.kind == "task" and record.status == "failed" then failed = record end
+  end
+end
+if failed then print(failed.kind, failed.name, failed.error.domain, failed.error.code, failed.error.message) end
+```
 
 The chain is the point of `prev`. Nothing prevents editing a line — the file
 is text, the directory is yours — but an edited line no longer hashes to
@@ -2134,6 +2210,10 @@ Four things are checked:
   way kuu would load it. A syntax error is reported with its line. Under a
   global declaration (`global none`, or any `global` statement), the compiler
   also refuses an undeclared global, so the classic typo is an error here.
+  A file that does not compile gets that one error, and the missing-`global`
+  warning below if that applies, and nothing else: its requires are not
+  listed and no other check is made until it parses, since the text they
+  read is not yet a program.
 - **It declares its globals.** A file with no `global` statement at all gets a
   warning, because in that file an undeclared global is silently nil at run
   time. [Pitfalls](#pitfalls) says how to start a file.
@@ -3836,6 +3916,24 @@ of failure, the disagreement is named in [upgrading to 0.10](#upgrading-010).
 Branch on `err.is(e, "PROC", "notfound")`, never on the message text.
 Messages are for people; domains and codes are for programs.
 
+### In your own code
+
+The same shape and the same law serve a project's own code. Choose an
+uppercase domain of your own — `REPORT`, `DEPLOY` — and codes of your own
+within it; `err.new` takes any domain, `check` judges codes only in the
+domains kuu owns, and an unfamiliar domain says nothing about correctness.
+Return `nil, err.new("REPORT", "stale", "inputs older than the report")`
+from a function, or from a task's `run`, for the outcome the function
+exists to report; raise for a caller's mistake. A task that returns
+`nil, err` fails with that domain and code: `kuu run` prints `kuu: REPORT
+stale: …`, the `--json` stream and envelope carry them as `error.domain`
+and `error.code`, and so does [the ledger](#ledger). A task that returns
+`nil, "some text"` instead is wrapped as `TASK failed` with that text as
+the message, and a caller can no longer tell it from any other failure.
+Of the extra fields, `exit` is the one kuu carries out of the task — into
+the stream, the envelope, the ledger, and the process's exit code; any
+other, `{ path = p }` say, stays on the Lua value for the task's own callers.
+
 ---
 
 ## mem
@@ -3858,8 +3956,10 @@ mem.open("build/state.json")                            -- somewhere else instea
 
 The file is `.kuu/memory.json` under the project root, the nearest
 `manifest.lua` upward from the current directory, or under the directory
-`require` searches when there is no project. Add `.kuu/` to the project's
-`.gitignore` unless the memory is meant to travel with the repository.
+`require` searches when there is no project. `.kuu/` is kuu's own and is
+never committed — it holds [the ledger](#ledger) too; a memory that is
+meant to travel with the repository is opened somewhere else with
+`mem.open(path)`.
 
 Every `get` reads the file. Every `set` holds a [`sync`](#sync) lock across
 processes in the same Windows session, named after the file, while it reads, merges, and
@@ -4481,8 +4581,11 @@ inspection calls can be synchronous, as their manual pages describe.
 
 Each block is a complete program. Save it under the indicated filename and
 run it with your repository's `kuu.exe`. Inputs are positional arguments;
-paths belong to the current directory unless absolute. The programs require
-kuu 0.7 or later. [`pty`](#pty) is provisional.
+paths belong to the current directory unless absolute. The first ten
+programs require kuu 0.7 or later, and the four after them, which are
+shaped by the front door — a manifest, a wrapper module, a reader of the
+run stream, a reader of the ledger — require 0.10. [`pty`](#pty) is
+provisional.
 
 ### 1. Wait for a port to open
 
@@ -4730,6 +4833,159 @@ print(child:text())
 assert(child:write("exit\r"))
 local result = assert(child:wait("5s"))
 assert(result.status == "exit" and result.code == 0, "prompt child failed")
+```
+### 11. A manifest: a task with arguments, a dependency, and a declared tool
+
+`manifest.lua` at the project root. `kuu run report --since 2026-09-01`
+runs `gen` first, then the declared tool through the door: the exe resolved
+against the root, the declared timeout, a record in the ledger, and every
+argument held to the declaration by `kuu check` before anything runs.
+
+```lua
+global none
+global <const> require, tostring
+local task, fs = require "task", require "fs"
+
+task.defaults { timeout = "10m" }
+
+task.tool "report" {
+  exe = "tools/report.exe",
+  args = { ["--out"] = "path", ["--since"] = "string", ["--verbose"] = "flag" },
+  output = "ndjson",
+  timeout = "5m",
+}
+
+task "gen" {
+  desc = "write build/inputs.json",
+  run = function()
+    fs.mkdir("build")
+    return fs.write("build/inputs.json", "[]\n")
+  end,
+}
+
+task "report" {
+  desc = "the report, from build/inputs.json",
+  deps = { "gen" },
+  args = {
+    { "--since", type = "string", default = "2026-01-01", help = "the first day to include" },
+    { "--verbose", type = "flag", help = "say what is skipped" },
+  },
+  run = function(opts)
+    local call = { tool = "report", "--out", "build/report.ndjson", "--since", tostring(opts.since) }
+    if opts.verbose then call[#call + 1] = "--verbose" end
+    return task.exec(call)
+  end,
+}
+
+task.default "report"
+```
+
+### 12. A module that wraps a tool and decodes its NDJSON
+
+`tools/report.lua` in the project, required as `require "tools.report"`:
+the tool is run for its output through `task.command`, so the declared exe
+and timeout apply, and each line of standard output is one record. A line
+that does not decode is the tool's fault, and says which line. This is the
+program's own `proc.run`, not a crossing; a task that wants the record
+calls `task.exec` instead.
+
+```lua
+global none
+global <const> require, ipairs
+local task, proc, json, err = require "task", require "proc", require "json", require "err"
+local M = {}
+
+-- M.rows(since) -> records | nil, err
+function M.rows(since)
+  local r, e = proc.run(task.command { tool = "report", "--out", "-", "--since", since })
+  if not r then return nil, e end
+  if r.status ~= "exit" then return nil, err.new("REPORT", "failed", "report: " .. r.status) end
+  if r.code ~= 0 then return nil, err.new("REPORT", "exit", "report exited with code " .. r.code, { exit = r.code }) end
+  local rows, number = {}, 0
+  for line in r.out:gmatch("[^\r\n]+") do
+    number = number + 1
+    local record, bad = json.decode(line)
+    if record == nil then return nil, err.new("REPORT", "badvalue", "line " .. number .. " is not JSON: " .. bad.message) end
+    rows[#rows + 1] = record
+  end
+  return rows
+end
+
+return M
+```
+
+### 13. Read the `kuu run --json` stream as it happens
+
+`kuu run --json test | kuu watch-run.lua` reads one event per line from
+standard input, prints each task as it ends, and exits with the run's own
+code when the envelope arrives — the error's `exit` when it has one, else 2
+for a usage or a `TASK` failure and 1 for the rest, the rule `kuu run` itself
+follows; a child's events name the pid and the program. The envelope is the
+last line, so a reader that only wants the outcome keeps the last line it
+saw.
+
+```lua
+global none
+global <const> require, io, os, print, string
+local json = require "json"
+local last
+for line in io.stdin:lines() do
+  local record = json.decode(line)
+  if record == nil then
+    io.stderr:write("not an event: ", line, "\n")
+  elseif record.event == "run" then
+    print("run " .. record.task .. " in " .. record.root)
+  elseif record.event == "task" and record.state == "finished" then
+    print(string.format("%s %s %.1fs%s", record.name, record.ok and "ok" or "failed", record.seconds,
+      record.error and ("  " .. record.error.domain .. " " .. record.error.code .. ": " .. record.error.message) or ""))
+  elseif record.event == "child" and record.state == "finished" then
+    print(string.format("  %s pid %d %s%s", record.argv[1], record.pid, record.status,
+      record.code and (" " .. record.code) or ""))
+  elseif record.ok ~= nil then
+    last = record
+  end
+end
+if last == nil then io.stderr:write("no envelope\n") os.exit(1) end
+if not last.ok then
+  local e = last.error
+  io.stderr:write(e.domain, " ", e.code, ": ", e.message, "\n")
+  local usage = (e.domain == "CLI" and e.code == "usage") or e.domain == "TASK"
+  os.exit(e.exit or (usage and 2 or 1))
+end
+```
+
+### 14. What failed last, from the ledger
+
+`kuu last-failure.lua [ROOT]` reads `.kuu/ledger/*.ndjson` under the
+project root, one JSON record per line, and prints the last task whose
+status is `failed` with its error — a child that timed out is recorded with
+that status and no error, and the run's own record ends on the task's error,
+so the task is the one to name — or says that nothing has failed. The files
+are the ledger's own format; nothing but `fs.read` and `json.decode` is
+needed to read them.
+
+```lua
+global none
+global <const> require, ipairs, print, os, io, table
+local fs, json, rt = require "fs", require "json", require "rt"
+local root = rt.args[1] or "."
+local dir = fs.join(root, ".kuu", "ledger")
+local listing = fs.list(dir)
+if not listing then io.stderr:write("no ledger under ", fs.absolute(root), "; kuu run writes one\n") os.exit(1) end
+local names = {}
+for _, entry in ipairs(listing.entries) do
+  if entry.name:match("^%d%d%d%d%-%d%d%-%d%d%.ndjson$") then names[#names + 1] = entry.name end
+end
+table.sort(names)
+local failed
+for _, name in ipairs(names) do
+  for line in (fs.read(fs.join(dir, name)) or ""):gmatch("[^\n]+") do
+    local record = json.decode(line)
+    if record and record.kind == "task" and record.status == "failed" then failed = record end
+  end
+end
+if failed == nil then print("nothing has failed") os.exit(0) end
+print(failed.kind, failed.name, failed.error and (failed.error.domain .. " " .. failed.error.code .. ": " .. failed.error.message) or "")
 ```
 
 ---

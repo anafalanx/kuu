@@ -2,8 +2,11 @@
 
 Each block is a complete program. Save it under the indicated filename and
 run it with your repository's `kuu.exe`. Inputs are positional arguments;
-paths belong to the current directory unless absolute. The programs require
-kuu 0.7 or later. [`pty`](pty.md) is provisional.
+paths belong to the current directory unless absolute. The first ten
+programs require kuu 0.7 or later, and the four after them, which are
+shaped by the front door — a manifest, a wrapper module, a reader of the
+run stream, a reader of the ledger — require 0.10. [`pty`](pty.md) is
+provisional.
 
 ## 1. Wait for a port to open
 
@@ -251,4 +254,157 @@ print(child:text())
 assert(child:write("exit\r"))
 local result = assert(child:wait("5s"))
 assert(result.status == "exit" and result.code == 0, "prompt child failed")
+```
+## 11. A manifest: a task with arguments, a dependency, and a declared tool
+
+`manifest.lua` at the project root. `kuu run report --since 2026-09-01`
+runs `gen` first, then the declared tool through the door: the exe resolved
+against the root, the declared timeout, a record in the ledger, and every
+argument held to the declaration by `kuu check` before anything runs.
+
+```lua
+global none
+global <const> require, tostring
+local task, fs = require "task", require "fs"
+
+task.defaults { timeout = "10m" }
+
+task.tool "report" {
+  exe = "tools/report.exe",
+  args = { ["--out"] = "path", ["--since"] = "string", ["--verbose"] = "flag" },
+  output = "ndjson",
+  timeout = "5m",
+}
+
+task "gen" {
+  desc = "write build/inputs.json",
+  run = function()
+    fs.mkdir("build")
+    return fs.write("build/inputs.json", "[]\n")
+  end,
+}
+
+task "report" {
+  desc = "the report, from build/inputs.json",
+  deps = { "gen" },
+  args = {
+    { "--since", type = "string", default = "2026-01-01", help = "the first day to include" },
+    { "--verbose", type = "flag", help = "say what is skipped" },
+  },
+  run = function(opts)
+    local call = { tool = "report", "--out", "build/report.ndjson", "--since", tostring(opts.since) }
+    if opts.verbose then call[#call + 1] = "--verbose" end
+    return task.exec(call)
+  end,
+}
+
+task.default "report"
+```
+
+## 12. A module that wraps a tool and decodes its NDJSON
+
+`tools/report.lua` in the project, required as `require "tools.report"`:
+the tool is run for its output through `task.command`, so the declared exe
+and timeout apply, and each line of standard output is one record. A line
+that does not decode is the tool's fault, and says which line. This is the
+program's own `proc.run`, not a crossing; a task that wants the record
+calls `task.exec` instead.
+
+```lua
+global none
+global <const> require, ipairs
+local task, proc, json, err = require "task", require "proc", require "json", require "err"
+local M = {}
+
+-- M.rows(since) -> records | nil, err
+function M.rows(since)
+  local r, e = proc.run(task.command { tool = "report", "--out", "-", "--since", since })
+  if not r then return nil, e end
+  if r.status ~= "exit" then return nil, err.new("REPORT", "failed", "report: " .. r.status) end
+  if r.code ~= 0 then return nil, err.new("REPORT", "exit", "report exited with code " .. r.code, { exit = r.code }) end
+  local rows, number = {}, 0
+  for line in r.out:gmatch("[^\r\n]+") do
+    number = number + 1
+    local record, bad = json.decode(line)
+    if record == nil then return nil, err.new("REPORT", "badvalue", "line " .. number .. " is not JSON: " .. bad.message) end
+    rows[#rows + 1] = record
+  end
+  return rows
+end
+
+return M
+```
+
+## 13. Read the `kuu run --json` stream as it happens
+
+`kuu run --json test | kuu watch-run.lua` reads one event per line from
+standard input, prints each task as it ends, and exits with the run's own
+code when the envelope arrives — the error's `exit` when it has one, else 2
+for a usage or a `TASK` failure and 1 for the rest, the rule `kuu run` itself
+follows; a child's events name the pid and the program. The envelope is the
+last line, so a reader that only wants the outcome keeps the last line it
+saw.
+
+```lua
+global none
+global <const> require, io, os, print, string
+local json = require "json"
+local last
+for line in io.stdin:lines() do
+  local record = json.decode(line)
+  if record == nil then
+    io.stderr:write("not an event: ", line, "\n")
+  elseif record.event == "run" then
+    print("run " .. record.task .. " in " .. record.root)
+  elseif record.event == "task" and record.state == "finished" then
+    print(string.format("%s %s %.1fs%s", record.name, record.ok and "ok" or "failed", record.seconds,
+      record.error and ("  " .. record.error.domain .. " " .. record.error.code .. ": " .. record.error.message) or ""))
+  elseif record.event == "child" and record.state == "finished" then
+    print(string.format("  %s pid %d %s%s", record.argv[1], record.pid, record.status,
+      record.code and (" " .. record.code) or ""))
+  elseif record.ok ~= nil then
+    last = record
+  end
+end
+if last == nil then io.stderr:write("no envelope\n") os.exit(1) end
+if not last.ok then
+  local e = last.error
+  io.stderr:write(e.domain, " ", e.code, ": ", e.message, "\n")
+  local usage = (e.domain == "CLI" and e.code == "usage") or e.domain == "TASK"
+  os.exit(e.exit or (usage and 2 or 1))
+end
+```
+
+## 14. What failed last, from the ledger
+
+`kuu last-failure.lua [ROOT]` reads `.kuu/ledger/*.ndjson` under the
+project root, one JSON record per line, and prints the last task whose
+status is `failed` with its error — a child that timed out is recorded with
+that status and no error, and the run's own record ends on the task's error,
+so the task is the one to name — or says that nothing has failed. The files
+are the ledger's own format; nothing but `fs.read` and `json.decode` is
+needed to read them.
+
+```lua
+global none
+global <const> require, ipairs, print, os, io, table
+local fs, json, rt = require "fs", require "json", require "rt"
+local root = rt.args[1] or "."
+local dir = fs.join(root, ".kuu", "ledger")
+local listing = fs.list(dir)
+if not listing then io.stderr:write("no ledger under ", fs.absolute(root), "; kuu run writes one\n") os.exit(1) end
+local names = {}
+for _, entry in ipairs(listing.entries) do
+  if entry.name:match("^%d%d%d%d%-%d%d%-%d%d%.ndjson$") then names[#names + 1] = entry.name end
+end
+table.sort(names)
+local failed
+for _, name in ipairs(names) do
+  for line in (fs.read(fs.join(dir, name)) or ""):gmatch("[^\n]+") do
+    local record = json.decode(line)
+    if record and record.kind == "task" and record.status == "failed" then failed = record end
+  end
+end
+if failed == nil then print("nothing has failed") os.exit(0) end
+print(failed.kind, failed.name, failed.error and (failed.error.domain .. " " .. failed.error.code .. ": " .. failed.error.message) or "")
 ```

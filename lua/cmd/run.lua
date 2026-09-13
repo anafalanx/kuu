@@ -151,7 +151,7 @@ local function open_the_door(root)
     if record.state == "finished" then
       crossing { kind = "child", name = record.tool or record.argv[1], task = current, tool = record.tool,
         argv = record.argv, cwd = record.cwd, pid = record.pid, at = run_at + (record.started - run_began),
-        seconds = record.seconds, status = record.status, code = record.code, bytes = record.bytes }
+        seconds = record.seconds, status = record.status, code = record.code, limit = record.limit, bytes = record.bytes }
     end
     record.started, record.cwd = nil, nil
     emit(record)
@@ -239,6 +239,7 @@ if not plan then finish(false, e4, { root = root }) end
 local opts_for = {}
 for _, entry in ipairs(plan) do
   local opts, e5 = task.arguments(entry, entry.name == name and args or {}, "kuu run " .. entry.name)
+  if not opts and e5.help then io.stdout:write(e5.message) os.exit(0) end -- the task's usage, as every --help
   if not opts then finish(false, e5, { root = root, task = name }) end
   opts_for[entry.name] = opts
 end

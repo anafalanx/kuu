@@ -18,8 +18,10 @@ mem.open("build/state.json")                            -- somewhere else instea
 
 The file is `.kuu/memory.json` under the project root, the nearest
 `manifest.lua` upward from the current directory, or under the directory
-`require` searches when there is no project. Add `.kuu/` to the project's
-`.gitignore` unless the memory is meant to travel with the repository.
+`require` searches when there is no project. `.kuu/` is kuu's own and is
+never committed — it holds [the ledger](ledger.md) too; a memory that is
+meant to travel with the repository is opened somewhere else with
+`mem.open(path)`.
 
 Every `get` reads the file. Every `set` holds a [`sync`](sync.md) lock across
 processes in the same Windows session, named after the file, while it reads, merges, and

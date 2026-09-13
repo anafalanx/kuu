@@ -115,13 +115,16 @@ while declaring is reported with its line and exits 2.
 ## Running and failing
 
 A task succeeds by returning nothing. It fails by raising, or by returning
-`nil, err`. The runner prints one line per task on standard error when it
+`nil, err` — an error of the project's own domain and code, as [err](err.md)
+says; a second value that is a string instead is wrapped as `TASK failed`
+with that text as the message. The runner prints one line per task on standard error when it
 finishes, `kuu: build 1.2s`, and on failure names the task and the error.
 Dependencies that already ran are not run again, and nothing after a failed
 task runs. Every argument is checked before anything runs: the named task's
-against its spec, and each dependency's spec against no arguments. So
-`--help`, a wrong argument, or a dependency that requires an argument exits 2
-with nothing started.
+against its spec, and each dependency's spec against no arguments. So a
+wrong argument, or a dependency that requires an argument, exits 2 with
+nothing started, and `--help` after the task name prints that task's usage
+on standard output and exits 0, as every `--help` does.
 
 ```lua
 run = function(opts)
@@ -130,7 +133,10 @@ end
 ```
 
 `task.defaults { timeout = "10m" }` gives every `task.exec` a default
-child timeout. A duration string uses the same units as `proc`, and a number
+child timeout. Without it, and without a `timeout` on the call or on the
+tool's declaration, a child has no time bound at all: the job, the limits
+and the record are unconditional, the deadline is the manifest's to set. A
+duration string uses the same units as `proc`, and a number
 is seconds. An explicit `timeout` in the call wins, including zero.
 `task.defaults {}` clears the default. Each call replaces the preceding
 defaults; only `timeout` is accepted. A malformed duration raises `TASK
@@ -145,7 +151,11 @@ as it happens; under `--json` it streams to standard error instead. It takes
 the same table as `proc.run` (`cwd`, `env`, `timeout`, `maxout`, `limits`)
 and returns `true`, or `nil, err` with `TASK exit` and the child's code in
 `err.exit`, which `kuu run` then uses as its own exit code. A child that timed
-out, was killed, or hit a job limit is `TASK failed`. The caller's argv and
+out, was killed, or hit a job limit is `TASK failed`, with the result's
+`status` on the error and, for a limit, which one as `limit`, so a task
+branches on `e.status == "timeout"` or `e.limit == "memory"` and never on
+the message; the child event of the `--json` stream carries `limit` the
+same way. The caller's argv and
 options table is never modified, in either console or JSON mode.
 The `limits` table has `memory` (bytes or a size string), `cpu` (seconds or
 a duration string), and `processes` (a positive count); see
@@ -162,7 +172,9 @@ a duration string), and `processes` (a positive count); see
 ## JSON
 
 `kuu run --json` (the flag before the task name) prints a stream on standard
-output, one JSON object per line as things happen, and nothing else there:
+output, one JSON object per line as things happen, and nothing else there
+— `--help` excepted, which prints usage as text and no envelope, before or
+after the task name, as every `--help` does:
 `print` and `io.write` from tasks are redirected to standard error, and the
 output of a `task.exec` child is streamed to standard error as it arrives,
 whatever `inherit` the task asked for, with no cap on its size. Only a direct
@@ -203,7 +215,8 @@ type RunEvent =
       error?: RunError }
   | { v: 1; event: "child"; task: string; state: "started"; pid: number; argv: string[]; tool?: string }
   | { v: 1; event: "child"; task: string; state: "finished"; pid: number; argv: string[]; tool?: string;
-      status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number; seconds: number;
+      status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number;
+      limit?: "memory" | "cpu" | "processes"; seconds: number;
       bytes: { out: number; err: number } };
 ```
 
@@ -260,7 +273,7 @@ their declared default and choices, not parsed values; bounds such as
 for `list --json` because that verb does not redirect declaration output.
 Malformed command-line options are rejected with a diagnostic on stderr
 before either verb builds a JSON report. `--help` before the task name
-prints usage and exits 0; task-specific `--help` is a `CLI usage` failure.
+prints the verb's usage and exits 0, and after it the task's, the same way.
 
 ## The module in a program
 
@@ -290,8 +303,8 @@ The tools a manifest declares with `task.tool "name" { ... }`, and
 | `TASK badvalue` | a bad declaration, or `manifest.lua` failed to load |
 | `TASK usage` | no task or default was selected — the message says when the manifest declares no task at all — a runner option is unknown, or a declaration holds an attribute or option that is not known |
 | `TASK unknown`, `TASK cycle` | the dependency graph; `unknown` for the task the command named suggests the nearest declared one and names `kuu list`, and is also a tool the manifest does not declare |
-| `CLI usage` | wrong arguments for a task, or `--help` |
-| `TASK failed` | a task raised something that is not an `err`, or its child did not exit normally |
+| `CLI usage` | wrong arguments for a task |
+| `TASK failed` | a task raised something that is not an `err`, returned `nil` with a string instead of an `err`, or its child did not exit normally — `status` and `limit` on the error say how |
 | `TASK exit` | a `task.exec` child exited non-zero; `err.exit` is the code |
 
 Errors returned or raised by `proc` while starting a child keep their

@@ -239,14 +239,20 @@ end
 function task.arguments(entry, args, program_name)
   args = args or {}
   program_name = program_name or ("kuu run " .. entry.name)
+  local cli = require "cli"
   if entry.args == nil then
+    -- A task with no arguments still answers --help, with the usage that says so.
+    if #args == 1 and args[1] == "--help" then
+      return nil, err.new("CLI", "usage", cli.usage({}, program_name), { help = true })
+    end
     if #args > 0 then return nil, err.new("CLI", "usage", "task '" .. entry.name .. "' takes no arguments") end
     return {}
   end
-  local cli = require "cli"
   local parsed, e = cli.parse(args, entry.args, program_name)
   if not parsed then return nil, e end
-  if parsed.help then return nil, err.new("CLI", "usage", cli.usage(entry.args, program_name)) end
+  -- --help is not a mistake: the usage comes back as the message, with
+  -- `help` set, so the runner prints it and exits 0 like every other --help.
+  if parsed.help then return nil, err.new("CLI", "usage", cli.usage(entry.args, program_name), { help = true }) end
   return parsed
 end
 
@@ -314,8 +320,8 @@ local function relay_exec(spec, relay, tool)
   out_pump:join()
   err_pump:join()
   observe { event = "child", state = "finished", pid = c.pid, argv = argv, tool = tool, cwd = spec.cwd,
-            status = r and r.status or "error", code = r and r.code or nil, seconds = sched.clock() - began,
-            bytes = bytes, started = began }
+            status = r and r.status or "error", code = r and r.code or nil, limit = r and r.limit or nil,
+            seconds = sched.clock() - began, bytes = bytes, started = began }
   return r, e2
 end
 
@@ -371,13 +377,15 @@ function task.exec(spec)
       local argv = {}
       for i, item in ipairs(spec) do argv[i] = item end
       observe { event = "child", state = "finished", pid = r.pid, argv = argv, tool = tool, cwd = spec.cwd,
-                status = r.status, code = r.code, seconds = sched.clock() - began, started = began }
+                status = r.status, code = r.code, limit = r.limit, seconds = sched.clock() - began, started = began }
     end
   end
   if not r then return nil, e end
   if r.status ~= "exit" then
+    -- The result state rides on the error as fields, so a task branches on
+    -- e.status and e.limit, never on the message.
     local reason = r.status .. (r.limit and (" (" .. r.limit .. ")") or "")
-    return nil, err.new("TASK", "failed", spec[1] .. ": " .. reason)
+    return nil, err.new("TASK", "failed", spec[1] .. ": " .. reason, { status = r.status, limit = r.limit })
   end
   if r.code ~= 0 then
     return nil, err.new("TASK", "exit", spec[1] .. " exited with code " .. r.code, { exit = r.code })

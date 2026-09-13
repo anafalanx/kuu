@@ -31,7 +31,7 @@ is the project's to commit.
 | field | |
 |---|---|
 | `v` | the record's schema version, 1 |
-| `kuu`, `root`, `git` | which runtime, which project, and where the repository stood: `git.head` and `git.ref` are read from `.git` itself, no `git.exe` assumed; absent without a repository |
+| `kuu`, `root`, `git` | which runtime, which project, and where the repository stood: `git.head` and `git.ref` are read from `.git` itself, no `git.exe` assumed; absent without a repository, `ref` alone on a branch not yet born, `head` alone when HEAD is detached |
 | `kind`, `name` | `verb` (`run`), `task` (its name), or `child` (the tool's name, else the program) |
 | `task`, `tool` | for a child, the task that ran it and the declaration it ran through, when it did |
 | `argv`, `cwd`, `pid` | what ran, from where, as what; `cwd` only for a child whose call gave one, and an absent field is absent, never `null` |
@@ -39,6 +39,62 @@ is the project's to commit.
 | `status`, `code`, `bytes`, `error` | how it ended: a child's `exit`, `timeout`, `killed` or `limit` with its code, and the bytes on each stream when kuu relayed them (under `--json`; a child on the console has kuu's own streams and nothing is counted); a task's or the run's `ok` or `failed` with the error |
 | `delta` | on the first record of a run only: what changed under the root since the previous run, by size and mtime, skipping `.git`, `.tools`, `build`, `node_modules` and `.kuu`, and not entering a junction or symlink, as [`fs.dirs`](fs.md) does not; the counts are complete, and up to forty paths are named, each with the content hash of what is there now when it can be read — a file another process holds open, or a name Windows would rewrite, is named without its `sha256`. That says which edits this run ran against. An edit with no crossing after it is work in progress, not a bypass |
 | `prev` | the SHA-256 of the record line before this one, across days |
+
+The three kinds, as a reader would type them:
+
+```typescript
+type LedgerRecord = Common & (
+  | { kind: "verb"; name: "run"; task?: string;       // the task that ran: the one named, else the default
+      argv: string[];                                  // the arguments after `kuu run`, as typed
+      status: "ok" | "failed"; code: number;           // kuu's exit code
+      error?: LedgerError }
+  | { kind: "task"; name: string;
+      status: "ok" | "failed"; error?: LedgerError }
+  | { kind: "child"; name: string; task: string; tool?: string;
+      argv: string[]; cwd?: string; pid: number;
+      status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number;
+      limit?: "memory" | "cpu" | "processes";
+      bytes?: { out: number; err: number } });
+type Common = { v: 1; kuu: string; root: string;
+  git?: { head?: string; ref?: string };              // a detached HEAD has only head; a branch not yet born has only ref
+  at: number; seconds: number; delta?: Delta; prev?: string };
+type LedgerError = { domain: string; code: string; message: string; exit?: number };
+type Delta = { added: number; changed: number; removed: number;
+  paths: { path: string; change: "added" | "changed" | "removed"; sha256?: string }[] };
+```
+
+A task's `error` is what its `run` returned or raised, with the domain and
+code the project chose, and `exit` set; the verb's carries the same domain,
+code and message, the exit being the verb's own `code`. A child that timed
+out or hit a limit is recorded with that `status` and no `error`: the
+failure is the task's, and its message names the child. `delta` sits on
+the first record the run writes, whichever kind that is — the first child,
+else the first task — and `prev` is absent only on the first record ever
+kept.
+
+The whole reader, and the question it most often answers — which task
+failed last, and why:
+
+```lua
+global none
+global <const> require, ipairs, print, table
+local fs, json = require "fs", require "json"
+local dir = ".kuu/ledger"
+local names = {}
+for _, e in ipairs((fs.list(dir) or { entries = {} }).entries) do
+  if e.name:match("^%d%d%d%d%-%d%d%-%d%d%.ndjson$") then names[#names + 1] = e.name end
+end
+table.sort(names)
+local failed
+for _, name in ipairs(names) do
+  for line in (fs.read(fs.join(dir, name)) or ""):gmatch("[^\n]+") do
+    local record = json.decode(line)
+    -- the task that failed, not the run that ended on it
+    if record and record.kind == "task" and record.status == "failed" then failed = record end
+  end
+end
+if failed then print(failed.kind, failed.name, failed.error.domain, failed.error.code, failed.error.message) end
+```
 
 The chain is the point of `prev`. Nothing prevents editing a line — the file
 is text, the directory is yours — but an edited line no longer hashes to

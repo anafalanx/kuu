@@ -101,7 +101,10 @@ task.default "build"
   check("a wrong task argument exits 2 with the task's usage, before anything runs", r.code == 2 and contains(r.err, "unknown option '--bogus'")
     and contains(r.err, "usage: kuu run build") and order() == "", T.describe(r) .. order())
   r = T.kuu({ "run", "build", "--help" }, { cwd = project })
-  check("--help after the task name prints its usage and exits 2 without running dependencies", r.code == 2 and contains(r.err, "--release") and order() == "", T.describe(r) .. order())
+  check("--help after the task name prints its usage on stdout and exits 0 without running dependencies",
+    r.code == 0 and contains(r.out, "usage: kuu run build") and contains(r.out, "--release") and r.err == "" and order() == "", T.describe(r) .. order())
+  r = T.kuu({ "run", "gen", "--help" }, { cwd = project })
+  check("and a task with no arguments answers --help the same way", r.code == 0 and contains(r.out, "usage: kuu run gen") and r.err == "", T.describe(r))
   r = T.kuu({ "run", "--dry-run", "test" }, { cwd = project })
   check("--dry-run prints the plan in order and runs nothing", r.code == 0 and r.out == "1. gen  generate sources\n2. build  compile\n3. test  run the tests\n" and order() == "", T.describe(r))
   r = T.kuu({ "run", "--json", "--dry-run", "test" }, { cwd = project })
@@ -434,9 +437,9 @@ task.default "build"
   local limits = { memory = "64M", cpu = "1s", processes = 2 }
   local called, result, limited = pcall(task.exec, { T.exe, limits = limits })
   proc.run = original_run
-  check("task.exec forwards child limits and refuses a limit result even with code zero",
+  check("task.exec forwards child limits and refuses a limit result even with code zero, carrying the state as fields",
     called and result == nil and err.is(limited, "TASK", "failed") and contains(limited.message, "limit (memory)")
-    and received.limits == limits, tostring(limited))
+    and limited.status == "limit" and limited.limit == "memory" and received.limits == limits, tostring(limited))
   fs.write(bare .. "/manifest.lua", 'require("task").defaults { timeout = "soon" }\n')
   r = T.kuu({ "list" }, { cwd = bare })
   check("bad defaults fail while declaring tasks, before any task runs",

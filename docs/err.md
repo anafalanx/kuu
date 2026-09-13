@@ -37,3 +37,21 @@ of failure, the disagreement is named in [upgrading to 0.10](upgrading-0.10.md).
 
 Branch on `err.is(e, "PROC", "notfound")`, never on the message text.
 Messages are for people; domains and codes are for programs.
+
+## In your own code
+
+The same shape and the same law serve a project's own code. Choose an
+uppercase domain of your own — `REPORT`, `DEPLOY` — and codes of your own
+within it; `err.new` takes any domain, `check` judges codes only in the
+domains kuu owns, and an unfamiliar domain says nothing about correctness.
+Return `nil, err.new("REPORT", "stale", "inputs older than the report")`
+from a function, or from a task's `run`, for the outcome the function
+exists to report; raise for a caller's mistake. A task that returns
+`nil, err` fails with that domain and code: `kuu run` prints `kuu: REPORT
+stale: …`, the `--json` stream and envelope carry them as `error.domain`
+and `error.code`, and so does [the ledger](ledger.md). A task that returns
+`nil, "some text"` instead is wrapped as `TASK failed` with that text as
+the message, and a caller can no longer tell it from any other failure.
+Of the extra fields, `exit` is the one kuu carries out of the task — into
+the stream, the envelope, the ledger, and the process's exit code; any
+other, `{ path = p }` say, stays on the Lua value for the task's own callers.
