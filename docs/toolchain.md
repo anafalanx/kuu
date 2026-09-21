@@ -122,7 +122,7 @@ as a required release check and run by hand, and on 2026-09-12 its build was
 found 22 commits stale. `SOAK` defaults to
 60 seconds; `FUZZ` and `FUZZ_SEED` below are inherited by the gate.
 
-`analyze` compiles all authored `src/*.c` files separately into `build/analyze`
+`analyze` compiles all authored `src/*.c` and `examples/*.c` files separately into `build/analyze`
 with GCC's `-fanalyzer`, no optimization, and the normal warning-as-error gate.
 It does not analyze vendored libraries or claim to prove memory safety.
 
@@ -241,9 +241,13 @@ refused.
 whose defaults fit the owner's machine; `GH` names the gh executable when it
 is not on `PATH`.
 
-A project takes a release by copying `kuu.exe` directly into its root, after
-checking the download against the sidecar, and states the version it expects
-at the top of its `manifest.lua`.
+A project keeps its chosen `kuu.exe` directly in its root, either downloaded
+and ignored or committed as a signed binary. In both models it verifies the
+exact reviewed SHA-256, accepted signature and expected signing identity before
+first execution; see [adoption and runtime verification](adopting.md#1-give-the-repository-its-kuu).
+The runtime pin identifies the approved bytes, while the minimum-version guard
+in `manifest.lua` states the capabilities its recipes require. Upgrades are
+deliberate project decisions, not automatic changes to a shared installation.
 
 Before publishing a release:
 

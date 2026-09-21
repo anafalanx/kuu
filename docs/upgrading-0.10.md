@@ -102,6 +102,10 @@ cannot be written is one line on standard error and the run goes on. Add
 `.kuu/` to the repository's `.gitignore` if it is not there already for
 `mem`. [The ledger](ledger.md) is the page.
 
+That describes the 0.10 release. 0.12 removes automatic tree
+deltas and keeps execution history; existing records remain readable. See the
+[0.12 migration note](upgrading-from-0.11.md).
+
 ## `kuu run --json` is a stream
 
 Through 0.9 `kuu run --json` printed one JSON object when the run ended.

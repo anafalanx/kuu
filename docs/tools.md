@@ -42,10 +42,12 @@ task "report" {
 | `timeout` | the child timeout when the call gives none; the default from `task.defaults` after that |
 | `reach` | what the tool touches — `read`, `write` and `net` lists; declared and shown, never enforced, since whether a tool can be confined is its own technology's business. [Confined tools](confined.md) says what a tool that confines itself must provide |
 
-A name the declaration cannot hold raises `TASK usage`, and `kuu check`
-reports the same name without running, in whichever file the declaration
-stands; a value of the wrong shape raises `TASK badvalue`; a name declared
-twice, `TASK badvalue`.
+An unknown attribute raises `TASK usage`, and `kuu check` reports visible
+attribute mistakes without running the declaration. A value of the wrong
+shape, an invalid tool name, or a name declared twice raises `TASK badvalue`.
+Tool names start with an ASCII letter or digit and continue with letters,
+digits, `.`, `_` or `-`. For an executable named `g++`, choose a declaration
+name such as `cxx`; `cxx` is not a built-in tool.
 
 ## Calling one
 
@@ -77,6 +79,12 @@ decodes what comes back. A tool the manifest does not declare is
 child has the job and the timeout like any other, but only `task.exec`
 crosses the door, so neither the `kuu run --json` stream nor [the
 ledger](ledger.md) sees it.
+
+The enclosing task and run are still recorded. Capture is a supported choice
+when the task needs output bytes; it is not necessary merely to accept a
+documented nonzero exit code. The [process recipes](process-recipes.md) show
+`TASK exit` classification, capture diagnostics, and serializing a command as
+separate `argv`, `cwd` and `env` fields rather than a mixed Lua table.
 
 ## What the door does, and does not
 

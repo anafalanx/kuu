@@ -1,7 +1,7 @@
 # kuu
 
 This document is the single place where kuu is explained: what the runtime is
-today at 0.10.0 and what was learned building it and its two predecessors. It
+today at 0.12 and what was learned building it and its two predecessors. It
 exists because that understanding was scattered across three repositories, a
 roadmap, an inheritance register, a shortcomings log and a decision record,
 and none of those answer the question *why is it like this* in one reading.
@@ -10,9 +10,9 @@ kuu is a runtime for Lua 5.5, and only that. It does not define a language,
 and it will not: what it grows are capabilities in the palette, and options on
 the calls that are already there.
 
-Nothing here is a promise about compatibility. The compatibility posture is
-still being designed and is deliberately left open; where 0.10.0 changed
-something, the change is described, not ratified.
+The [stability statement](docs/stability.md) defines the compatibility posture:
+0.x contracts can change with documented migration guidance, and the planned
+1.0 freeze names its scope and provisional exceptions explicitly.
 
 This file carries the complete manual as **Part III**, so everything kuu knows
 about itself can be read in one sitting without querying the executable.
@@ -21,12 +21,12 @@ about itself can be read in one sitting without querying the executable.
 
 ## Where things stand
 
-**kuu 0.10.0 is released.** Tagged on the tested commit, signed, published,
-and verified: the gate — suite, sanitizer, analysis, fuzzing, soak — green
-on that commit, the tag on it rather than on whatever the branch later
-points at, and the downloaded asset, its sidecar and the local signed file
-in agreement, with the released binary reporting its own certificate
-identity through `sys.signature`.
+**kuu 0.12 builds on feedback from real projects.** Normal task execution
+records history without observing the source tree. Explicit checking and module
+inventory share configurable exclusions; Windows file attributes, stronger
+declaration checks, consistent task help and tested project recipes complete
+the release. Projects moving from signed 0.11 should read
+`kuu docs upgrading-from-0.11` before running their tasks with the new runtime.
 
 It is the front-door release: `manifest.lua` declares a project's tasks and
 the tools they call, every crossing is recorded in a ledger under `.kuu/`,
@@ -36,14 +36,13 @@ itself — a page that states what is expected of an agent and asks it to
 report back, a `docs` verb like the others, and every verb pointing onward
 at the moment a next step is needed.
 
-The version break of 0.9.0 landed as predicted. A project carrying the guard
-published through 0.8 — `rt.version:match("^(%d+)%.(%d+)$")` — refuses 0.9.0
-and every later release, because that pattern does not match three
-components. `rt.version_at_least` is the fix, and since 0.10.0 `kuu check`
-names the guard where it stands.
+Versions use two numeric components from 0.11 onward. The intervening 0.9.0
+and 0.10.0 used three; guards that parse the old spelling need review.
+`rt.version_at_least` compares releases numerically without parsing text, and
+`kuu check` identifies obsolete three-component guards.
 
 **What is open** is design, not work in progress. The 1.0 criteria remain the
-owner's to set, `kuu watch` waits until something runs unattended, and the
+owner's to set, automatic project observation is outside the runner, and the
 intent is to take the time to get the design right and correct course where
 needed.
 
@@ -57,6 +56,8 @@ be fetched before reading. Coming to kuu cold, read in this order:
 
 1. **For the agent** — `kuu docs agent`: what is expected of you in a project
    that runs through kuu, and how to report back. Two minutes.
+   On an upgrade from 0.11, also read `kuu docs upgrading-from-0.11` and keep
+   the project's `kuu-eval.md` current with dated evidence and follow-ups.
 2. **Pitfalls** — the one page an agent's existing Lua knowledge most needs. It
    is the delta between the Lua you know and this runtime, plus the Windows
    facts kuu refuses to hide. Read it once, before writing anything.
@@ -87,22 +88,26 @@ usage: kuu FILE [arg ...]        run a Lua program file
        kuu - [arg ...]           run a program read from standard input
        kuu -e SCRIPT [arg ...]   run an inline script
        kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
-       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua
+       kuu run [--json] [--dry-run] [--timings] [TASK [arg ...]]   a task from the nearest manifest.lua
        kuu list [--json]         those tasks
-       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
-       kuu capabilities [--json] what a program can reach from here, and what to read
+       kuu check [--json] [--timings] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
+       kuu capabilities [--json] [--timings]   what a program can reach from here, and what to read
        kuu version | --version | --help
 
 Try a query now: all modules are available with -e; no file or manifest is needed.
   kuu -e "print(require('json').encode(require('sys').info()))"
 Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing
 kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.
+From signed 0.11: read kuu docs upgrading-from-0.11 before running project tasks.
 ```
 <!-- /usage -->
 
-kuu is the front door of a project. Everything that runs in the project runs
-through `kuu.exe` — a task, a build, a test, a fetch, a tool — and gets a
-job, a deadline, limits, and a record. If something cannot be done from
+kuu is the front door of a project. Repeated work runs as tasks through
+`kuu.exe`; tasks and their `task.exec` children receive execution records.
+Child processes run in jobs with the deadlines and limits the calls specify.
+For output capture, `task.command` resolves a declared tool for `proc.run`;
+the enclosing task remains recorded, but that child has no separate record.
+If something cannot be done from
 here, the project builds a tool for it, in any technology, declares it in
 `manifest.lua`, and calls it through the door. Editing is yours; running is
 the door's.
@@ -112,7 +117,7 @@ Building and verifying kuu itself, from the repository root:
 ```text
 .tools\msys2\ucrt64\bin\mingw32-make.exe -j8       build build/kuu.exe
 .tools\msys2\ucrt64\bin\mingw32-make.exe test      the suite
-.tools\msys2\ucrt64\bin\mingw32-make.exe gate      test, analyze, fuzz, soak
+.tools\msys2\ucrt64\bin\mingw32-make.exe gate      test, asan, analyze, fuzz, soak
 ```
 
 ### Where things are written down
@@ -131,11 +136,13 @@ Building and verifying kuu itself, from the repository root:
 | `docs/roadmap.md` | decisions and milestones, with their reasons |
 | `docs/inheritance.md` | what kuu carried over from its predecessors, each item sourced |
 | `docs/shortcomings.md` | problems found in real use, with evidence and status |
-| `docs/stability.md` | the compatibility posture — still under design |
+| `docs/stability.md` | the 0.x posture, planned 1.0 freeze and provisional exceptions |
+| `docs/upgrading-from-0.11.md` | how an existing 0.11 project adopts 0.12 |
 | `docs/upgrading-0.N.md` | what changed in a release and what a project must do |
 | `notes/` | dated handoff and validation records; not shipped |
 
-Three habits worth forming early. In a checkout you do not know, `kuu
+Three habits worth forming early. Verify the runtime and read its agent and
+migration guidance first. Once the manifest is ready to execute, `kuu
 capabilities` answers what is here in one command — the verbs, every module
 and the names it exports, and the project's own tasks and modules — so the
 first thing you write is written against what exists. `kuu check` finds
@@ -176,9 +183,9 @@ follows from it:
   tell the truth about the platform.
 
 <!-- figures -->
-By the numbers, 0.11 is 16,188 lines of authored host C, 5,717 lines of kuu's own
-Lua, a suite of 7,217 lines, and 7,013 lines of manual in 47 pages that ship
-inside the executable. The palette is 27 public modules and 173 functions,
+By the numbers, 0.12 is 16,690 lines of authored host C, 6,408 lines of kuu's own
+Lua, a suite of 12,908 lines, and 9,942 lines of manual in 57 pages that ship
+inside the executable. The palette is 27 public modules and 175 functions,
 plus methods on handles. The suite's own count is what `make test` prints.
 These figures are produced by `tools/bundle_docs.lua` from the executable
 and the tree, and the suite holds them.
@@ -186,21 +193,22 @@ and the tree, and the suite holds them.
 The verbs, as `kuu --help` prints them:
 
 ```text
-kuu 0.11 -- a Lua 5.5 runtime for agents on Windows
+kuu 0.12 -- a Lua 5.5 runtime for agents on Windows
 usage: kuu FILE [arg ...]        run a Lua program file
        kuu - [arg ...]           run a program read from standard input
        kuu -e SCRIPT [arg ...]   run an inline script
        kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
-       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua
+       kuu run [--json] [--dry-run] [--timings] [TASK [arg ...]]   a task from the nearest manifest.lua
        kuu list [--json]         those tasks
-       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
-       kuu capabilities [--json] what a program can reach from here, and what to read
+       kuu check [--json] [--timings] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
+       kuu capabilities [--json] [--timings]   what a program can reach from here, and what to read
        kuu version | --version | --help
 
 Try a query now: all modules are available with -e; no file or manifest is needed.
   kuu -e "print(require('json').encode(require('sys').info()))"
 Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing
 kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.
+From signed 0.11: read kuu docs upgrading-from-0.11 before running project tasks.
 ```
 <!-- /figures -->
 
@@ -316,8 +324,9 @@ does not throw. Branch on `err.is(e, "PROC", "notfound")`, never on message
 text.
 
 **Nothing goes missing without a counted cause.** A walk, a watch or a capture
-never presents a silent partial result. Every omitted branch is an `errors` row
-with the raw Windows code; every dropped event raises `dropped`; every
+never presents a silent partial result. Unreadable branches produce `errors`
+rows with raw Windows codes; intentional exclusions have separate metadata.
+Every dropped event raises `dropped`; every
 truncated stream sets `truncated`. The counts add up, and a caller can always
 tell "nothing was there" from "I could not look".
 
@@ -347,8 +356,12 @@ the wrong settings.
 
 ## How a project adopts kuu
 
-A repository copies `kuu.exe` into its root and writes one `manifest.lua`. That
-file states the minimum version it needs, lists its prerequisites by URL and
+A repository keeps its own pinned `kuu.exe` in its root and writes one
+`manifest.lua`. It can download and ignore the signed runtime or commit that
+binary; both models keep a reviewed release, SHA-256 and signing identity and
+verify the bytes before first execution. Runtime upgrades are the project
+owner's decision. The [adoption guide](docs/adopting.md) gives both workflows.
+The manifest states the minimum version it needs, lists its prerequisites by URL and
 SHA-256, and declares its tasks with their dependencies. `kuu run` executes a
 task after its dependencies, `kuu list` reads them back, and `kuu run
 --dry-run` shows the plan without running it.
@@ -365,7 +378,7 @@ Tcl/Tk from source before it can compile itself.
 The build is GNU make and gcc from a pinned MSYS2 UCRT64 toolchain copied into
 `.tools/`, with recipes running under `cmd.exe`. **kuu never builds kuu**: the
 build is make and gcc, and the tests are Lua run by the built executable.
-There is no PowerShell anywhere in the repository.
+The build recipes do not require PowerShell.
 
 Verification is layered and all of it runs locally:
 
@@ -382,21 +395,22 @@ Verification is layered and all of it runs locally:
   its build was found 22 commits stale.
 - `make gate` — all five in order: `test`, `asan`, `analyze`, `fuzz`, `soak`.
 
-## Where 0.10.0 stands
+## Where 0.12 stands
 
-0.10.0 is the front-door release: what runs in a project runs through
-`kuu.exe`, and the executable explains itself.
+0.12 refines the front door introduced in 0.10.0: repeated work runs through
+`kuu.exe`, and the executable explains its current contracts and migration path.
 
-- **`manifest.lua` is the declaration file**, `tasks.lua` still found for
-  one release and warned. Tools are declared beside the tasks that call
+- **`manifest.lua` is the declaration file**; `tasks.lua` remains a deprecated
+  fallback with a warning and no scheduled removal. Tools are declared beside the tasks that call
   them — `task.tool "name" { exe, args, output, emits, timeout, reach }` —
   and called through the door with `task.exec { tool = "name", ... }`;
   `check` reads the declarations as literals and holds every literal call
   to them, and `capabilities` lists them.
 - **The door keeps a ledger.** One record per crossing under
-  `.kuu/ledger/<day>.ndjson`, chained by hash, ninety days, the tree delta
-  since the previous run on each run's first record, the repository's head
-  read from `.git` itself. `capabilities` walks the chain and says whether
+  `.kuu/ledger/<day>.ndjson`, chained by hash, ninety days, with the repository's
+  head read from `.git` itself. Version 0.12 records execution history
+  without automatic tree snapshots or filesystem-change claims.
+  `capabilities` walks the chain and says whether
   it is intact. The record is never a condition on the run.
 - **`kuu run --json` is a stream**: run, task and child events as they
   happen, flushed per line, the envelope last, `notes` for what was also
@@ -413,9 +427,9 @@ Verification is layered and all of it runs locally:
   C and Lua; raise-or-return follows the function's purpose, stated in
   err.md, and a project's own code is told to follow both. The asan build
   is inside the gate, the compiler is pinned, and every figure in this
-  document is produced, not written.
+  generated figures block is produced from the executable and tree.
 
-Three audits with a skeptic per finding — over the tools, over the ledger
+The earlier 0.10.0 audits with a skeptic per finding — over the tools, over the ledger
 and the stream, over the manual's self-explanation — confirmed a hundred
 and eighteen findings between them, and every one was fixed with a check
 before its batch was gated.
@@ -428,7 +442,8 @@ still cheap, rather than adding capability.
 - **Versions gained a patch component.** `rt.version` now reads `0.9.0`. The
   guard published through 0.8 matched `^(%d+)%.(%d+)$`, which does not match
   three components, so every project carrying it would have refused this
-  runtime and every later one. `rt.version_at_least(major, minor, patch)`
+  runtime and 0.10.0. From 0.11, versions have two components again.
+  `rt.version_at_least(major, minor, patch)`
   replaces the pattern; a project never parses the version text again.
 - **`fs.write` retries its rename.** The atomic replace had failed
   intermittently with access-denied since 0.5 and the cause was unisolated.
@@ -594,7 +609,7 @@ size of its boundary, not on the appeal of its parts.
   for this use, and it must be typed at the top of every file, along with every
   standard name used.
 
-**What vendoring costs.** kuu's 1.48 MB executable is, by object weight:
+**What vendoring costs.** An earlier 1.48 MB build was measured by object weight:
 
 ```
 lua     716K   the language
@@ -603,7 +618,7 @@ yyjson  300K   JSON
 host    632K   kuu's own code
 ```
 
-Only 632 K is kuu. The rest is batteries Lua does not ship, carried as 4.4 MB
+In that measurement, only 632 K was kuu. The rest is batteries Lua does not ship, carried as 4.4 MB
 of third-party source that must be tracked and audited for as long as kuu
 lives. PCRE2 alone is 43% of the binary, 788 lines of binding, and produced two
 real defects found by external review — a shared match block that a nested call
@@ -703,12 +718,17 @@ If you are an agent working in a project that runs through kuu, [For the
 agent](#kuu-page-agent) says what is expected of you and how to report back. Read
 it first, then Pitfalls once.
 
+For a project that previously used signed 0.11, read
+[Upgrading from 0.11](#kuu-page-upgrading-from-011) before running project tasks:
+`kuu docs upgrading-from-0.11`. It explains the execution-history contract,
+inspection defaults and the project instructions that need review.
+
 kuu runs on Windows 11 version 23H2 and later, and Windows Server 2025 and
 later. The runtime uses native Windows process, console and filesystem APIs.
 Console shutdown adapts to the older 23H2 lifetime contract; the Lua API is
 the same on every supported version.
 
-This is version 0.11: the runner, the scheduler with scoped deadlines,
+This is version 0.12: the runner, the scheduler with scoped deadlines,
 processes with resource limits (its own children and the others on the machine), files, JSON, CSV, INI, HTTP, archives,
 hashing, text encodings, regular expressions, time, logging, argument
 parsing, a repository's tasks and the tools they call, declared once in
@@ -741,16 +761,17 @@ usage: kuu FILE [arg ...]        run a Lua program file
        kuu - [arg ...]           run a program read from standard input
        kuu -e SCRIPT [arg ...]   run an inline script
        kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
-       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua
+       kuu run [--json] [--dry-run] [--timings] [TASK [arg ...]]   a task from the nearest manifest.lua
        kuu list [--json]         those tasks
-       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
-       kuu capabilities [--json] what a program can reach from here, and what to read
+       kuu check [--json] [--timings] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
+       kuu capabilities [--json] [--timings]   what a program can reach from here, and what to read
        kuu version | --version | --help
 
 Try a query now: all modules are available with -e; no file or manifest is needed.
   kuu -e "print(require('json').encode(require('sys').info()))"
 Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing
 kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.
+From signed 0.11: read kuu docs upgrading-from-0.11 before running project tasks.
 ```
 <!-- /usage -->
 
@@ -778,8 +799,8 @@ array of the `rt` module. There is no `arg` global.
 ```lua
 local rt = require("rt")
 print(rt.version, rt.lua, rt.route, rt.exe, rt.program, #rt.args)
--- 0.11  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
-rt.version_at_least(0, 11)  -- true: this runtime is 0.11 or newer
+-- 0.12  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
+rt.version_at_least(0, 12)  -- true: this runtime is 0.12 or newer
 ```
 
 `rt.route` is `"file"`, `"stdin"`, `"eval"`, or `"cmd"` for a verb such as
@@ -805,7 +826,7 @@ hashing, and every other organ are behind `require`.
 | module | gives |
 |---|---|
 | [`proc`](#kuu-page-proc) | children with decided lifetimes and resource limits: run, start, wait, kill, detach; the other processes: list, find, tree |
-| [`fs`](#kuu-page-fs) | files, directories, identity, links, walks, watches, with Windows truth |
+| [`fs`](#kuu-page-fs) | files, directories, attributes, identity, links, walks, watches, with Windows truth |
 | [`http`](#kuu-page-http) | fetch and post over WinHTTP, with the machine's proxy and certificates |
 | [`sched`](#kuu-page-sched) | tasks, sleep, a monotonic clock, wall time, scoped deadlines |
 | [`json`](#kuu-page-json) | strict decoding and exact encoding |
@@ -931,7 +952,25 @@ type DocsSearch = { ok: true; result: { text: string;
   provisional.
 - [Cookbook](#kuu-page-cookbook): fourteen complete programs for common automation
   jobs, the last four shaped by the front door.
+- [Bounded publication and cleanup](#kuu-page-cleanup): retry Windows denials within
+  a project budget, publish validated staging, and retain both failure causes.
+- [Process recipes](#kuu-page-process-recipes): serialize command descriptions,
+  classify child outcomes and preserve captured diagnostics.
+- [Working directories](#kuu-page-working-directories): preserve the caller's directory
+  and exact arguments through a wrapper, a task and a child process.
+- [Project environment](#kuu-page-project-environment): share root-derived cache paths
+  between command-line tools and newly launched editors.
+- [Relocation and health checks](#kuu-page-relocation): move a checkout, rebuild local
+  environments, and inspect dependencies without provisioning them.
+- [Detached editors and GUI verification](#kuu-page-editor): use fresh profiles and
+  a bounded native probe on a private desktop, with explicit readiness checks.
+- [Native helper and shortcut](#kuu-page-native-helper): cache a helper by verified
+  build inputs and regenerate a local shortcut after moving the project.
+- [Reconstruction and publication recovery](#kuu-page-reconstruction): verify cached
+  restores and independent backups, and reconcile uncertain upload outcomes.
 - [Stability](#kuu-page-stability): the future 1.x contract and minimum-version guards.
+- [Upgrading from 0.11](#kuu-page-upgrading-from-011): the migration checklist for
+  0.12, execution history, inspection policy and new APIs.
 - [Upgrading to 0.11](#kuu-page-upgrading-011): N.N version numbers, corrections and
   behavior changes since 0.10.0, and the shorter route to an inline command.
 - [proc](#kuu-page-proc), [fs](#kuu-page-fs), [http](#kuu-page-http), [net](#kuu-page-net),
@@ -949,6 +988,9 @@ type DocsSearch = { ok: true; result: { text: string;
 - [The ledger](#kuu-page-ledger): what `kuu run` remembers of every crossing, under
   `.kuu/ledger`, chained and kept ninety days.
 - [check](#kuu-page-check): what `kuu check` finds without running a file.
+- [Scan configuration](#kuu-page-scan): `kuu.config.json` controls shared project
+  inspection for checking and module inventory, with validated exclusions and
+  safe traversal.
 - [Toolchain](#kuu-page-toolchain): what kuu's own `.tools` holds and where it comes
   from.
 - [Upgrading to 0.10](#kuu-page-upgrading-010): no call moves, but `check` reports
@@ -985,9 +1027,30 @@ before [Pitfalls](#kuu-page-pitfalls).
 
 ### Arriving
 
-Run `kuu capabilities` to discover the runtime and the project's tasks and
-tools. The manual is inside the executable; no network or source checkout
-is needed. With the project's copy in the current directory:
+First establish that the project's copy matches its reviewed runtime pin,
+using the [adoption verification procedure](#kuu-page-adopting-verify-before-first-execution)
+before executing a newly downloaded or checked-out binary. The project may
+download and ignore its runtime or commit the signed binary; both are supported.
+Keep that choice and its approved version, hash and signing identity. Change
+them only as part of an owner-authorized runtime upgrade.
+
+If this project previously used signed 0.11, read
+`kuu docs upgrading-from-0.11` before running project code with a replacement.
+It explains the changes to execution history, inspection, reports and project
+instructions; old advice in `AGENTS.md` or README files can describe behavior
+this executable no longer has. Follow its ordered upgrade checklist while
+keeping the project's own task and approval policies.
+
+Read the project's existing `kuu-eval.md` for earlier experience and unresolved
+difficulties. Recheck relevant reports as you work and [report back](#kuu-page-agent-reporting-back)
+with new evidence, including when an upgrade changes an earlier result.
+
+Run `kuu capabilities` to discover the runtime and the project's tasks and tools
+once its manifest is ready to execute. Like `kuu list`, this loads the manifest
+to learn its declarations. `kuu check` without `--fix` is read-only static
+inspection. The manual is inside the executable; reading it needs no network,
+source checkout or manifest execution. With the verified project copy in the
+current directory:
 
 ```powershell
 .\kuu.exe docs                         # list pages and their descriptions
@@ -1034,8 +1097,8 @@ any children or network operations they start.
 
 - **Everything that runs in the project runs through `kuu.exe`.** A
   crossing is a task run by `kuu run`, and each child that task starts
-  with `task.exec`; each gets a job, the limits and the timeout it was
-  given, and a record in [the ledger](#kuu-page-ledger). `kuu FILE` and `kuu -e`
+  with `task.exec`; each crossing gets a record in [the ledger](#kuu-page-ledger),
+  and each child gets a job, the limits and the timeout it was given. `kuu FILE` and `kuu -e`
   are for trying something once: what they start is in a job with
   whatever `timeout` and `limits` the call gives, and nothing is recorded.
   Anything that will run again is a task in `manifest.lua`.
@@ -1045,9 +1108,13 @@ any children or network operations they start.
   declaration — a name computed at run time is not judged, so write it in
   the call — and `capabilities` lists the tool. A bare `task.exec {
   "prog.exe" }` is a warning from `check` for that reason. A project
-  program started from a shell without `kuu.exe`, or with `proc.run` where
-  `task.exec { tool = ... }` was possible, is a bypass: it runs, and the
-  door does not see it. [Tools](#kuu-page-tools).
+  program started from a shell without `kuu.exe` bypasses that history.
+  When a task must capture and inspect output, use `task.command` to resolve
+  its declared tool, then `proc.run`. This is supported, but the captured
+  child has no individual ledger record or child event; the enclosing task
+  and run remain recorded. Prefer `task.exec` when capture is unnecessary,
+  including when a tool documents successful nonzero exits. The
+  [process recipes](#kuu-page-process-recipes) show both paths and their diagnostics.
 - **Bound what you run.** `task.defaults { timeout = "10m" }` in the
   manifest gives every child a timeout it does not set itself; without
   it, and without a `timeout` on the call or the declaration, a child has
@@ -1083,8 +1150,9 @@ any children or network operations they start.
   install nothing on the machine: nothing goes on `PATH`, and nothing is
   shared between repositories. [Adopting](#kuu-page-adopting).
 - **`.kuu/` is kuu's** — the notebook and the ledger. It sits in
-  `.gitignore` beside `kuu.exe`, `.tools/` and `build/`, and nothing in it
-  is yours to edit.
+  `.gitignore` beside `.tools/` and `build/`, and nothing in it is yours to
+  edit. Ignore `kuu.exe` only when the project downloads its pinned runtime;
+  a project may instead commit that signed binary.
 
 <a id="kuu-page-agent-reporting-back"></a>
 
@@ -1094,7 +1162,9 @@ kuu is built for you, and the only way it improves is being told where it
 helped and where it stood in the way. When you have worked in a project
 through kuu, append an entry to `kuu-eval.md` at the project root — a
 UTF-8 file the project commits, since `.kuu/` never travels and kuu sends
-nothing — and never rewrite an earlier entry. One entry per piece of work:
+nothing — and never rewrite an earlier entry. Create the file if it is missing.
+Keep it with the project's maintained source and include its updates in the
+project's normal review and commit workflow. One entry per piece of work:
 
 ```markdown
 ## 2026-09-13 — kuu 0.11 — adding the release task
@@ -1111,6 +1181,20 @@ nothing — and never rewrite an earlier entry. One entry per piece of work:
 - The timeout message should name the bound and where it was set.
 ```
 
+Maintain this history across runtime upgrades. Record the version actually
+tested; for a development build sharing a released version string, include its
+build or SHA-256 in the entry. When revisiting a difficulty, reproduce it where
+practical and append a follow-up referring to the earlier entry's date and issue.
+Say whether it still occurs, is resolved by the tested change, has a workaround,
+or remains unverified; release notes alone do not establish a fix in this project.
+Preserve the original report and its evidence; append corrections as follow-ups.
+Summarize relevant results from disposable validation copies in the project's
+root document, including a failed or deferred upgrade. Identify the test copy,
+project revision and Windows version when they affect the conclusion; distinguish
+candidate testing from actual adoption. Continue reporting after subsequent work
+with kuu. Record observed results and useful requests, without inventing problems
+to fill the example's sections.
+
 The heading is `## YYYY-MM-DD — kuu VERSION — what the work was`, on one
 line: `## `, the date in that form first, then the rest; a hyphen does as
 well as the dash. That is the line `kuu capabilities` counts, and a
@@ -1120,13 +1204,18 @@ an opinion, and belongs under *Should change*. An entry may name the
 ledger record it is about, by its day file and its `at`. Keep entries
 short: kuu counts them, and people read them where the project keeps
 them. Run `kuu capabilities` when you have written; its `eval` line shows
-the count and the date of the last entry, and nothing fails without it.
+the count and the date of the last entry, and nothing fails without it. That count
+confirms entry discovery; it does not validate evidence or determine issue status.
 
 <a id="kuu-page-agent-the-short-form"></a>
 
 ### The short form
 
-Run `kuu capabilities` first. Read pitfalls once. Everything that runs,
+Verify a newly obtained runtime against the project's reviewed pins before
+executing it. Coming from signed 0.11, read `kuu docs upgrading-from-0.11`
+before running project code with a replacement. Read `agent` for the current
+workflow, then use `kuu capabilities` to discover the project; it executes the
+manifest. Read pitfalls once. Everything that runs,
 runs through the door as a task with declared tools; try things with `kuu -e`
 or `kuu FILE`, keep them as tasks. Find APIs with `kuu docs search`, then copy
 the command to read their section. Bound every child. `global none` at the top of
@@ -1316,19 +1405,22 @@ message` with the traceback, and a crash in kuu itself is `kuu: crashed:
 verbs, manual and palette, and this project's tasks and its own modules.
 
 ```text
-kuu capabilities [--json]
+kuu capabilities [--json] [--timings]
 ```
 
 It exists because the answer was scattered. The palette is in the manual, the
 tasks are in `kuu list`, and a project's own modules are in its Lua; an agent
 arriving in a repository had to assemble those three itself, and an agent that
 guesses wrong writes code against a module that is not there. This is the
-answer assembled once, and it is the first thing to run in an unfamiliar
-checkout.
+answer assembled once. Start with [the agent guide](#kuu-page-agent) and, when replacing
+signed 0.11, [the migration guide](#kuu-page-upgrading-from-011). Then use capabilities
+with the verified runtime once the manifest is ready to execute: it loads the
+declarations, while `kuu check` inspects them statically.
 
-It is **provisional**: it arrived in 0.10.0, nothing has driven it yet, and
-what it reports is the shape a consuming agent would build on, so it sits
-outside the planned 1.0 freeze until a project has used it in earnest. See
+It is **provisional**: it arrived in 0.10.0, and its descriptor contract remains
+under evaluation through project use and feedback. Consuming agents build on
+that shape, so it stays outside the planned 1.0 freeze until a later release
+explicitly accepts the contract and its adoption evidence. See
 [stability](#kuu-page-stability).
 
 Nothing is reported that kuu cannot know.
@@ -1345,14 +1437,20 @@ Nothing is reported that kuu cannot know.
   alone the two do not differ. Failed directory listings and unreadable
   candidate modules make the inventory explicitly incomplete, with their
   paths and diagnostics; they never become a successful empty inventory.
+  Automatic discovery skips directory links the native walker refuses to
+  enter and skips file symlinks. Their targets are excluded from the file
+  count and module list; intentional exclusions do not make the inventory
+  incomplete. Ordinary filter/cloud reparse metadata remains discoverable.
 - **Tasks and tools are declared by running `manifest.lua`**, which is project
   code. `kuu run` and `kuu list` already do that, and this does no more. A
   `manifest.lua` that does not load costs the task and tool lists and nothing
   else: the reason is reported and the rest of the descriptor still stands.
   The tools listed are the executed reading; [check](#kuu-page-check) reads the
   same declarations from the text, and the suite holds the two equal.
-- **What a task installs under `.tools` is not reported at all.** kuu keeps no
-  manifest of it, and a guess about a toolchain is worse than saying nothing.
+- **Installed executables are not inferred as tools.** An undeclared executable
+  under `.tools` does not become a tool entry merely because it is present.
+  Tools declared in the manifest are listed, including paths under `.tools`;
+  Lua module discovery separately follows the configured inspection exclusions.
 - **What agents wrote back is counted, not read.** `kuu-eval.md` at the root,
   the report [For the agent](#kuu-page-agent) asks for, holds one entry per heading
   shaped `## YYYY-MM-DD — kuu VERSION — what`; the descriptor says whether
@@ -1363,13 +1461,27 @@ Without a `manifest.lua` at or above the current directory there is no project
 half. kuu does not walk whatever directory it was started in instead: that is
 a different question, and an expensive one to answer by accident.
 
+The root's [`kuu.config.json`](#kuu-page-scan) controls module discovery. Automatic
+inventory always excludes `.git` and `.kuu`, and by default excludes `.tools`,
+`build`, `node_modules`, `.cache`, `.local`, `.venv`, and `__pycache__`.
+These basename defaults can hide maintained source; `defaults:false` restores
+visibility of the optional names. Configuration does not change `require`
+resolution or what the manifest may execute.
+
+The command loads configuration before running the manifest and retains that
+policy for its inventory, even if the manifest changes the configuration file
+or the legacy `check.PRUNE` table.
+Invalid or unreadable configuration prevents manifest execution and inventory;
+the descriptor still reports the runtime, ledger and feedback, with a
+`SCAN config` diagnostic and an explicitly incomplete module inventory.
+
 ```text
-kuu 0.11 (Lua 5.5.1) at C:\work\app\kuu.exe
+kuu 0.12 (Lua 5.5.1) at C:\work\app\kuu.exe
 
   verbs      capabilities, check, docs, list, run  kuu VERB --help
-  manual     47 pages                              kuu docs PAGE | search TEXT
-  modules    27, 182 names                         require "NAME"
-  errors     27 domains, codes in --json           err.is(e, DOMAIN, code)
+  manual     57 pages                              kuu docs PAGE | search TEXT
+  modules    27, 184 names                         require "NAME"
+  errors     28 domains, codes in --json           err.is(e, DOMAIN, code)
 
 modules
   proc       alive, detach, find, kill, list, run, start, tree, wait_all,
@@ -1393,17 +1505,18 @@ project C:/work/app
     lib.util      VERSION, slug, titlecase
     tools.report  render, write
 
-Whatever a task installs under .tools and never declares is not listed: kuu
-keeps no manifest of it, and a guess would be worse than the silence.
+Installed executables are listed only when declared as tools; project modules
+follow the inspection scope (kuu docs scan).
 Everything that runs in a project runs through kuu.exe; if something cannot
 be done from here, build a tool for it and call it through the door (kuu docs tools).
 Read kuu docs agent first: what is expected of you here, and how to report back.
+From signed 0.11: read kuu docs upgrading-from-0.11 before running project tasks.
 Then kuu docs pitfalls, once; it is where kuu differs from the Lua you know.
 ```
 
 Modules are listed in the order the manual's table introduces them, which is
-roughly the order they are reached for. Everything goes to standard output;
-there is no summary on standard error. A project whose manifest loads and
+roughly the order they are reached for. The descriptor goes to standard output;
+`--timings` optionally adds one timing line on standard error. A project whose manifest loads and
 declares no task shows `tasks      none` and, on the line beneath, the shape
 of a declaration and the page that has it, since an empty manifest is
 seldom meant; one whose tasks are all hidden shows `none` and names the
@@ -1417,6 +1530,8 @@ an omitted optional field; array fields are present even when empty:
 type CapabilityReport = {
   ok: true; // this command has no failure of its own
   result: {
+    timings: { setup: number; inventory?: number; ledger_tail?: number;
+               ledger_verification?: number; total: number }; // wall-clock seconds
     kuu: {
       version: string; // N.N: two natural-number components
       lua: string; // the Lua release, "Lua 5.5.1"
@@ -1439,15 +1554,17 @@ type CapabilityReport = {
       tools: { name: string; exe: string; output: string; args?: { [name: string]: string };
                emits: string[]; timeout?: number | string; reach: { [kind: string]: string[] } }[];
       default?: string; // the task kuu run alone runs
-      note?: string; // why the manifest did not load, naming the file read; tasks is then empty
+      note?: string; // why the manifest did not load or configuration prevented it; tasks is then empty
+      config_error?: { domain: "SCAN"; code: "config"; message: string };
+      scope?: ScanScope; // normalized rules/provenance; absent if config is invalid
+      scan?: ScanReport; // inventory collection metadata; absent if collection did not run
       notes: string[]; // what the text form says beside the inventory: a tasks.lua read as the manifest
       ledger: { last: { at: number; kind: string; name: string; status: string; seconds: number }[]; // the last five crossings, oldest first
-                records?: number; intact: boolean; broken?: string; unreadable?: string; // count only after successful verification; broken locates corruption, unreadable describes a read failure
-                unaccounted: number }; // changes no crossing accounts for; zero until something watches
+                records?: number; intact: boolean; broken?: string; unreadable?: string }; // count only after successful verification; broken locates corruption, unreadable describes a read failure
       eval: { present: boolean; entries: number; last?: string }; // kuu-eval.md at the root: whether it is there, how many entries, and the last one's date
       modules: { name: string; path: string; names: string[] }[];
-      modules_complete: boolean; // false if enumeration or reading a candidate module failed
-      module_errors: { path: string; message: string; win32?: number }[];
+      modules_complete: boolean; // false if configuration, enumeration or reading a candidate module failed
+      module_errors: { path: string; message: string; win32?: number; domain?: string; code?: string }[];
       files: number; // discovered .lua files below the root, whether or not they are modules
     };
   };
@@ -1456,6 +1573,38 @@ type CapabilityReport = {
 
 `project` is omitted when there is no project. `kuu list --json` has each
 task's dependencies and arguments; they are not repeated here.
+
+The ledger describes execution history. It does not track filesystem changes
+or expose an `unaccounted` change count. Source files are inspected here to
+build the requested module inventory, independently of task execution.
+
+`ScanScope` and `ScanReport` are defined on the [scan](#kuu-page-scan) page. Scope
+exposes normalized mandatory/default/custom exclusions, their fingerprint and
+file/default provenance. The scan reports project/starting roots, collection
+seconds, completeness, errors, and counts for collected file metadata,
+enumerated directories, excluded directories and non-followed links. Scan file
+counts include non-Lua files; `project.files` counts discovered Lua files.
+`scan.complete` covers collection, while `modules_complete` additionally
+covers candidate-module reads. A later unreadable module can therefore make
+`modules_complete` false after a complete scan.
+
+`result.timings` is present in JSON whether or not `--timings` was supplied.
+`setup` includes imports, palette/project discovery, configuration and manifest
+loading, and ends before measured ledger/inventory work. `inventory` measures
+collection and static module extraction together; the scan's `seconds` is
+nested within it. `ledger_tail` reads recent records and `ledger_verification`
+separately measures checking the retained chain. These are elapsed seconds,
+not counts or CPU time. An unavailable phase is omitted: without a project,
+there is no inventory or ledger phase; invalid configuration omits inventory
+while still allowing the ledger descriptor.
+
+`total` covers command work and report assembly, measured from just after the
+timing helper loads to just before final serialization/emission and flushing.
+Other command imports and final report preparation are included. External wall
+time also includes OS process startup and final output, without a promised
+bound on the difference. Phases need not add up to total. `--timings` prints
+the same measured phases on stderr and leaves JSON on stdout; `--help` prints
+no timing line.
 
 `verbs` lists the verbs kuu carries as programs, which is what it can
 enumerate; `docs` is one of them. `version` is answered in C before that
@@ -1479,6 +1628,9 @@ The command has no error code of its own. Invalid command arguments use
 `CLI usage` and exit 2; `--help` prints usage and exits 0. Everything else
 exits 0, including a project whose `manifest.lua` does not load, because a
 descriptor that fails is worse than one that says what it could not find out.
+Invalid scan configuration appears as `project.config_error` with `SCAN config`,
+also in the text descriptor and `module_errors`; tasks, tools and modules are
+empty and `modules_complete` is false. `--help` does not read configuration.
 
 ---
 
@@ -1496,7 +1648,7 @@ nothing is looked up on `PATH`.
 ```text
 repo/
   manifest.lua          the tasks, and the prerequisites as url and sha256
-  kuu.exe            this project's own runtime; git ignores it
+  kuu.exe            this project's pinned runtime; downloaded or committed
   .tools/            downloads and unpacked tools; git ignores it
   .kuu/              kuu's own: the ledger of every crossing, and mem's notebook; git ignores it
   build/             outputs; git ignores it
@@ -1505,27 +1657,95 @@ repo/
 
 The examples require 0.10 or later, since they declare their tools. Read
 [upgrading to 0.10](#kuu-page-upgrading-010) when moving from 0.9, and the
-earlier upgrading pages from further back.
+earlier upgrading pages from further back. A project that already uses signed
+0.11 should start with [Upgrading from 0.11](#kuu-page-upgrading-from-011), including
+its checklist for project instructions, inspection and history consumers.
 
 <a id="kuu-page-adopting-1-give-the-repository-its-kuu"></a>
 
 ### 1. Give the repository its kuu
 
-Copy `kuu.exe` directly into the repository root. It comes from a
-[release](https://github.com/anafalanx/kuu/releases), signed, with a
-`kuu.exe.sha256` beside it, or from a build. That copy is the only kuu this
-repository knows; another repository has its own, possibly another
-version. There is no installer and no bootstrap script, because copying a
-small file needs neither.
+Each repository owns a particular `kuu.exe` in its root. Another repository
+can own a different version. Choose either distribution model; both are
+supported, and neither needs a machine-wide install:
 
-Add to `.gitignore`:
+| Model | What the repository keeps | What a fresh checkout does |
+|---|---|---|
+| Downloaded runtime | A reviewed release version, exact asset URL, SHA-256 and expected signing-certificate identity; `/kuu.exe` is ignored | Obtain that exact signed release, verify it as below, then use the local copy |
+| Committed runtime | The same reviewed identity and pins, plus the signed `kuu.exe` bytes in Git; `/kuu.exe` is not ignored | Check out the binary, verify it as below, then use it without a runtime download |
+
+Record the pins in the project's README or a committed runtime record. Select
+the asset from a specific [release](https://github.com/anafalanx/kuu/releases),
+not a moving latest-release URL. The release's `kuu.exe.sha256` supplies the
+checksum to review and pin; a newly fetched sidecar must not silently replace
+the project's approved hash. Establish the expected signing identity through
+the owner's release review, then pin its certificate thumbprint. A valid
+signature from a different publisher does not satisfy that pin.
+
+Ignore generated tools, state and outputs in either model:
 
 ```text
-/kuu.exe
 /.tools/
 /.kuu/
 /build/
 ```
+
+Add `/kuu.exe` only for the downloaded model. In the committed model, keep the
+runtime as an ordinary binary asset and review upgrades alongside its pins.
+Do not substitute an unreviewed local build for the project's signed release.
+A project intentionally adopting a development build records its separate
+build provenance and hash; the signed-release verification below does not
+claim to accept an unsigned build.
+
+<a id="kuu-page-adopting-verify-before-first-execution"></a>
+
+#### Verify before first execution
+
+Read the project's runtime record before running its executable, including
+`--version`, `capabilities` or `docs`. Use an already trusted runtime or platform
+tools for verification; the candidate must not establish its own initial
+trust. This PowerShell example uses the platform's
+[Get-FileHash](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash)
+and [Get-AuthenticodeSignature](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-authenticodesignature).
+It only inspects the file and does not launch it.
+
+Fill all three pin values from the reviewed project record. The release label
+identifies the selected release; SHA-256 identifies the exact approved bytes.
+The placeholders deliberately fail until replaced. Run from the repository
+root, or change `$kuuCandidatePath` to the staged candidate during an upgrade.
+
+```powershell
+$kuuRelease = 'N.N'
+$kuuExpectedHash = 'REPLACE_WITH_REVIEWED_64_HEX_SHA256'
+$kuuExpectedSigner = 'REPLACE_WITH_REVIEWED_40_HEX_CERTIFICATE_THUMBPRINT'
+$kuuCandidatePath = '.\kuu.exe'
+
+if ($kuuRelease -notmatch '^[0-9]+\.[0-9]+$' -or
+    $kuuExpectedHash -notmatch '^[0-9A-Fa-f]{64}$' -or
+    $kuuExpectedSigner -notmatch '^[0-9A-Fa-f]{40}$') {
+    throw 'Supply the reviewed release, SHA-256 and signing-certificate pins first.'
+}
+$kuuCandidate = (Resolve-Path -LiteralPath $kuuCandidatePath -ErrorAction Stop).Path
+$kuuActualHash = Get-FileHash -LiteralPath $kuuCandidate -Algorithm SHA256 -ErrorAction Stop
+if ($kuuActualHash.Hash -ine $kuuExpectedHash) {
+    throw 'kuu.exe does not match the approved SHA-256.'
+}
+$kuuSignature = Get-AuthenticodeSignature -LiteralPath $kuuCandidate -ErrorAction Stop
+if ($kuuSignature.Status -ne 'Valid' -or $null -eq $kuuSignature.SignerCertificate) {
+    throw "kuu.exe signature was not accepted: $($kuuSignature.Status)"
+}
+if ($kuuSignature.SignerCertificate.Thumbprint -ine $kuuExpectedSigner) {
+    throw 'kuu.exe was signed with a different certificate than the project approved.'
+}
+Write-Output "Verified kuu $kuuRelease at $kuuCandidate"
+```
+
+Verification must succeed before proceeding; do not regenerate pins from a
+mismatching candidate. Keep the candidate under project control between the
+check and use. An already trusted kuu can instead compare `hash.file` and
+`sys.signature` against the same pins; launching the candidate itself to make
+those checks would reverse this order. Once verified, use that project copy
+for the commands in the rest of this guide.
 
 The first `kuu run` that creates `.kuu/` under a root that no `.gitignore`
 ignores it in — the root's own, or one in a directory above it up to the
@@ -1605,7 +1825,15 @@ task "test" {
 
 task "clean" {
   desc = "remove build/",
-  run = function() fs.remove("build", { recursive = true }) end,
+  run = function()
+    local ok, why = fs.remove("build", { recursive = true })
+    if ok then return true end
+    if err.is(why, "FS", "notfound") then
+      local info, absent = fs.stat("build", { follow = false })
+      if not info and err.is(absent, "FS", "notfound") then return true end
+    end
+    return nil, why
+  end,
 }
 
 task.default "test"
@@ -1644,9 +1872,29 @@ failed, 1 for another task failure, and 2 when kuu could not start it.
 warns about unresolved modules before anything runs, so run it first after
 editing.
 
+Then use `kuu list` to load and validate the manifest's declarations. Keep
+provisioning inside task bodies: listing executes top-level Lua and is not a
+sandbox or a guarantee that required programs are installed.
+
 <a id="kuu-page-adopting-4-keep-state-take-turns-ask-the-machine"></a>
 
 ### 4. Keep state, take turns, ask the machine
+
+Use the [shared project environment](#kuu-page-project-environment) recipe when CLI
+tools and newly launched editors need the same project-local cache paths.
+It keeps those choices independent of the caller's working directory.
+
+For moved checkouts and renamed source directories, use the
+[relocation and doctor recipes](#kuu-page-relocation). Their offline checks distinguish
+installed tools, cached dependencies and application outputs, and report missing
+dependencies without installing them.
+
+The [editor recipe](#kuu-page-editor) demonstrates detached GUI lifetime and isolated
+verification. The [native-helper recipe](#kuu-page-native-helper) builds a small
+project tool, verifies its cached bytes and creates an ignored local shortcut.
+The [reconstruction guide](#kuu-page-reconstruction) separates cached installation,
+upstream availability and independent backup, with verified recovery after
+an uncertain upload.
 
 - [`mem`](#kuu-page-mem) is a small notebook per repository in `.kuu/memory.json`:
   the last build's hash, a counter, a note for the next run.
@@ -1667,8 +1915,40 @@ editing.
 
 ### 5. Upgrading kuu
 
-Copy the new `kuu.exe` over the old one in the repository root, read the
-intervening upgrading notes, run `check`, and run the tasks. Raise
+The project owner decides when to change its pinned runtime. An agent follows
+that reviewed choice instead of fetching the latest release, accepting any
+runtime that passes the minimum guard, or rewriting pins to match local bytes.
+
+Read the intervening upgrading notes, obtain the chosen signed candidate at a
+separate project-owned path, and apply the [pre-execution verification](#kuu-page-adopting-verify-before-first-execution)
+to the proposed new pins. For a project coming from signed 0.11, follow
+[Upgrading from 0.11](#kuu-page-upgrading-from-011) before loading project code with
+the candidate. Reading `docs` is offline and does not load the manifest;
+`check` without `--fix` is read-only static inspection. `capabilities` and
+`list` execute the manifest to read its declarations.
+
+Validate the candidate with `check` and the project's tests in an isolated
+project copy, using the candidate at its expected runtime path. Review task
+side effects and external paths so the copy stays isolated. Stop tasks using
+the old runtime before replacing the live copy. Retain the old approved runtime
+and a separate pre-upgrade history copy if rollback is required: new runs write
+ledger v2, which older executables have not been validated to read or append.
+Replacing only the executable after those runs is not an established rollback
+procedure. Preserve the old and new histories rather than rewriting ledger lines.
+
+In the downloaded model, review and commit the updated runtime record; in the
+committed model, review and commit the executable and that record together.
+Include changed project instructions, configuration and helpers in the upgrade
+review. A signing-certificate change also requires an explicitly reviewed new
+identity.
+
+Maintain the project's root `kuu-eval.md` through the upgrade, using
+[the reporting format](#kuu-page-agent-reporting-back). Preserve earlier feedback and
+append the tested runtime identity, validation results and follow-ups on old
+difficulties, including when adoption fails or is deferred. Carry relevant
+findings from an isolated validation copy into that project document.
+
+Raise
 `NEED_MAJOR` and `NEED_MINOR` only when the recipes begin to require a newer
 feature. Compare the components numerically: 0.10 is newer than 0.9. The
 [stability statement](#kuu-page-stability) defines this minimum guard and the future
@@ -1682,9 +1962,11 @@ in step.
 
 - Do not put kuu on `PATH`, and do not share one `.tools` between
   repositories. The point is that each repository stands alone.
-- Do not commit `kuu.exe`, `.tools`, `.kuu`, or `build`.
-- Do not write a bootstrap script to fetch kuu. A repository's README says
-  "copy kuu.exe into the repository root" and that is the whole procedure.
+- Do not commit generated `.tools`, `.kuu`, or `build` contents. Commit
+  `kuu.exe` when the project chooses the committed-runtime model.
+- Do not add an unpinned bootstrap download. The project's runtime record
+  explains how to obtain or check out its chosen bytes and verify them before
+  first execution; neither model needs a self-updating runtime.
 - Do not fetch a prerequisite without its hash. If upstream publishes none,
   fetch once, hash with `hash.file("sha256", path)`, and write it down.
 
@@ -1751,6 +2033,7 @@ kuu run test                 test, after build, after gen; each runs once
 kuu run build --release      arguments after the task name go to that task
 kuu run --json test          the same, as JSON lines on stdout: each event as it happens, the outcome last
 kuu run --dry-run test       the plan, in order, arguments checked, nothing run
+kuu run --timings test       include phase timings on standard error
 kuu list [--json]            the tasks, their descriptions, dependencies, and arguments
 ```
 
@@ -1773,10 +2056,23 @@ unknown` with the nearest declared name suggested, and `kuu list` named; a
 `task.default` naming a task the manifest does not declare is the same
 code, saying it is the manifest's own mistake.
 
+If a wrapper needs the original caller's directory, capture it before launching
+`kuu run` and pass it explicitly. `fs.cwd()` inside the manifest already means
+the project root. The [working-directory recipe](#kuu-page-working-directories) keeps
+caller, wrapper, project and child directories distinct without shell quoting.
+
+Before executing the manifest, both verbs read and validate the root's
+[`kuu.config.json`](#kuu-page-scan). Malformed or unreadable configuration is
+`SCAN config` and exits 2 before project code runs. An absent file selects the
+documented defaults. The configuration controls checking and module inventory;
+it does not change task execution or `require` resolution. A normal run does
+not scan the project tree or track file changes. The verb's own `--help`
+remains available without loading project configuration.
+
 Through 0.9 the file was `tasks.lua`. kuu still finds a `tasks.lua` where no
 `manifest.lua` is, reads it as the manifest, and says so on standard error
 each time; a directory holding both is read from `manifest.lua` and told
-nothing. This fallback is deprecated but remains supported in 0.11, with no
+nothing. This fallback is deprecated but remains supported in 0.12, with no
 scheduled removal. Rename the file — nothing inside it changes. The earlier
 removal date was withdrawn; see [upgrading to 0.11](#kuu-page-upgrading-011).
 
@@ -1784,13 +2080,16 @@ removal date was withdrawn; see [upgrading to 0.11](#kuu-page-upgrading-011).
 
 ### Declaring
 
-`task "name" { ... }` takes a plain word (letters, digits, `.`, `_`, `-`) and
-a table with these attributes; anything else is refused at declaration, as is
-declaring a name twice.
+`task "name" { ... }` takes a name starting with an ASCII letter or digit,
+followed by letters, digits, `.`, `_` or `-`, and a table with these attributes.
+`task("name", { ... })` is the direct spelling. Tool names follow the same
+rule: `g++` is invalid; `cxx` is one possible project-chosen replacement,
+not a built-in tool. Anything else is refused at declaration, as is declaring
+a name twice.
 
 | attribute | meaning |
 |---|---|
-| `desc` | one line for `kuu list` |
+| `desc` | description for `kuu list`, and above task usage when requesting help |
 | `deps` | a contiguous array of task-name strings to run first, each once, in dependency order; sparse arrays and keyed tables are `TASK badvalue`; a cycle is `TASK cycle` naming the chain, an unknown name is `TASK unknown` saying who needed it |
 | `args` | a [cli](#kuu-page-cli) spec for the arguments after the task name; checked when declared, so a broken spec fails `kuu list` too |
 | `run` | `function(opts)`; `opts` is the parsed arguments, or an empty table; optional when `deps` is non-empty |
@@ -1805,6 +2104,15 @@ task "all" { deps = { "build", "test" } }
 An aggregate follows the same planning, argument validation, failure propagation,
 and JSON reporting rules. Shared dependencies still run once. A declaration
 with neither a function nor non-empty dependencies is refused.
+
+`timeout` is not a task attribute. Set a child timeout on `task.exec`, a
+default with `task.defaults`, or a tool timeout on `task.tool`. These limit
+child processes; they do not limit the duration of arbitrary Lua task code.
+[`kuu check`](#kuu-page-check) diagnoses statically known declaration mistakes without
+executing the manifest. `kuu list` separately loads and validates declarations:
+it does not run task bodies or provision tools for a well-structured manifest,
+but arbitrary top-level Lua can have effects. A successful list is not proof
+that every tool is installed or every task can run.
 
 `task.default "name"` names what `kuu run` alone runs; without it, `kuu run`
 alone lists the tasks and exits 2.
@@ -1826,10 +2134,23 @@ Dependencies that already ran are not run again, and nothing after a failed
 task runs. Every argument is checked before anything runs: the named task's
 against its spec, and each dependency's spec against no arguments. So a
 wrong argument, or a dependency that requires an argument, exits 2 with
-nothing started, and `--help` after the task name prints that task's usage
-on standard output and exits 0, as every `--help` does. The selected task's
-arguments are handled first, so a dependency that requires an argument does
-not prevent requesting that help.
+nothing started. `kuu run TASK --help` prints a non-empty task description
+above its usage on standard output and exits 0, including when `args` is
+omitted or explicitly `{}`. The selected task's arguments are handled first,
+so a dependency that requires an argument does not prevent requesting help.
+Task help runs no task/dependency bodies or their children and creates no
+ledger records. Loading the manifest's top level still happens, so keep work
+inside task bodies.
+
+A task without an `args` schema accepts no arguments or a lone trailing `--`,
+just like `args = {}`; real extra arguments are still rejected. Schemas with
+rest/forwarded arguments keep ordinary CLI parsing: the first `--` ends option
+parsing, and a later `--` is an argument whose value must be preserved.
+`kuu run TASK -- --help` asks the task to receive a literal `--help` argument
+after CLI option parsing ends. This only works when its schema accepts that
+argument and its run function forwards it. It is different from task help:
+dependencies and the run function execute, and a child may run and return a
+nonzero exit. Task help does not promise a helper program's own help output.
 
 ```lua
 run = function(opts)
@@ -1866,15 +2187,25 @@ same way. The caller's argv and
 options table is never modified, in either console or JSON mode.
 The `limits` table has `memory` (bytes or a size string), `cpu` (seconds or
 a duration string), and `processes` (a positive count); see
-[proc limits](#kuu-page-proc). To capture output instead, use
-[proc.run](#kuu-page-proc) directly and decide for yourself.
+[proc limits](#kuu-page-proc). When a tool documents successful nonzero exit codes,
+accept only the specified codes from `TASK exit`; a timeout or limit failure
+must remain a failure. This retains the child's actual outcome in history.
+To capture output instead, pass the declared tool's `task.command` result to
+[`proc.run`](#kuu-page-proc), then check status, truncation and exit code. That child
+has no individual ledger record; the enclosing task/run still do. The
+[process recipes](#kuu-page-process-recipes) demonstrate both forms.
 
 | exit | meaning |
 |---|---|
 | 0 | every task returned |
 | the child's code | a `task.exec` child exited non-zero |
-| 1 | a task raised or returned `nil, err` |
-| 2 | no `manifest.lua`, a broken `manifest.lua`, an unknown task or dependency, a cycle, or wrong arguments |
+| 1 | a task raised or returned `nil, err`, without an explicit numeric `err.exit` or `CLI usage` classification |
+| 2 | no `manifest.lua`, a broken `manifest.lua`, invalid scan configuration, an unknown task or dependency, a cycle, or wrong arguments; also an in-task `CLI usage` error without an explicit numeric `err.exit` |
+
+An explicit numeric `err.exit` takes precedence. Error objects in events and
+reports may omit `exit`; the process exit status and the verb ledger record's
+`code` remain authoritative. For example, a task that returns `nil` and a
+`CLI usage` error without `exit` produces that error unchanged and exits 2.
 
 <a id="kuu-page-task-json"></a>
 
@@ -1902,6 +2233,8 @@ line is the envelope, which is what the whole output was through 0.9. A
 reader that takes the last line sees what it always saw; one that reads
 each line sees the run as it goes, which is what a harness watching a long
 task needs.
+
+This example is abridged; the complete final-report schema follows it.
 
 ```json
 {"v":1,"event":"run","root":"C:/work/app","task":"test","plan":["gen","build","test"]}
@@ -1942,14 +2275,23 @@ it is optional.
 ```typescript
 type RunError = { domain: string; code: string; message: string; exit?: number };
 type TaskRun = { name: string; seconds: number; ok: boolean };
+type LedgerRun = {
+  records: number;
+  complete: boolean;
+  error?: { message: string; domain?: string; code?: string };
+};
+type RunTimings = { setup: number; ledger?: number; execution?: number; total: number };
 type RunReport =
-  | { ok: true; result: { root: string; task: string; tasks: TaskRun[]; notes: string[] } }
-  | { ok: false; result: { root?: string; task?: string; tasks: TaskRun[]; notes: string[] };
+  | { ok: true; result: { root: string; task: string; tasks: TaskRun[]; notes: string[];
+                         timings: RunTimings; ledger?: LedgerRun } }
+  | { ok: false; result: { root?: string; task?: string; tasks: TaskRun[]; notes: string[];
+                          timings: RunTimings; ledger?: LedgerRun };
       error: RunError };
 type DryRunReport = {
   ok: true;
   result: { root: string; task: string;
-    plan: { name: string; desc: string; deps: string[] }[]; notes: string[] };
+    plan: { name: string; desc: string; deps: string[] }[]; notes: string[];
+    timings: RunTimings };
 };
 ```
 
@@ -1964,6 +2306,47 @@ that failure path. The process exits as in the table above even when
 `error.exit` is absent. A successful `--dry-run --json` produces
 `DryRunReport`; its failure uses the failed `RunReport` shape. A dry run
 still loads declarations and validates every task's arguments.
+
+When ledger opening is attempted, `result.ledger.records` counts records
+successfully appended by this invocation; `complete` says whether all attempted crossing
+records were written. An opening or recording failure sets it to false and
+adds `error`; a failed open has zero records.
+Classified errors carry `domain` and `code`; an ordinary Lua exception has
+only `message`. Problems also appear in `notes` and leave the task's exit
+status unchanged. A preflight failure or dry run has no `result.ledger`.
+The [ledger](#kuu-page-ledger) page describes the history format and its failure
+behavior.
+
+Runs do not collect filesystem snapshots or report `scope`, `scans`,
+`ledger.observation` or `ledger.publication`. Source inspection has its own
+scope and scan reports under [check](#kuu-page-check) and
+[capabilities](#kuu-page-capabilities).
+
+`result.timings` is always present in these JSON envelopes. `--timings`, before
+the task name, also prints one timing line on stderr. After the task name it is
+an argument for that task, like other runner options. Values are wall-clock
+seconds:
+
+| Phase | Included work |
+|---|---|
+| `setup` | Command imports, project/configuration discovery, manifest execution, dependency planning and argument validation, before opening the ledger |
+| `ledger` | Measured ledger opening and record append work: repository metadata, predecessor reads, hashes, locks, history writes and retention |
+| `execution` | The sum of existing task-attempt durations, including nested child work and child observer records |
+| `total` | Command work and report preparation through the last history append or its failure |
+
+Phases are diagnostic measurements, not a partition: `ledger` can overlap
+`execution` when recording children. Never add child durations to execution
+again. Existing task/child `seconds` fields and the ledger's verb duration keep
+their previous meanings. The verb duration is captured before appending its
+own history record; `total` includes that append and report preparation.
+
+The clock begins just after loading the timing helper, before other command
+imports; total ends before final JSON serialization or human-report emission
+and flushing. OS/runtime startup and final output can make an external
+stopwatch larger without a promised bound. Unavailable phases are omitted,
+including on failures. A dry run reports setup and total, with no ledger or
+execution phase. Help and runner-option parser exits retain their
+existing output conventions and produce no timing line.
 
 `kuu list --json` uses this schema. It includes hidden tasks, marked with
 `hidden: true`; only the human-readable listing omits them.
@@ -2021,6 +2404,7 @@ The tools a manifest declares with `task.tool "name" { ... }`, and
 | `TASK usage` | no task or default was selected — the message says when the manifest declares no task at all — a runner option is unknown, or a declaration holds an attribute or option that is not known |
 | `TASK unknown`, `TASK cycle` | the dependency graph; `unknown` for the task the command named suggests the nearest declared one and names `kuu list`, and is also a tool the manifest does not declare |
 | `CLI usage` | wrong arguments for a task |
+| `SCAN config` | malformed or unreadable root `kuu.config.json`; the message identifies the configuration field or read failure, before manifest execution |
 | `TASK failed` | a task raised something that is not an `err`, returned `nil` with a string instead of an `err`, or its child did not exit normally — `status` and `limit` on the error say how |
 | `TASK exit` | a `task.exec` child exited non-zero; `err.exit` is the code |
 
@@ -2078,10 +2462,12 @@ task "report" {
 | `timeout` | the child timeout when the call gives none; the default from `task.defaults` after that |
 | `reach` | what the tool touches — `read`, `write` and `net` lists; declared and shown, never enforced, since whether a tool can be confined is its own technology's business. [Confined tools](#kuu-page-confined) says what a tool that confines itself must provide |
 
-A name the declaration cannot hold raises `TASK usage`, and `kuu check`
-reports the same name without running, in whichever file the declaration
-stands; a value of the wrong shape raises `TASK badvalue`; a name declared
-twice, `TASK badvalue`.
+An unknown attribute raises `TASK usage`, and `kuu check` reports visible
+attribute mistakes without running the declaration. A value of the wrong
+shape, an invalid tool name, or a name declared twice raises `TASK badvalue`.
+Tool names start with an ASCII letter or digit and continue with letters,
+digits, `.`, `_` or `-`. For an executable named `g++`, choose a declaration
+name such as `cxx`; `cxx` is not a built-in tool.
 
 <a id="kuu-page-tools-calling-one"></a>
 
@@ -2115,6 +2501,12 @@ decodes what comes back. A tool the manifest does not declare is
 child has the job and the timeout like any other, but only `task.exec`
 crosses the door, so neither the `kuu run --json` stream nor [the
 ledger](#kuu-page-ledger) sees it.
+
+The enclosing task and run are still recorded. Capture is a supported choice
+when the task needs output bytes; it is not necessary merely to accept a
+documented nonzero exit code. The [process recipes](#kuu-page-process-recipes) show
+`TASK exit` classification, capture diagnostics, and serializing a command as
+separate `argv`, `cwd` and `env` fields rather than a mixed Lua table.
 
 <a id="kuu-page-tools-what-the-door-does-and-does-not"></a>
 
@@ -2308,43 +2700,47 @@ chooses one owns the choice and the measurement.
 The door remembers what passes through it. Every `kuu run` writes one record
 per crossing — the run itself, each task, each child a task ran through
 `task.exec` — to `.kuu/ledger/<day>.ndjson` under the project root, from
-what kuu observed and never from what a tool reported. It is the answer to
-"what ran here, against which edits, and how did it end", kept locally for
-ninety days. A child a task starts with `proc.run` itself, a `task.command`
-table included, is the program's own call and not a crossing.
+what kuu directly knows about execution. It answers "what ran here, and how
+did it end", kept locally for ninety days. A child a task starts with
+`proc.run` itself, a `task.command` table included, is the program's own call
+and not a crossing.
 
 ```text
-.kuu/ledger/2026-09-13.ndjson      one record per line, the day in UTC
-.kuu/ledger/tree.json              the tree as the last run left it
+.kuu/ledger/2026-09-21.ndjson      one record per line, the day in UTC
 ```
 
 Add `.kuu/` to the project's `.gitignore`, as for [mem](#kuu-page-mem). The ledger
 is the machine's, not the repository's; a summary a project wants to keep
 is the project's to commit.
 
+A normal run does not scan the project tree, compare file changes, maintain
+a filesystem index or start a watcher. The ledger describes execution, not
+which files changed or which process caused an edit. [Checking](#kuu-page-check)
+and [module inventory](#kuu-page-capabilities) inspect source when requested; their
+[scan configuration](#kuu-page-scan) does not add filesystem tracking to a run.
+Programs can still explicitly use [fs.watch](#kuu-page-fs).
+
 <a id="kuu-page-ledger-a-record"></a>
 
 ### A record
 
 ```json
-{"v":1,"kuu":"0.10.0","root":"C:/work/app","git":{"ref":"refs/heads/main","head":"7c1a…"},
+{"v":2,"kuu":"0.12","root":"C:/work/app","git":{"ref":"refs/heads/main","head":"7c1a…"},
  "kind":"child","name":"report","tool":"report","task":"weekly","pid":4120,
  "argv":["C:/work/app/tools/report/report.exe","--out","build/r.json"],
- "at":1789300000.1,"seconds":3.2,"status":"exit","code":0,"bytes":{"out":8192,"err":0},
- "delta":{"added":0,"changed":2,"removed":0,"paths":[{"path":"src/report.lua","change":"changed","sha256":"…"}]},
+ "at":1789980000.1,"seconds":3.2,"status":"exit","code":0,"bytes":{"out":8192,"err":0},
  "prev":"5e9d…"}
 ```
 
 | field | |
 |---|---|
-| `v` | the record's schema version, 1 |
-| `kuu`, `root`, `git` | which runtime, which project, and where the repository stood: `git.head` and `git.ref` are read from `.git` itself, no `git.exe` assumed; absent without a repository, `ref` alone on a branch not yet born, `head` alone when HEAD is detached |
+| `v` | the record's schema version, 2 for new execution-history records |
+| `kuu`, `root`, `git` | which runtime and project; best-effort `git.head` and `git.ref` read once when opening the ledger, before task execution, from `.git` itself without `git.exe`; absent without a readable repository, `ref` alone on a branch not yet born, `head` alone when HEAD is detached. This is repository identity, not a dirty-state report |
 | `kind`, `name` | `verb` (`run`), `task` (its name), or `child` (the tool's name, else the program) |
 | `task`, `tool` | for a child, the task that ran it and the declaration it ran through, when it did |
 | `argv`, `cwd`, `pid` | what ran, from where, as what; `cwd` only for a child whose call gave one, and an absent field is absent, never `null` |
 | `at`, `seconds` | when it began, as an instant, and how long it took |
-| `status`, `code`, `bytes`, `error` | how it ended: a child's `exit`, `timeout`, `killed` or `limit` with its code, and the bytes on each stream when kuu relayed them (under `--json`; a child on the console has kuu's own streams and nothing is counted); a task's or the run's `ok` or `failed` with the error |
-| `delta` | on the first record of a run only: what changed under the root since the previous run, by size and mtime, skipping `.git`, `.tools`, `build`, `node_modules` and `.kuu`, and not entering a junction or symlink, as [`fs.dirs`](#kuu-page-fs) does not; the counts are complete, and up to forty paths are named, each with the content hash of what is there now when it can be read — a file another process holds open, or a name Windows would rewrite, is named without its `sha256`. That says which edits this run ran against. An edit with no crossing after it is work in progress, not a bypass |
+| `status`, `code`, `bytes`, `error` | how it ended: a child's `exit`, `timeout`, `killed`, `limit` or `error`, with its code when available, and the bytes on each stream when kuu relayed them (under `--json`; a child on the console has kuu's own streams and nothing is counted); a task's or the run's `ok` or `failed` with the error |
 | `prev` | the SHA-256 of the record line before this one, across days |
 
 The three kinds, as a reader would type them:
@@ -2362,22 +2758,67 @@ type LedgerRecord = Common & (
       status: "exit" | "timeout" | "killed" | "limit" | "error"; code?: number;
       limit?: "memory" | "cpu" | "processes";
       bytes?: { out: number; err: number } });
-type Common = { v: 1; kuu: string; root: string;
-  git?: { head?: string; ref?: string };              // a detached HEAD has only head; a branch not yet born has only ref
-  at: number; seconds: number; delta?: Delta; prev?: string };
+type Common = { v: 2; kuu: string; root: string;
+  git?: { head?: string; ref?: string };
+  at: number; seconds: number; prev?: string };
 type LedgerError = { domain: string; code: string; message: string; exit?: number };
-type Delta = { added: number; changed: number; removed: number;
-  paths: { path: string; change: "added" | "changed" | "removed"; sha256?: string }[] };
 ```
 
 A task's `error` is what its `run` returned or raised, with the domain and
-code the project chose, and `exit` set; the verb's carries the same domain,
-code and message, the exit being the verb's own `code`. A child that timed
+code the project chose. `exit` is optional: an in-task `CLI usage` error
+without an explicit exit value leaves it absent and makes kuu exit 2.
+The verb carries the same domain, code and message; its own `code` always
+states kuu's exit status. A child that timed
 out or hit a limit is recorded with that `status` and no `error`: the
-failure is the task's, and its message names the child. `delta` sits on
-the first record the run writes, whichever kind that is — the first child,
-else the first task — and `prev` is absent only on the first record ever
-kept.
+failure is the task's, and its message names the child. `prev` is absent
+only on the first record ever kept.
+
+Each append uses the canonical project identity and a named [lock](#kuu-page-sync),
+so cooperating runs in the same Windows session, including nested runs and
+aliases of one root, append to the same chain. The lock covers history work,
+not task execution. Different logon sessions or machines do not share that
+coordination guarantee. If the root cannot be canonicalized, recording fails
+instead of using an unrelated lock for its spelling.
+
+<a id="kuu-page-ledger-existing-history"></a>
+
+### Existing history
+
+Readers and chain verification accept both schema versions 1 and 2. New
+records use version 2 and omit `delta` and `observation`. An existing
+version-1 line is never rewritten to fit the new schema: its original bytes
+remain the input to the hash chain. A day file can contain both versions.
+Normal ninety-day retention still applies.
+
+Version-1 `delta` and `observation` fields are historical data only. Earlier
+releases and development builds gave them different completeness guarantees;
+their presence does not establish current file state or attribute an edit to
+a particular process. A reader that needs only execution history can ignore
+them. An existing `.kuu/ledger/tree.json` is ignored and left untouched;
+there is no replacement baseline, migration scan or publication step.
+
+0.12 writes these execution-history records. The record's `v` identifies its
+schema independently of the runtime version; see
+[Upgrading from 0.11](#kuu-page-upgrading-from-011) for report and history migration.
+
+<a id="kuu-page-ledger-history-costs"></a>
+
+### History costs
+
+Execution-history work does not grow with the number of project source files.
+To append a crossing, kuu finds the newest line by examining the end of the
+latest nonempty day file. Recent-history lookup also searches backward for the
+requested lines, preserving their original order. These lookups avoid scanning
+every earlier line in Lua, but the underlying day files are still read in full;
+their I/O and memory cost can grow with history size. No persisted tail cache
+is trusted in place of the actual history.
+
+`capabilities` verifies every retained record and hash link. Its
+`ledger_verification` timing therefore grows with retained history.
+`ledger_tail` measures recent-history retrieval separately; `run` reports
+opening and appending history as `ledger`. Corruption and read failures remain
+explicit. The [run report](#kuu-page-task) describes those timings and the per-run
+record summary.
 
 The whole reader, and the question it most often answers — which task
 failed last, and why:
@@ -2407,16 +2848,16 @@ The chain is the point of `prev`. Nothing prevents editing a line — the file
 is text, the directory is yours — but an edited line no longer hashes to
 what the next record says, and `kuu capabilities` finds it: every time it
 reads the ledger it walks the whole chain and says whether it is intact,
-at which line it breaks, or why it could not be read completely. Records older than ninety days are removed as
-new ones are written; the first record kept then names a line that is gone,
-and the walk takes it as the anchor.
+at which line it breaks, or why it could not be read completely. Records
+older than ninety days are removed as new ones are written; the first record
+kept then names a line that is gone, and the walk takes it as the anchor.
 
 Only `kuu run` writes the ledger, and only once its plan is checked and a
 task is about to run: `--dry-run`, an unknown task and a wrong argument
-write nothing, so the next real run's delta still names the edits it ran
-against. `kuu list` and `kuu capabilities` run `manifest.lua` to read its
-declarations and write nothing; `kuu check` runs nothing at all. A child
-the manifest starts at its top level is not a crossing of any run.
+write nothing. `kuu list` and `kuu capabilities` run `manifest.lua` to read
+its declarations and write no crossing records; `kuu check` runs no project
+code. A child the manifest starts at its top level is not a crossing of any
+run.
 
 <a id="kuu-page-ledger-reading-it"></a>
 
@@ -2424,29 +2865,30 @@ the manifest starts at its top level is not a crossing of any run.
 
 `kuu capabilities` shows the last crossings, oldest first, and in its
 descriptor `project.ledger.last` carries `at`, `kind`, `name`, `status` and
-`seconds` for each; `records` is how many the ledger holds after successful verification, `intact` whether
-each hashes the one before it, with `broken` naming the file and line where
-that fails. Invalid JSON or an object without the record's common fields
-is a broken record too, and is omitted from `last`. Both descriptor forms
-report the broken chain even when no recent record can be read.
-An unreadable day file or incomplete directory listing sets `intact` to false
-and `unreadable` to the filesystem diagnostic; the unverified `records` count
-is omitted. Absence is an empty ledger, but a read failure is never verified
-emptiness. `last` is empty when its required day files cannot be read.
-`unaccounted` is the count of changes under the root that
-no crossing accounts for — zero until something watches the root, which
-nothing does yet. The files are plain NDJSON: `fs.read` and `json.decode`
-one line at a time is the whole reader.
+`seconds` for each; `records` is how many the ledger holds after successful
+verification, `intact` whether each hashes the one before it, with `broken`
+naming the file and line where that fails. Invalid JSON or an object without
+the record's common fields is a broken record too, and is omitted from `last`.
+Both descriptor forms report the broken chain even when no recent record can
+be read. An unreadable day file or incomplete directory listing sets `intact`
+to false and `unreadable` to the filesystem diagnostic; the unverified
+`records` count is omitted. Absence is an empty ledger, but a read failure is
+never verified emptiness. `last` is empty when its required day files cannot
+be read. The files are plain NDJSON: `fs.read` and `json.decode` one line at a
+time is the whole reader. There is no `unaccounted` change count.
 
 A ledger that cannot be opened or written — a read-only tree, a lock held
 too long, a record holding text that is not UTF-8 — is said once on
 standard error, and the run goes on: the record is the door's, never a
 condition on the work. A task's error message that is not UTF-8, which a
 child's output in the console code page often is, is recorded and reported
-with each such byte as U+FFFD. Failed record and final-tree writes also
-appear in the JSON envelope's `notes`; they preserve the task's outcome.
-After a failed record, the previous tree snapshot is retained so the next
-run can still account for those edits.
+with each such byte as U+FFFD. Failures also appear in the JSON envelope's
+`notes`; they preserve the task's outcome. Once ledger opening is attempted,
+`result.ledger` reports how many records this run appended and whether all
+its attempted records were written, with a structured `error` after an opening
+or recording failure. A failed open reports `records:0`, `complete:false` and
+the error. A dry run or preflight failure has no ledger summary.
+
 If the preceding record cannot be read, the new record is refused with the
 same warning and `notes` behavior. The run continues without starting a new,
 unchained history behind the unreadable file.
@@ -2463,16 +2905,42 @@ unchained history behind the unreadable file.
 nothing more.
 
 ```text
-kuu check [--json] [--fix [--adopt]] [PATH ...]
+kuu check [--json] [--timings] [--fix [--adopt]] [PATH ...]
 ```
 
 Without paths it checks every `.lua` file below the nearest project (the
 directory holding `manifest.lua`, or a `tasks.lua` not yet renamed, which it
 then says on standard error and as `notes` under `--json`), or below the
-current directory when there is no project, skipping `.git`, `.tools`,
-`build`, and `node_modules`. Paths may
+current directory when there is no project. Automatic discovery always skips
+`.git` and `.kuu`; by default it also skips `.tools`, `build`, `node_modules`,
+`.cache`, `.local`, `.venv`, and `__pycache__`. Paths may
 be files or directories; `require` names always resolve against the project
 root.
+
+The root's [`kuu.config.json`](#kuu-page-scan) controls this scope. Its exact directory
+names and project-relative paths are excluded before descent; `defaults:false`
+restores visibility of the optional defaults. A maintained source directory
+called `build` or `.local` therefore needs an override or an explicit check.
+The command loads configuration once, including across a `--fix` recheck, and
+does not execute the manifest. A broken manifest can still be checked.
+
+Automatic discovery skips directory junctions, directory symlinks and other
+name-surrogate directory links the native walker refuses to enter. Discovered
+file symlinks are skipped too. Their targets are neither selected for checking
+nor rewritten by `--fix`. Ordinary filter/cloud reparse metadata does not by
+itself exclude a file or directory.
+
+An explicitly named ordinary file or subdirectory is checked even when an
+ancestor is a link or an excluded directory. A starting directory overrides
+its own exclusion; descendant exclusions still apply. A CLI argument naming the link itself is rejected with
+`CHECK notfound`, as before; name a file or ordinary subdirectory within it
+to check that content deliberately. The Lua `check.tree(dir, root)` API follows
+its explicitly supplied starting directory, including a linked root, and skips
+links discovered beneath it.
+
+These are discovery rules, not filesystem confinement: literal `require`
+resolution may still read module text through linked ancestors, and replacing
+an ancestor during checking is outside this guarantee.
 
 Four things are checked:
 
@@ -2525,9 +2993,10 @@ Name checking follows direct local require bindings and lexical scopes.
 Parameters, block locals, and loop variables can shadow an alias. If an
 alias is reassigned anywhere, its field accesses are skipped throughout
 that binding's scope, including captured uses in functions. This avoids
-claiming to know a value that control flow may replace. Aliases passed
-through another variable, function arguments, or a function result are not
-inferred. Shadowing or reassigning `require` likewise stops treating it as
+claiming to know a value that control flow may replace. Simple copied local
+bindings are followed where their origin remains known; passing a value through
+function arguments or arbitrary function results does not infer its identity.
+Shadowing or reassigning `require` likewise stops treating it as
 kuu's loader in that scope.
 
 A module indexed where it is required is followed too:
@@ -2553,15 +3022,46 @@ Error *domains* are not checked, only the codes within a domain kuu owns.
 says nothing about correctness.
 
 Beyond these, ordinary calls are not type-checked: argument counts, option
-values, and types still belong to runtime validation. Literal tool
-declarations are checked for the shapes needed to describe them below.
+values, and types still belong to runtime validation. Task and tool declarations
+add the bounded checks below.
+
+<a id="kuu-page-check-task-and-tool-declarations"></a>
+
+### Task and tool declarations
+
+The checker recognizes both `task "name" { ... }` and `task("name", { ... })`,
+and the corresponding `task.tool` forms. Simple local aliases of the module,
+tool constructor or saved curried constructor retain their identity until
+shadowing or reassignment makes them uncertain. Checked code is never executed.
+
+Literal names must follow the runtime rule: start with an ASCII letter or
+digit, then use letters, digits, `.`, `_` or `-`. `g++` is invalid; `cxx` is
+an example replacement chosen by a project, not a built-in tool.
+
+Visible declaration keys are checked even when another field is dynamic.
+For example, `task "build" { run = function() end, timeout = "5m" }` reports
+the misplaced `timeout` at its source line and points to `task.exec`,
+`task.defaults` or `task.tool`. A function body does not hide an unknown key.
+Independently known field types, array shapes, argument schemas and tool
+durations are checked when the literal supplies enough information. Dynamic
+values and fields whose final value is uncertain are left to runtime
+validation; the checker does not evaluate expressions to guess their values.
+A dynamic value may produce nil and omit a field, so it does not establish
+that an unknown key is actually present. Computed or repeated keys can also
+make the final value uncertain.
+
+Run `kuu check` first, then `kuu list` for manifest-loading validation. Listing
+executes top-level Lua and therefore requires a manifest that keeps work in
+task bodies. It is not a provisioning check or proof that tools exist.
 
 **The manifest's tools are checked the same way.** Each
 `task.tool "name" { ... }` in `manifest.lua` is read as the literal it is —
 nothing runs — and every `task.exec` or `task.command` written with a
 literal `tool = "name"`, in any file under the root, is held to it: a name
 the manifest does not declare is a `name` error with the nearest declared
-name suggested, and an argument that reads as an option name and is not in
+name suggested when the manifest's tool names are bounded. A dynamic tool
+name can provide or replace any declaration, so consumer tool-name and option
+checks are then left to runtime. An argument that reads as an option name and is not in
 the declaration's `args` is an `option` error, as for a palette call. The
 declaration itself is held to `task.tool`'s attributes, in the manifest or
 any other file and in either spelling: `outputt` is an `option` error with
@@ -2654,9 +3154,14 @@ path that is not there.
 
 ```typescript
 type CheckReport = {
-  ok: boolean; // true exactly when result.errors is zero
+  ok: boolean; // no file errors and no path-selection error
+  error?: { domain: "CHECK"; code: "notfound"; message: string };
   result: {
     root: string; // absolute path
+    scope: ScanScope; // normalized configured rules and provenance; see scan
+    scans: ScanReport[]; // one per actual directory collection, including --fix rechecks
+    complete: boolean; // every collection/source read succeeded; syntax findings do not change this
+    timings: CheckTimings;
     notes: string[]; // what was also said on standard error: a tasks.lua read as the manifest
     fixed?: { path: string; added: string[]; removed: string[] }[];   // --fix only
     unfixed?: { path: string; message: string }[];                    // --fix only
@@ -2670,6 +3175,12 @@ type CheckReport = {
     errors: number; // total error count
     warnings: number; // total warning count
   };
+};
+type CheckTimings = { setup: number; checking?: number; scan?: number; fixing?: number; total: number };
+type CheckConfigFailure = {
+  ok: false;
+  error: { domain: "SCAN"; code: "config"; message: string };
+  result: { root: string; complete: false; scans: []; timings: CheckTimings };
 };
 type CheckError =
   | { kind: "read" | "syntax" | "analysis"; line: number; message: string }
@@ -2710,33 +3221,93 @@ and `suggestion` is the nearest real spelling, omitted when none is close.
 `fixed` and `unfixed` are present only with `--fix`: the declarations that
 were rewritten, and the files that were left alone with the reason.
 
-Exit 0 or 1 produces this envelope, with no summary on stderr. Invalid
-command arguments or an explicitly named path that does not exist exit 2
-before a report is available and print a diagnostic on stderr, even with
-`--json`; `--help` prints usage and exits 0.
+`ScanScope` and `ScanReport` are defined on the [scan](#kuu-page-scan) page. Scope
+includes mandatory/default/custom rules, their fingerprint and whether the
+configuration came from a file or defaults. A scan records its actual project
+root and starting directory, completeness, counts, errors and collection
+seconds. File counts in a scan include all collected metadata entries;
+`result.files` contains the Lua files actually checked. Deliberately skipped
+directories and non-followed links are separate counts, not read failures.
+An explicit-file-only invocation has `scans:[]`. A starting directory outside
+the project reports `path_rules_applied:false`: project-relative path rules
+do not apply there, while basename rules still do.
+
+Exit 0 or 1 produces this envelope, with no summary on stderr unless timings
+were requested. An explicitly named missing path exits 2 with `CHECK notfound`;
+JSON preserves any files and scans already collected, sets `complete:false`
+and adds the top-level error. If initial path selection fails, `--fix` writes nothing.
+Invalid command arguments still print a diagnostic on stderr before a report
+is available, even with `--json`. Invalid or unreadable scan configuration also
+exits 2, with a `SCAN config` diagnostic and the `CheckConfigFailure` shape
+under `--json`.
+`--help` prints usage and exits 0 without reading configuration.
+
+`timings` is always present in JSON, in wall-clock seconds. `--timings` adds
+one human-readable timing line on stderr, independently of `--json`:
+
+- `setup` covers command imports, argument parsing, project discovery and
+  configuration loading.
+- `checking` covers path selection, collection, source reads and static
+  checking, accumulated across initial and `--fix` rechecks.
+- `scan` covers directory collection only, nested within `checking`. It is
+  omitted when no directory was collected.
+- `fixing` covers the fixer and writes, excluding subsequent rechecking;
+  it is omitted when the fixer did not run.
+- `total` ends after report assembly, including all rechecks, before final
+  JSON serialization or human-report emission and flushing.
+
+Phases overlap; adding them does not produce total. The clock starts after the
+timing helper loads, before the other command imports. OS process startup and
+final emission can make external wall time larger without a promised bound.
+Unavailable phases are omitted. `--help` prints no timing line.
 
 In a program, `require("check").file(path, root)` returns
 `{path, errors, warnings, requires, tools}` with an absolute `path` and the
 same finding kinds; `tools` holds the manifest's declarations when the file
 is the manifest, and is empty otherwise. `check.tree(dir, root)` returns
-`{root, reports = {...}}`. Either spelling of `root` — backslashes, a
+`{root, reports = {...}, complete, scan}`. Either spelling of `root` — backslashes, a
 trailing slash, a relative path — is taken as `fs.absolute` spells it.
 An unreadable directory or incomplete listing contributes a `read` finding
 at the directory's path, with line 0 and the filesystem diagnostic. The
 remaining readable files are still checked, and the command exits 1.
+Intentionally skipped links do not produce read errors.
 Each public call reads the current manifest; a tree check shares its parsed
 declarations only for that operation, including a fresh pass after `--fix`.
+`check.tree` and `check.modules` each load scan configuration once per
+operation. `check.file` deliberately checks its named file without loading
+scan configuration, so it remains usable while that configuration is broken.
+A configuration failure makes `check.tree` return a `config_error` and one
+synthetic report at `kuu.config.json`, marked `configuration = true`, with a
+line-0 `config` finding carrying the error's `domain`, `code`, and message.
+Its `complete` is false and `scan` is omitted because collection never ran.
+
+The exported `check.PRUNE` table remains a compatibility hook. Changing it
+adds native wildcard exclusions to direct tree/inventory calls that load their
+own policy; it cannot remove
+mandatory or configured exclusions. Its untouched legacy default does not
+override `kuu.config.json`. Prefer the declarative configuration for project
+policy; its rules are exact names and paths, never wildcards. Commands retain
+their captured context: a manifest cannot change the current capabilities
+inventory by mutating `check.PRUNE`.
 
 The extraction above is reachable on its own. `check.exports(path)` is the set
 of names a module exports, read from its text, or nil when the text does not
 bound them; `check.modules(root)` returns
-`{root, files, modules = {{name, path, exports}, ...}, complete, errors}` -- every `.lua` file
+`{root, files, modules = {{name, path, exports}, ...}, complete, errors, scan}` -- every `.lua` file
 below the root that a `require` name could reach and whose exports it could
 bound, in name order, with `files` counting all discovered `.lua` files.
 Unicode names follow the loader's rules; a literal dot in a filename is not
 a directory separator, and a project file hidden by a bundled module is not
 advertised. `complete` is false if a listing or candidate file could not be
 read; `errors` is an array of `{path, message, win32?}` describing each failure.
+Invalid configuration also sets `complete = false`, returns `config_error`,
+omits `scan`, and leaves `files` at zero and `modules` empty. Its error entry carries
+`domain = "SCAN"` and `code = "config"` as well as the path and message.
+Inventory uses the same discovery rules as `check.tree`: discovered links
+are excluded from `files` and `modules`, while a deliberately supplied linked
+root is followed. Excluding links does not make an inventory incomplete.
+The `scan` report describes collection only: its `complete` can be true while
+a later candidate-module read makes the outer inventory `complete` false.
 [capabilities](#kuu-page-capabilities) reports what it returns. `check.tools(root)`
 is the manifest's tool declarations as the checker reads them, in declaration
 order, only those the text bounds; `capabilities` lists the same tools from
@@ -2751,6 +3322,292 @@ named path that is neither a file nor a directory. Invalid command arguments
 use `CLI usage`. The checking module returns findings rather than `nil, err`;
 a file-read or directory-enumeration failure is a `read` finding containing the underlying `FS`
 diagnostic. Filesystem argument errors retain their original domain and code.
+The configuration loader's complete `SCAN` code set is `config`, for malformed,
+unsupported or unreadable `kuu.config.json`; the message identifies the field
+or read failure. Exclusions affect discovery, not runtime `require` resolution.
+
+---
+
+<a id="kuu-page-scan"></a>
+
+<a id="kuu-page-scan-scan-configuration"></a>
+
+## Scan configuration
+
+`kuu.config.json` controls project inspection by checking and module
+inventory. It is read and validated without executing
+`manifest.lua`. `kuu check`, `kuu run`, `kuu list` and `kuu capabilities`
+validate it before loading project code; each operation keeps its captured
+policy. A missing file selects the defaults below. A normal `kuu run` does
+not scan the project tree or track file changes; validating configuration does
+not start an inspection.
+
+<a id="kuu-page-scan-configuration-file"></a>
+
+### Configuration file
+
+The file belongs at the project root, next to `manifest.lua`, and is intended
+to be tracked with the source. It contains UTF-8 JSON, optionally with a BOM:
+
+```json
+{
+  "v": 1,
+  "scan": {
+    "defaults": true,
+    "exclude_dirs": ["artifacts"],
+    "exclude_paths": ["vendor/generated"]
+  }
+}
+```
+
+`v` is required and must be the number `1`. `scan` is optional; omitting it
+is the same as `"scan": {}`. `defaults` is optional and defaults to `true`.
+Both rule arrays are optional and default to empty arrays. No other keys
+are accepted at either level, and objects and arrays are distinct: use `[]`
+for an empty rule list. A missing file selects the default policy; an empty,
+malformed or unreadable file is a configuration error in the loader.
+
+The two kinds of rule have different meanings:
+
+| Rule | Meaning | Example |
+|---|---|---|
+| `exclude_dirs` | An exact directory basename at any depth | `"artifacts"` excludes `artifacts/` and `src/artifacts/` |
+| `exclude_paths` | An exact directory subtree relative to the project root | `"vendor/generated"` excludes that subtree, but not `src/vendor/generated/` |
+
+A directory rule excludes the directory and its descendants, not a file
+with the same name. These are exact names, not patterns: `"artifact"` does
+not match `artifacts/`. No `.gitignore` files are parsed and no `git.exe`
+is needed. Being ignored by Git does not itself exclude a path from kuu's
+inspection.
+
+<a id="kuu-page-scan-defaults-and-deliberate-overrides"></a>
+
+### Defaults and deliberate overrides
+
+The policy separates mandatory exclusions from optional defaults:
+
+| Kind | Directory basenames, at any depth |
+|---|---|
+| Mandatory for project scans | `.git`, `.kuu` |
+| Optional defaults | `.tools`, `build`, `node_modules`, `.cache`, `.local`, `.venv`, `__pycache__` |
+
+Explicit rules add to these sets. `"defaults": false` disables the entire
+optional set, while `.git` and `.kuu` remain mandatory for project scans.
+For example, this policy includes maintained source named `build/` or
+`.local/`, while still excluding `.tools/`, `node_modules/` and one generated
+subtree:
+
+```json
+{
+  "v": 1,
+  "scan": {
+    "defaults": false,
+    "exclude_dirs": [".tools", "node_modules"],
+    "exclude_paths": ["vendor/generated"]
+  }
+}
+```
+
+This matters when a conventional generated-directory name holds maintained
+source. There is no negation or include rule; disable the defaults and name
+the exclusions that belong to the project.
+
+An explicitly named checker file or starting
+directory overrides its own exclusion, including an excluded ancestor.
+Descendant directory exclusions still apply. A project's root is always the
+starting point; its own basename never prunes the whole project. These
+overrides do not change the link-target rules in [check](#kuu-page-check).
+
+Exclusions control inspection only. They do not prevent a task from running,
+change `require` resolution or provide a sandbox. A module omitted from an
+inventory can still be required or inspected to resolve a literal require.
+
+<a id="kuu-page-scan-normalization-and-validation"></a>
+
+### Normalization and validation
+
+Rules normalize backslashes to `/`, fold ASCII `A`–`Z` to `a`–`z`, then sort
+and deduplicate. For example, `"Vendor\\Generated"` and
+`"vendor/generated"` in `exclude_paths` become one rule. The match convention
+is deliberately ASCII-only, not general Unicode Windows case equivalence:
+`"École"` and `"école"` remain different names. Unicode normalization is not
+performed either.
+
+The loader rejects:
+
+- Absolute, UNC, drive-relative or stream paths, such as `"C:/build"`,
+  `"C:build"`, `"/build"` or `"file:stream"`.
+- Leading, trailing or repeated separators, and `.` or `..` components.
+  Write `"vendor/generated"`, not `"./vendor/generated/"`.
+- Any separator in `exclude_dirs`; use `exclude_paths` for a subtree.
+- Wildcard characters `*`, `?`, `[` and `]`. Braces are literal characters,
+  so `"{artifacts}"` names that exact directory, not a pattern group.
+- Windows-invalid component characters `<`, `>`, `:`, `"`, `|`, U+0000
+  through U+001F, and components ending in a dot or space.
+- Reserved DOS device names, including `CON`, `PRN`, `AUX`, `NUL`, `COM1`
+  through `COM9`, `LPT1` through `LPT9`, `CONIN$` and `CONOUT$`. Extensions
+  do not make them valid; `COM` and `LPT` names using superscript `¹`, `²`
+  or `³` are also rejected.
+- Non-string rules, non-array rule lists, non-boolean `defaults`, unknown
+  keys, or a missing or unsupported `v`.
+
+Each original array may contain at most **256 entries, before deduplication**.
+The file is bounded to **1 MiB**, including a BOM when present. Each component
+may contain at most **255 UTF-16 code units**, and a relative path at most
+**32,760 UTF-16 code units**. A character outside the Basic Multilingual Plane
+uses two units. These are configuration bounds, not a guarantee that every
+accepted spelling names an accessible directory on the current filesystem.
+
+Validation errors carry domain `SCAN`, code `config`, with the configuration
+path and field. These are examples of the loader's diagnostic bodies:
+
+```text
+C:/work/app/kuu.config.json: scan.exclude_dirs[1]: expected one basename, without path separators
+C:/work/app/kuu.config.json: scan.exclude_paths[1]: '.' and '..' components are not allowed
+C:/work/app/kuu.config.json: scan.exclude_dirs: at most 256 rules are allowed before deduplication
+```
+
+The first can result from `"exclude_dirs": ["vendor/generated"]`; move that
+entry to `exclude_paths`. The second can result from
+`"exclude_paths": ["../generated"]`; exclusions must stay project-relative.
+`kuu check` reports these configuration errors without executing the manifest.
+Its JSON form returns `ok:false` and an error with domain `SCAN`, code `config`;
+it exits 2, as do `run` and `list` on invalid configuration. `capabilities`
+keeps its descriptor available, sets `project.config_error` and skips manifest
+execution and module inventory until configuration is fixed. Its module
+inventory is explicitly incomplete.
+
+<a id="kuu-page-scan-one-policy-per-operation"></a>
+
+### One policy per operation
+
+An invocation loads configuration once **before executing the manifest** and
+retains it for requested inspection, including checker rechecks after `--fix`.
+Manifest edits to configuration affect the next
+invocation. Direct `check.tree` and `check.modules` calls load once per operation
+unless given an internal context. `check.file` explicitly inspects one source
+file without loading scan configuration; the check command still preflights
+configuration before inspecting its requested files.
+
+Malformed or unreadable configuration is an actionable error before task
+execution. Checking remains available when the manifest itself is broken.
+Changing scope changes what the next check or inventory inspects. The
+[execution ledger](#kuu-page-ledger) has no file baseline or change counts to migrate.
+
+<a id="kuu-page-scan-shared-traversal"></a>
+
+### Shared traversal
+
+Checking and module inventory share a native collector.
+It excludes directories before entering them and takes file metadata from the
+same enumeration, avoiding a second listing of every directory. The public
+`fs.dirs` API is unchanged. The private collector supports both full configured
+rule lists, independently of `fs.dirs`' 64-pattern limit.
+
+Both consumers use the configured scope and defaults above. For direct
+checker calls that load their own policy, an intentional change to the legacy
+`check.PRUNE` list adds wildcard exclusions; it cannot remove mandatory or
+configured exclusions. Supplied internal contexts, including command contexts
+captured before the manifest, remain fixed across later `PRUNE` mutations.
+The untouched legacy list does not override declarative configuration.
+Configured exclusions remain exact names and paths, not wildcard patterns.
+
+The collector distinguishes deliberate exclusions, links it does not follow,
+and enumeration errors. It retains readable metadata from a partial scan and
+marks the inspection incomplete. Checker findings and module-inventory
+completeness use those diagnostics.
+
+<a id="kuu-page-scan-scan-reports"></a>
+
+### Scan reports
+
+`check --json` and `capabilities --json` expose the normalized
+scope and metadata for scans they actually performed. These additive fields
+let a reader distinguish a small project from a deliberately restricted or
+incomplete inspection. They do not contain the full file inventory.
+
+```typescript
+type ScanScope = {
+  v: 1;
+  defaults: boolean;
+  fingerprint: string;
+  source: { kind: "default" | "file"; path: string };
+  mandatory_dirs: string[];
+  default_dirs: string[];
+  exclude_dirs: string[];
+  exclude_paths: string[];
+  effective_dirs: string[];
+  extra_prune?: string[];
+};
+type ScanReport = {
+  root: string;
+  start: string;
+  scope: ScanScope;
+  path_rules_applied: boolean;
+  complete: boolean;
+  counts: { files: number; enumerated_dirs: number; excluded_dirs: number;
+            nofollow_links: number; errors: number };
+  errors: { path: string; message: string; win32?: number }[];
+  seconds: number;
+};
+```
+
+Scope arrays are present even when empty. `source.path` identifies the root's
+configuration path; `kind:"default"` means it was absent. `default_dirs`
+contains the enabled optional defaults, and `effective_dirs` is the sorted,
+deduplicated union of mandatory, enabled default and custom basenames.
+`fingerprint` identifies the normalized configured rules, so a mere reordering
+of rules does not change it. Direct checker calls can additionally report
+legacy wildcard rules in `extra_prune`; these are separate from that fingerprint.
+
+`root` is the absolute project root and `start` the absolute directory actually
+collected. A deliberate checker start can override its own exclusion. When it
+is outside the project, `path_rules_applied:false` says that project-relative
+subtree rules were inapplicable; basename exclusions still apply.
+
+`counts.files` counts collected ordinary file metadata, including non-Lua
+files. `enumerated_dirs` counts directories whose enumeration was attempted,
+including the starting directory when it could be opened. `excluded_dirs` counts encountered directory
+entries pruned before entering them, not all descendants beneath those entries.
+`nofollow_links` counts encountered links deliberately not followed. Neither
+exclusions nor non-followed links make a scan incomplete. `errors` counts
+enumeration diagnostics, also listed in the `errors` array.
+
+`complete` describes collection within the reported scope, not the whole
+filesystem or a transactional snapshot. Reading a collected Lua file can fail
+later: checker and module-inventory completeness also cover those reads, while
+the underlying scan can remain complete. Syntax findings alone do not make
+inspection incomplete. A partial scan retains readable metadata and its counts.
+
+`seconds` is elapsed collection time at the consumer boundary. For the checker
+and inventory it covers the collector call. It is not a CPU-time measurement.
+
+<a id="kuu-page-scan-command-timings"></a>
+
+### Command timings
+
+`kuu check --timings`, `kuu run --timings TASK` and `kuu capabilities --timings`
+print one timing line on standard error. Human output stays quiet about these
+phases by default. Their JSON reports always include `result.timings`, whether
+or not `--timings` was supplied, and JSON remains on standard output.
+
+All values are wall-clock seconds. Each command documents its own phases on
+the [check](#kuu-page-check), [task](#kuu-page-task) or [capabilities](#kuu-page-capabilities) page.
+Phases may overlap: checking includes collection, and task execution includes
+nested child work and its observer records. Do not add phases or child
+durations to derive a total.
+
+`total` starts just after the timing helper loads, before other command
+imports, and ends after command work and report preparation, including the
+last history append for a run. It excludes OS/runtime startup before command entry
+and final serialization, emission and flushing. Earlier streamed run events
+are part of command work. An external stopwatch can therefore be larger,
+without a promised bound on the difference.
+
+Unavailable phases are omitted, not reported as zero. Reportable failures keep
+the phases and partial inspections reached before failure. Help and
+command-line parser exits retain their existing output conventions and produce
+no timing line.
 
 ---
 
@@ -2908,6 +3765,12 @@ the child could not be started, with these codes:
 | `usage` | raised: no command, a wrong argument shape, an unknown option — in the command table or in `limits` |
 | `oserror` | a job, pipe, or another launch resource could not be created |
 
+For complete task-level examples that preserve stderr, check truncation and
+distinguish accepted exits from timeout/limit/launch failures, read the
+[process recipes](#kuu-page-process-recipes). A command table mixes argv and options;
+serialize its argument sequence as an explicit JSON array inside an object
+with separate `argv`, `cwd` and `env` fields.
+
 Unknown option names raise rather than pass silently, so a typo cannot
 become a run with the wrong settings.
 
@@ -2916,6 +3779,11 @@ become a run with the wrong settings.
 no time limit; zero requests an immediate timeout. `inherit` and `stream`
 default to false. Environment names are compared ignoring case: duplicates,
 empty names, `=`, and NUL are refused, as are NUL bytes in text values.
+
+An `env` table overlays the inherited environment; `false` removes a named
+variable. It does not start from an empty environment. For shared root-derived
+cache locations and fresh editor processes, see
+[the project environment recipe](#kuu-page-project-environment).
 
 <a id="kuu-page-proc-limits"></a>
 
@@ -3057,6 +3925,10 @@ kuu's own child jobs permit breakaway, so a program that kuu runs can itself
 detach a process, and only a process that asks to break away leaves; nothing
 escapes supervision by accident.
 
+The [editor verification recipe](#kuu-page-editor) shows a detached native supervisor
+that owns and bounds its GUI child on a private desktop. Launch success and
+application readiness are separate results.
+
 <a id="kuu-page-proc-procalive-and-prockill"></a>
 
 ### proc.alive and proc.kill
@@ -3177,8 +4049,8 @@ forward slashes. Every path is normalised and given the `\\?\` prefix before
 Windows sees it, so paths beyond 260 characters simply work. Refused by name,
 because Windows would silently make them mean something else: a
 drive-relative path such as `C:foo`, a device path, and a component ending in
-`.` or a space. Refusals of the path itself raise `FS badvalue`; a path that is
-not there is `nil, err` with `FS notfound`.
+`.` or a space. Refused path spellings raise `FS badvalue`; invalid UTF-8 raises
+`FS encoding`. A path that is not there is `nil, err` with `FS notfound`.
 
 <a id="kuu-page-fs-reading-and-writing"></a>
 
@@ -3236,6 +4108,89 @@ or symlink whose target is gone is `nil, err` with `FS dangling`, distinct from
 `notfound`, because a resolver may continue past a missing name but must stop
 at an existing broken link.
 
+<a id="kuu-page-fs-file-attributes"></a>
+
+### File attributes
+
+`fs.attributes` inspects Windows file attributes; `fs.set_attributes` patches
+named flags on an existing file, directory or reparse object. These calls are
+available from [0.12](#kuu-page-upgrading-from-011); use `rt.version_at_least(0, 12)`
+when a project depends on them. For an existing file:
+
+```lua
+local path = "build/output.bin"
+local flags = assert(fs.attributes(path))
+print(flags.attrs, flags.readonly, flags.hidden)
+assert(fs.set_attributes(path, { readonly = false, hidden = true }))
+
+local target = assert(fs.attributes(path, { follow = true }))
+assert(fs.set_attributes(path, { archive = false }, { follow = true }))
+```
+
+The getter returns a table with all seven fields present:
+
+```typescript
+type Attributes = {
+  attrs: number; // complete unsigned 32-bit Windows mask, as an integer
+  readonly: boolean; hidden: boolean; system: boolean; archive: boolean;
+  temporary: boolean; not_content_indexed: boolean;
+};
+```
+
+It is a detached snapshot: assigning `flags.hidden` changes only the Lua
+table. A setter patch accepts the six named booleans; `true` sets a flag,
+`false` clears it, and omitted/nil fields preserve the queried value. The raw
+`attrs` mask is inspection only. Passing it back as a patch, or naming `normal`,
+directory/reparse bits, compression, encryption or sparse allocation, is an
+error. Unrelated native bits are preserved, including when all mutable flags
+are cleared. The setter returns `true` on success.
+
+Both calls default to **`follow=false` for the final path component**, selecting
+the link itself; `{follow=true}` selects its target. `fs.stat` keeps its
+existing following default. Linked ancestors may still be traversed, so this
+selection does not confine access to a directory. A failed nofollow call never
+silently retries against the target.
+
+An empty patch, `fs.set_attributes(path, {})`, opens and reads metadata,
+validates the selected object, and makes no write. It does **not** test write
+permission. Every nonempty patch requests read/write-attribute access, even
+if its values are already set; an unchanged effective mask skips the native
+setter after that check. Only attribute access is requested, not permission
+to read or write file contents.
+
+`temporary=true` on a directory returns `nil, FS badvalue` before any part of
+the patch is written. This also applies to directory links selected without
+following. `temporary=false` is allowed on directories. File attributes are
+separate from ACL permissions: a directory's readonly flag is not a general
+write-permission control, though it can prevent removal. These calls do not
+create paths, recurse, change ACLs or create links. Successfully opened
+non-disk objects return `nil, FS badvalue`; other provider failures keep their
+native error classification.
+
+Paths must actually be UTF-8 strings; numbers are not coerced. A patch must be
+a table, and options must be a table or nil. Only stored table entries count:
+`__index`, `__pairs` and other metatable behavior do not supply fields.
+Unknown, numeric or embedded-NUL keys raise `FS usage`. Every present flag
+and `follow` must be a boolean; other values raise `FS badvalue`. Wrong
+argument types raise Lua argument errors. Invalid UTF-8 raises `FS encoding`;
+empty paths, malformed path spellings and paths containing NUL raise
+`FS badvalue`. Validation happens before native handles are acquired.
+
+Environmental failures return `nil, err`. Missing ordinary paths are
+`FS notfound`; permission or sharing denial is `FS access`. `FS dangling`
+requires a followed open to fail with native file/path-not-found, followed by
+a successful nofollow query confirming a name-surrogate link at the final
+component. Otherwise the original error is kept, including access denied.
+That diagnosis uses separate observations and can race with path replacement.
+
+Each update reads and patches through the same handle, keeping it attached to
+the selected object if the path is renamed. It does not atomically merge
+concurrent attribute writers: preservation refers to the state read by this
+call. File contents are unchanged. This call does not explicitly rewrite
+creation, access or write times; the filesystem's metadata change time may
+advance.
+`fs.stat().ctime` is creation time, not that change time.
+
 <a id="kuu-page-fs-making-and-removing"></a>
 
 ### Making and removing
@@ -3251,7 +4206,17 @@ fs.copy(from, to, { replace = true })
 
 `remove` without `recursive` on a non-empty directory is `FS notempty`. A
 recursive remove never follows a junction or symlink: the link is removed as a
-link and its target is untouched. Read-only files are removed.
+link and its target is untouched. Read-only files and directories are removed:
+the readonly bit is cleared on the selected object before deletion, and a
+failure to clear it is reported. Removal is nontransactional: earlier entries
+may already be gone, and a cleared readonly bit can remain clear if deletion
+later fails. Attribute clearing does not change a link target. Do not race
+removal against path replacement; linked ancestors are not a containment boundary.
+Readonly-directory handling here requires 0.12 or later.
+
+For longer, scheduler-friendly retries, use the project's
+[bounded publication and cleanup recipe](#kuu-page-cleanup). It retries `FS access`
+under one budget per tree operation and preserves primary and cleanup failures.
 
 <a id="kuu-page-fs-listing-and-walking"></a>
 
@@ -3262,9 +4227,9 @@ local l = fs.list("src")
 for _, e in ipairs(l.entries) do print(e.name, e.kind, e.size, e.mtime) end
 #l.errors        -- names that could not be represented, listings cut short
 
-local d = fs.dirs("C:/work", { depth = 3, prune = { "node_modules", ".git" } })
+local d = fs.dirs("C:/work", { prune = { "node_modules", ".git" } })
 d.root           -- as walked
-d.paths          -- every directory entered, depth-first, siblings in UTF-8 byte order
+d.paths          -- directory paths, including link/depth frontiers; depth-first, siblings in UTF-8 byte order
 d.dirs           -- == #d.paths
 d.skipped        -- the directories a prune pattern excluded; never in d.paths
 d.links          -- { path, tag, surrogate, action, type, target } per reparse point
@@ -3281,14 +4246,34 @@ use `*` and `?`, match base names, and ignore case; at most 64 are accepted.
 
 **A pruned directory is not in `paths`.** It was excluded by name, so it is
 reported in `skipped` and `pruned` instead, including at the depth limit
-(where pruning takes precedence over `depthlimited`), and the plain walk below reads
-nothing the prune was asked to exclude:
+(where pruning takes precedence over `depthlimited`).
+
+Directory links remain in `paths`, however. Listing one would follow its
+target despite the walk's refusal to enter it. For the unlimited walk above,
+also honor the walk's `nofollow` decisions when listing discovered directories:
 
 ```lua
+local nofollow = {}
+for _, link in ipairs(d.links) do
+  if link.action == "nofollow" then nofollow[link.path] = true end
+end
 for _, dir in ipairs(d.paths) do
-  for _, e in ipairs(fs.list(dir).entries) do ... end
+  if not nofollow[dir] then
+    local listing, why = fs.list(dir)
+    -- Handle a nil listing and listing.errors before treating it as complete.
+    if listing then
+      for _, e in ipairs(listing.entries) do
+        -- e.kind == "link" identifies file/directory name-surrogate links.
+        -- Inspect ordinary entries here.
+      end
+    end
+  end
 end
 ```
+
+Use `action`, rather than rejecting all reparse metadata: filter/cloud
+directories can be ordinary content. A linked starting directory is followed
+deliberately and reported with `action = "descended"` when successfully read.
 
 Through 0.8 a pruned directory appeared in `paths` and only its descent was
 skipped, so that loop listed the files of every excluded directory. Two
@@ -3385,9 +4370,9 @@ refused before anything is created.
 | `exists` | the target exists and `replace` was not given, or `mkdir` met a file |
 | `notempty` | `remove` on a non-empty directory without `recursive` |
 | `toobig` | `read` above `maxbytes` |
-| `encoding` | a name cannot be represented |
-| `badvalue` | raised for a refused path, a path or name holding NUL, or an option value; `nil, err` for a wrong kind of object — a directory given to `read`, a file given to `list` |
-| `usage` | raised: an unknown option |
+| `encoding` | a name cannot be represented, or a path is not valid UTF-8 |
+| `badvalue` | raised for a refused path, a path or name holding NUL, or an option/attribute value; `nil, err` for a wrong kind of object — a directory given to `read`, a file given to `list`, a non-disk attribute handle, or `temporary=true` on a directory |
+| `usage` | raised: an unknown option or attribute patch key |
 | `timeout` | `watch:read` waited its whole duration |
 | `closed` | raised: a closed watch was used |
 | `oserror` | anything else, with the Windows message |
@@ -4767,18 +5752,28 @@ child's `env` option in [`proc`](#kuu-page-proc) does the same for one child.
 `get` and `os.getenv` return `""` for an empty value and `nil` for an
 absent variable. Names and text values cannot contain NUL.
 
-The **persisted environment** is what Windows hands to new processes: the
-user's, under `HKCU\Environment`, and the machine's, under the Session
-Manager's key. `persist` and `forget` write there and broadcast
-`WM_SETTINGCHANGE`, so Explorer and every console opened afterwards see the
-change. Processes already running, kuu itself included, keep their copy:
-after `env.persist`, `env.get` still answers as before. A value holding a
+The **persisted environment** is the user's stored settings under
+`HKCU\Environment` and the machine's under the Session Manager's key.
+`persist` and `forget` write there and broadcast `WM_SETTINGCHANGE`, allowing
+programs such as Explorer to refresh their environment. This does not rewrite
+every running process's copy. A new child normally inherits its parent's live
+environment, so a console or editor started by an existing launcher may still
+receive the old values. See Microsoft's [environment inheritance](https://learn.microsoft.com/en-us/windows/win32/procthread/environment-variables)
+and [change notification](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-settingchange)
+contracts. Kuu keeps its live copy: after `env.persist`, `env.get` still
+answers as before. A value holding a
 `%` is stored as an expandstring, as Windows does for `Path`; `persisted`
 returns it unexpanded with its type, and `env.expand` expands it.
 
 To add a directory to the user's `Path`, read `env.persisted("Path")`,
 edit the string, and persist it back; nothing here edits `Path` for you,
 because appending blindly is how `Path` fills with duplicates.
+
+For project tools, pass a child `env` overlay instead of persisting machine or
+user settings. The [shared project environment](#kuu-page-project-environment) recipe
+derives cache paths from the project root and supplies the same overlay to CLI
+tools and newly launched editors. An existing editor keeps its launch
+environment; launching a client that reuses it does not refresh that copy.
 
 <a id="kuu-page-env-functions"></a>
 
@@ -5087,6 +6082,7 @@ inspection calls can be synchronous, as their manual pages describe.
 | `Add-Content` | `fs.write(p, data, { append = true })` | |
 | `Test-Path` | `fs.exists(p)` | says what it is: `"file"`, `"directory"`, `"link"`, `"other"`, or `false` |
 | `Get-Item`, `Get-ItemProperty` | `fs.stat(p)` | identity too: volume and file ids |
+| `(Get-Item p).Attributes`, `attrib.exe` | `fs.attributes(p)`, `fs.set_attributes(p, { readonly = false })` | six named flags from 0.12; omitted flags preserved, final links not followed by default; [contract](#kuu-page-fs-file-attributes) |
 | `New-Item -ItemType Directory -Force` | `fs.mkdir(p)` | parents made, existing fine |
 | `Remove-Item -Recurse -Force` | `fs.remove(p, { recursive = true })` | never follows a junction or symlink into its target |
 | `Move-Item`, `Copy-Item` | `fs.rename(a, b, { replace = true })`, `fs.copy(a, b)` | |
@@ -5624,6 +6620,1805 @@ print(failed.kind, failed.name, failed.error and (failed.error.domain .. " " .. 
 
 ---
 
+<a id="kuu-page-cleanup"></a>
+
+<a id="kuu-page-cleanup-bounded-publication-and-cleanup"></a>
+
+## Bounded publication and cleanup
+
+Project Lua can retry a short-lived Windows denial while publishing a completed
+directory or removing owned staging. These recipes require kuu 0.12 for
+`fs.attributes` and readonly-directory cleanup. Use `rt.version_at_least(0, 12)`
+as the minimum-version guard, alongside the project's approved runtime pins.
+
+`FS access` includes sharing violations, ACL denial and write protection. A
+retry cannot distinguish them immediately. Retry only that classified error,
+under an explicit time budget; never parse localized error messages. Other
+errors return immediately. The budget limits new attempts and scheduled waits,
+not the time spent inside one synchronous filesystem call. `fs.rename` already
+has a short native retry; its elapsed time counts toward this outer budget.
+
+<a id="kuu-page-cleanup-a-project-module"></a>
+
+### A project module
+
+Save this complete module as `owned_ops.lua` in the project. Its callers must
+own the exact staging/removal path and exclude concurrent writers. Pass the
+same path on every attempt. Do not use a repository root, a parent directory,
+or a user profile as staging. Final-component links are removed themselves;
+linked ancestors and concurrent path replacement are not containment barriers.
+
+```lua
+global none
+global <const> require, assert, type, math, pcall
+local fs, err, sched = require "fs", require "err", require "sched"
+local M = {}
+
+function M.retry_access(operation, seconds)
+  assert(type(seconds) == "number" and seconds >= 0 and seconds < math.huge,
+    "retry budget must be finite nonnegative seconds")
+  local until_time = sched.clock() + seconds
+  local last
+  repeat
+    local ok, why = operation()
+    if ok then return ok end
+    if not err.is(why, "FS", "access") then return nil, why end
+    last = why
+    local remaining = until_time - sched.clock()
+    if remaining <= 0 then break end
+    sched.sleep(math.min(0.025, remaining))
+  until sched.clock() >= until_time
+  return nil, last
+end
+
+function M.remove_owned(path, seconds)
+  return M.retry_access(function()
+    local ok, why = fs.remove(path, { recursive = true })
+    if ok then return true end
+    if err.is(why, "FS", "notfound") then
+      -- A missing descendant alone does not prove the root was removed.
+      local flags, absent = fs.attributes(path)
+      if not flags and err.is(absent, "FS", "notfound") then return true end
+    end
+    return nil, why
+  end, seconds)
+end
+
+function M.publish(staging, destination, validate, seconds)
+  -- validate returns true or nil,error; raised validation errors survive too.
+  local called, valid, primary = pcall(validate, staging)
+  if not called then primary, valid = valid, nil end
+  if valid then
+    valid, primary = M.retry_access(function()
+      return fs.rename(staging, destination) -- no replace: destination must be absent
+    end, seconds)
+  end
+  if valid then return true end
+  primary = primary or err.new("PROJECT", "invalid", "staging validation failed")
+  local removed, cleanup = M.remove_owned(staging, seconds)
+  if removed then cleanup = nil end
+  return nil, primary, cleanup
+end
+
+return M
+```
+
+One removal attempt covers the whole tree, so a two-second budget is not
+multiplied by the number of files. Removal is nontransactional: earlier entries
+may already be gone, and a readonly bit can remain cleared when deletion later
+fails. Retrying tolerates that partial progress. There is no blind restoration
+of attributes or files after failure.
+
+Publication uses a staging directory beside the destination, on the same
+volume, and never replaces an existing destination. Validate before renaming;
+readers should use only the published path. A successful rename moves the
+completed tree into place, but is not a power-loss durability guarantee.
+On failure, publication and cleanup each have their own explicit budget. A
+two-second argument can therefore permit up to four seconds of retry waiting,
+plus filesystem call time and validation. Raised programming errors from a
+filesystem call still propagate; provide valid paths and arguments.
+
+<a id="kuu-page-cleanup-extract-validate-publish"></a>
+
+### Extract, validate, publish
+
+Save as `install-cached.lua`; run `kuu install-cached.lua ARCHIVE DEST SHA256`.
+This uses an already cached archive whose expected SHA-256 was pinned by the
+project. It creates a new owned staging directory and checks a known package
+marker before publication; change `bin/tool.exe` to the package's actual
+required file. Hash verification and extraction both happen inside the
+validation callback, so either failure still attempts staging cleanup.
+
+```lua
+global none
+global <const> require, assert, io, tostring
+local rt, fs, hash = require "rt", require "fs", require "hash"
+local archive, err, ops = require "archive", require "err", require "owned_ops"
+local cached = assert(rt.args[1], "ARCHIVE is required")
+local destination = assert(rt.args[2], "DEST is required")
+local expected = assert(rt.args[3], "SHA256 is required")
+assert(fs.mkdir(fs.dirname(destination)))
+local staging = assert(fs.tempdir { dir = fs.dirname(destination), prefix = ".stage-" })
+local ok, primary, cleanup = ops.publish(staging, destination, function(path)
+  local digest, why = hash.file("sha256", cached)
+  if not digest then return nil, why end
+  if digest ~= expected then return nil, err.new("PROJECT", "hash", "archive hash mismatch") end
+  local unpacked, unpack_error = archive.unpack(cached, path, { timeout = "2m" })
+  if not unpacked then return nil, unpack_error end
+  local info, missing = fs.stat(path .. "/bin/tool.exe", { follow = false })
+  if not info then return nil, missing end
+  if info.kind ~= "file" then return nil, err.new("PROJECT", "invalid", "bin/tool.exe must be a file") end
+  return true
+end, 2)
+if cleanup then io.stderr:write("staging cleanup also failed: ", tostring(cleanup), "\n") end
+assert(ok, primary)
+```
+
+The secondary cleanup error is printed before the primary error is raised;
+neither failure is replaced by a success message. A task can instead report
+the cleanup error and `return nil, primary`, preserving its classified task
+failure. Validate the real package's required contents; one marker is only
+this example's acceptance criterion. For reconstructing installations and
+recovering interrupted publication, keep the pinned archive and explicit
+ownership of leftover staging directories. The [reconstruction guide](#kuu-page-reconstruction)
+adds receipt and payload verification, staging attribute normalization, independent
+backup verification and reconciliation after an uncertain upload.
+
+---
+
+<a id="kuu-page-process-recipes"></a>
+
+<a id="kuu-page-process-recipes-process-descriptions-outcomes-and-diagnostics"></a>
+
+## Process descriptions, outcomes and diagnostics
+
+A process specification mixes numbered arguments with options such as `cwd`
+and `env`. It is a Lua call table, not a JSON object. To describe it, copy its
+arguments into an explicit `json.array` and put them under `argv`. Keep the
+working directory and environment overlay in separate fields. An empty overlay
+is `{}`; an empty argument array is `[]`. JSON's strict mapping stays useful.
+
+Use `task.exec` when output can stream through. A program can define nonzero
+success codes; accepting a classified `TASK exit` preserves its individual
+child record. Use `task.command` with `proc.run` when the task needs captured
+bytes. This retains tool resolution, supervision and deadlines, but the capture
+call has **no individual child record** in the ledger or `kuu run --json`
+events. The enclosing task and run are still recorded. It is a supported
+project implementation choice; call the project task through `kuu run`.
+
+<a id="kuu-page-process-recipes-a-project-module"></a>
+
+### A project module
+
+Save as `process_ops.lua`. The extra success-code set is specific to the
+program: `{ [3] = true }` below belongs to the sample probe, not every tool.
+Zero remains success. A timeout, kill or limit is always failure, even if its
+numeric code happens to be in the set. Invalid call arguments still raise;
+launch failures return a classified error with the original cause attached.
+
+```lua
+global none
+global <const> require, ipairs, pairs, tostring
+local task, proc, json = require "task", require "proc", require "json"
+local fs, err = require "fs", require "err"
+local M = {}
+
+local function description(command)
+  local argv, env = json.array {}, {}
+  for i, argument in ipairs(command) do argv[i] = argument end
+  for name, value in pairs(command.env or {}) do env[name] = value end
+  return { argv = argv, cwd = fs.absolute(command.cwd or fs.cwd()), env = env }
+end
+
+function M.describe(spec)
+  return description(task.command(spec))
+end
+
+function M.exec_success(spec, extra_success)
+  local ok, why = task.exec(spec)
+  if ok then return true end
+  if err.is(why, "TASK", "exit") and extra_success and extra_success[why.exit] == true then
+    return true
+  end
+  return nil, why
+end
+
+local function failure(command, code, message, result, cause)
+  local context = description(command)
+  -- The full environment overlay is useful in a description, not in an error.
+  context.env = nil
+  message = message .. "\ncommand: " .. json.encode(context)
+  if result then
+    if result.err ~= "" then message = message .. "\nstderr:\n" .. result.err end
+    if result.truncated then message = message .. "\n[captured output truncated]" end
+  end
+  local details = { result = result, cause = cause }
+  if code == "exit" then details.exit = result.code end
+  return nil, err.new("PROJECT", code, message, details)
+end
+
+function M.capture(spec, extra_success)
+  local command = task.command(spec)
+  local result, why = proc.run(command)
+  if not result then
+    return failure(command, "launch", "could not start child: " .. tostring(why), nil, why)
+  end
+  if result.status ~= "exit" then
+    local reason = result.status .. (result.limit and (" (" .. result.limit .. ")") or "")
+    return failure(command, result.status, "child ended: " .. reason, result)
+  end
+  if result.code ~= 0 and not (extra_success and extra_success[result.code] == true) then
+    return failure(command, "exit", "child exited with code " .. result.code, result)
+  end
+  if result.truncated then
+    return failure(command, "truncated", "complete captured output is required", result)
+  end
+  return result
+end
+
+return M
+```
+
+`describe` resolves a declared executable and records an absolute cwd. A bare
+executable name remains a PATH lookup; this is a description, not a PATH
+resolver or a complete replay format. `env` contains only the explicit overlay:
+strings set variables and `false` removes them; inherited variables are not
+expanded. `timeout`, `limits`, `stdin` and capture settings are intentionally
+outside this `{argv, cwd, env}` description. Persist only arguments and
+environment values that the project intends to expose in diagnostics.
+
+The module copies the specification and its description rather than changing
+the caller's table. `capture` expects ordinary capture options: do not set
+`inherit = true`, because inherited output cannot be collected. Use finite
+`timeout` and `maxout` values appropriate to the command. `truncated` covers
+either stream, so even accepted exits are rejected when complete output was
+not retained. The failure's `result` still holds the captured prefixes, status,
+code, elapsed time and actual stderr; `cause` retains a launch error. These
+extra fields are for Lua callers, not automatic JSON/ledger error fields.
+
+<a id="kuu-page-process-recipes-a-runnable-example"></a>
+
+### A runnable example
+
+Save this small program as `probe.lua` beside the module. It supplies three
+ordinary exit outcomes, a slow operation and oversized output without needing
+an installed external application.
+
+```lua
+global none
+global <const> require, io, os, string
+local rt, sched = require "rt", require "sched"
+local mode = rt.args[1] or "same"
+if mode == "same" then
+  io.write("unchanged\n")
+elseif mode == "changed" then
+  io.write("updated\n")
+  os.exit(3)
+elseif mode == "failed" then
+  io.write("partial output\n")
+  io.stderr:write("probe could not finish its work\n")
+  os.exit(9)
+elseif mode == "slow" then
+  io.stderr:write("probe began waiting\n")
+  io.stderr:flush()
+  sched.sleep("10s")
+elseif mode == "loud" then
+  io.write(string.rep("x", 8192))
+else
+  io.stderr:write("unknown probe mode\n")
+  os.exit(2)
+end
+```
+
+Save this manifest as `manifest.lua`. `stream changed` demonstrates accepting
+code 3 after `task.exec` has recorded the child's actual exit. `capture failed`
+reports code 9, its real stderr, argv and cwd. `capture slow` reports timeout;
+`capture loud` refuses a truncated success. Place the project's pinned `kuu.exe`
+beside the manifest; the sample declares that existing executable as its tool.
+Loading the manifest performs no provisioning work.
+
+```lua
+global none
+global <const> require, io
+local task, rt, fs = require "task", require "rt", require "fs"
+local ops = require "process_ops"
+task.tool "probe" { exe = "kuu.exe", timeout = "5s", output = "lines" }
+local arguments = { { "mode", type = "string", default = "changed" } }
+local function command(mode)
+  return { tool = "probe", fs.join(rt.root(), "probe.lua"), mode,
+    cwd = rt.root(), timeout = "500ms", maxout = "1K" }
+end
+task "stream" {
+  desc = "Run the probe and accept its documented changed exit",
+  args = arguments,
+  run = function(opts) return ops.exec_success(command(opts.mode), { [3] = true }) end,
+}
+task "capture" {
+  desc = "Capture the probe with status and truncation checks",
+  args = arguments,
+  run = function(opts)
+    local result, why = ops.capture(command(opts.mode), { [3] = true })
+    if not result then return nil, why end
+    io.write(result.out)
+    return true
+  end,
+}
+```
+
+Run `kuu run stream changed` or `kuu run capture changed`. For machine output,
+`kuu run --json stream changed` keeps the child's code 3 in its child events
+and history while the enclosing task succeeds. `kuu run --json capture changed`
+has task/run records without a child record. Under `--json`, the capture task's
+own `io.write` is redirected to standard error; it is not an individual child
+event.
+
+Finally save `describe.lua` and run `kuu describe.lua` to print a JSON process
+description without executing the probe. The module performs no provisioning.
+
+```lua
+global none
+global <const> require, io
+local rt, fs, json = require "rt", require "fs", require "json"
+require "manifest"
+local ops = require "process_ops"
+io.write(json.encode(ops.describe {
+  tool = "probe", fs.join(rt.root(), "probe.lua"), "changed",
+  cwd = rt.root(), env = { PROBE_MODE = "local", PROBE_UNUSED = false },
+}), "\n")
+```
+
+<a id="kuu-page-process-recipes-reading-failures"></a>
+
+### Reading failures
+
+For streamed operations, branch on `err.is(why, "TASK", "exit")` and
+`why.exit` only for ordinary nonzero exits. Other results stay failures:
+`TASK failed` carries `why.status` and, for a job limit, `why.limit`; a launch
+failure is a `PROC` error. Never accept one by parsing its message or treating
+every nonzero code as equivalent.
+
+For captured operations, first test whether a result exists, then `status`,
+then the tool's exit policy, then `truncated`, before decoding stdout. A limit
+result reports `status = "limit"` with `limit = "memory"`, `"cpu"` or
+`"processes"`; its code does not turn it into success. The module exposes this
+as `PROJECT limit`, retaining the full result and naming the limit in its
+message. Add `limits` to the command when the project needs them. Keep a
+wall-clock timeout as well, because a waiting process need not consume CPU.
+
+The message prints stderr itself rather than the result table's address or
+stdout mislabeled as stderr. Empty stderr stays empty; stdout is available in
+the attached result. A truncation notice means that neither stream should be
+treated as a complete diagnostic or document. See [proc](#kuu-page-proc),
+[tools](#kuu-page-tools) and [the ledger](#kuu-page-ledger) for the underlying contracts.
+
+---
+
+<a id="kuu-page-working-directories"></a>
+
+<a id="kuu-page-working-directories-working-directories-through-wrappers"></a>
+
+## Working directories through wrappers
+
+Keep the caller's directory explicit when a wrapper enters a project and
+launches another program through its manifest.
+
+These are separate places:
+
+| place | meaning in this recipe |
+|---|---|
+| project root | the directory containing `manifest.lua` and the pinned `kuu.exe` |
+| caller cwd | the directory from which the user launched the wrapper |
+| wrapper cwd | initially the caller cwd; this wrapper leaves its own cwd alone |
+| child cwd | the validated directory explicitly supplied to `task.exec` |
+| module root | the base for project `require` calls; `rt.root()` starts at a file program's directory and becomes the project root for `kuu run` |
+
+`kuu run` finds the manifest above its starting directory and enters that
+project **before loading the manifest**. Therefore `fs.cwd()` at the top of
+`manifest.lua` returns the project root, not the original invocation directory.
+Capture the caller cwd in the wrapper first and pass it as an argument. No
+invocation-directory API or process-wide `fs.chdir` in the task is needed.
+
+<a id="kuu-page-working-directories-complete-wrapper-and-manifest"></a>
+
+### Complete wrapper and manifest
+
+Use this layout. The runtime can be downloaded or committed according to the
+project's pinned-runtime policy in [Adopting kuu](#kuu-page-adopting).
+
+```text
+repo/
+  kuu.exe
+  manifest.lua
+  tools/
+    from-here.lua
+    report.lua
+```
+
+Save this as `tools/from-here.lua`. On the file route, kuu sets `rt.root()` to
+the script's directory without changing cwd. The wrapper locates its project
+from that directory, even when launched from somewhere unrelated. It launches
+the project's runtime with the project root as cwd so the intended manifest
+is selected. `--cwd` belongs to this task's schema, not to the `kuu run` verb.
+
+```lua
+global none
+global <const> require, ipairs, io, os, tostring
+
+local fs, rt, proc = require "fs", require "rt", require "proc"
+local caller_cwd = fs.cwd()
+local project_root = fs.absolute(fs.join(rt.root(), ".."))
+local command = {
+  fs.join(project_root, "kuu.exe"), "run", "report", "--cwd", caller_cwd, "--",
+  cwd = project_root, inherit = true, timeout = "1m",
+}
+for _, value in ipairs(rt.args) do command[#command + 1] = value end
+local result, why = proc.run(command)
+if not result then
+  io.stderr:write("from-here: ", tostring(why), "\n")
+  os.exit(1)
+end
+if result.status ~= "exit" then
+  io.stderr:write("from-here: child status ", result.status, "\n")
+  os.exit(1)
+end
+os.exit(result.code)
+```
+
+Save this as `manifest.lua`. Require an absolute directory: resolving a
+relative `--cwd` here would resolve it against the project root, after the
+original caller context was lost. A directory link is accepted if its target
+is a directory. Existence is checked before launch; the actual launch still
+reports an error if the directory disappears or becomes inaccessible later.
+
+```lua
+global none
+global <const> require, ipairs
+
+local task, fs, rt, err = require "task", require "fs", require "rt", require "err"
+local project_root = fs.absolute(rt.root())
+task.tool "kuu" { exe = "kuu.exe", output = "ndjson", timeout = "20s" }
+
+task "report" {
+  desc = "report from the wrapper's original working directory",
+  args = {
+    { "--cwd", type = "string", required = true, help = "absolute caller directory" },
+    { "argv", type = "string", rest = true, help = "arguments for the report program" },
+  },
+  run = function(opts)
+    local cwd = opts.cwd:gsub("\\", "/")
+    if not cwd:match("^%a:/") and not cwd:match("^//[^/]+/[^/]+") then
+      return nil, err.new("PROJECT", "cwd", "--cwd must be an absolute drive or UNC path")
+    end
+    local info, why = fs.stat(cwd)
+    if not info then return nil, why end
+    if info.kind ~= "directory" then
+      return nil, err.new("PROJECT", "cwd", "--cwd must name a directory")
+    end
+    local command = {
+      tool = "kuu", fs.join(project_root, "tools/report.lua"), cwd = fs.absolute(cwd),
+    }
+    for _, value in ipairs(opts.argv) do command[#command + 1] = value end
+    return task.exec(command)
+  end,
+}
+```
+
+Save this small diagnostic child as `tools/report.lua`; replace its body with
+the real operation when adopting the recipe. Its script path is absolute, so
+changing child cwd cannot select a different script. Its `require` root stays
+at `tools/`, while relative filesystem operations use the explicit caller cwd.
+
+```lua
+global none
+global <const> require, io
+
+local fs, rt, json = require "fs", require "rt", require "json"
+io.write(json.encode {
+  cwd = fs.cwd(), module_root = rt.root(), argv = json.array(rt.args),
+}, "\n")
+```
+
+Launch the wrapper by its path using the project's runtime, from the project
+root, a nested directory, or an unrelated directory. For example, in
+PowerShell, `& 'C:\work\my project\kuu.exe' 'C:\work\my project\tools\from-here.lua' 'a file.txt' --help` sends both argument values to
+the report program. The wrapper supplies the task parser's first `--`;
+later `--`, `--help`, and `--cwd` values are ordinary child arguments. The
+file route itself does not consume them as task options.
+
+Use argument arrays at every process boundary. Do not join them into command
+text or add quote characters around paths. Empty arguments, embedded double
+quotes and trailing backslashes are preserved by kuu's Windows argv encoding;
+the initial shell must first deliver the intended values to the wrapper.
+Windows filenames cannot contain a double quote: test paths with spaces and
+apostrophes, and double quotes inside **argument values** instead.
+
+The wrapper checks process status before forwarding an exit code. An ordinary
+nonzero exit passes from the child through `task.exec`, the nested `kuu run`,
+and the wrapper. A launch error or timeout is reported as failure, not treated
+as a successful exit. See [Process recipes](#kuu-page-process-recipes) for captured
+diagnostics and accepted nonzero codes, and [Tasks](#kuu-page-task) for child records
+and JSON reporting.
+
+---
+
+<a id="kuu-page-project-environment"></a>
+
+<a id="kuu-page-project-environment-shared-project-environment-and-caches"></a>
+
+## Shared project environment and caches
+
+Keep one environment recipe for CLI tools and newly launched editors. Anchor
+its paths to the project root, even when `kuu run` starts in a nested directory.
+Under `kuu run`, `rt.root()` is the manifest's directory; it is the module
+search root, not the caller's original working directory. See
+[working directories](#kuu-page-working-directories) when a child needs that caller's
+directory instead.
+
+<a id="kuu-page-project-environment-a-shared-module"></a>
+
+### A shared module
+
+Save as `automation/project_env.lua`. It computes paths but creates nothing at
+module load. Tools create their own caches when needed. Ignore `/.cache/`,
+`/.venv/` and `/.tools/` in the project's `.gitignore`.
+
+```lua
+global none
+global <const> require, ipairs
+local fs, rt, task, proc = require "fs", require "rt", require "task", require "proc"
+local root = fs.absolute(rt.root())
+local M = { root = root }
+
+function M.overlay()
+  return {
+    UV_CACHE_DIR = root .. "/.cache/uv",
+    UV_PROJECT_ENVIRONMENT = root .. "/.venv",
+    npm_config_cache = root .. "/.cache/npm",
+    GOCACHE = root .. "/.cache/go/build",
+    GOMODCACHE = root .. "/.cache/go/modules",
+    VIRTUAL_ENV = false,
+    PYTHONHOME = false,
+    PYTHONPATH = false,
+  }
+end
+
+local function command(tool, arguments)
+  local spec = { tool = tool, cwd = root, env = M.overlay() }
+  for i, argument in ipairs(arguments) do spec[i] = argument end
+  return spec
+end
+
+function M.run(tool, arguments)
+  return task.exec(command(tool, arguments))
+end
+
+function M.launch(tool, arguments)
+  local resolved = task.command(command(tool, arguments))
+  -- detach accepts only argv, cwd and env, not a tool/default timeout.
+  local detached = { cwd = resolved.cwd, env = resolved.env }
+  for i, argument in ipairs(resolved) do detached[i] = argument end
+  return proc.detach(detached)
+end
+
+return M
+```
+
+Each call gets a fresh overlay. A string sets a variable, including an empty
+string; `false` removes it. Other inherited variables remain. This is a partial
+overlay, not a clean or hermetic environment. The explicit Python removals
+prevent those inherited activation settings from choosing a different project.
+They do not disable every tool's user configuration or interpreter discovery.
+Pin and declare the actual executables separately. For subprocesses a tool
+launches by bare name, explicitly provide its required project tool directories
+in `PATH`; calling the top-level tool by absolute path does not configure its
+own subprocess search.
+
+A strict allowlist requires enumerating `env.all()`, marking every unapproved
+name `false`, then adding the approved values. Windows names are case
+insensitive: compare names consistently and do not supply differently cased
+duplicates. Decide which Windows variables and credentials each tool actually
+requires before using such an allowlist. This module intentionally does not
+implement that broader policy or persist machine/user settings.
+
+The cache variables are documented upstream: [uv's cache directory](https://docs.astral.sh/uv/reference/environment/#uv_cache_dir),
+[uv's project environment path](https://docs.astral.sh/uv/concepts/projects/config/#project-environment-path),
+[npm's cache configuration and environment settings](https://docs.npmjs.com/cli/v11/using-npm/config/),
+and [Go's environment variables](https://pkg.go.dev/cmd/go#hdr-Environment_variables).
+`GOCACHE` must be absolute. `GOMODCACHE` contains downloaded modules; it is
+separate from Go's build cache. These settings select locations; they do not
+prove a cache is complete, portable or sufficient for offline reconstruction.
+
+<a id="kuu-page-project-environment-exercise-both-launch-paths"></a>
+
+### Exercise both launch paths
+
+The following complete example uses kuu itself as an environment probe. It
+opens no GUI and needs no installed language tools. Save as `manifest.lua` and
+keep the project's verified, pinned `kuu.exe` beside it as described in
+[Adopting kuu](#kuu-page-adopting).
+
+```lua
+global none
+global <const> require, print
+local task, json = require "task", require "json"
+local project_env = require "automation.project_env"
+task.defaults { timeout = "5s" }
+task.tool "environment_probe" { exe = "kuu.exe", output = "lines", timeout = "3s" }
+local probe = project_env.root .. "/automation/environment_probe.lua"
+
+task "environment" {
+  desc = "Report selected environment settings through a supervised child",
+  run = function() return project_env.run("environment_probe", { probe, "cli" }) end,
+}
+task "editor_environment" {
+  desc = "Report the same settings through a short detached probe",
+  run = function()
+    local pid, why = project_env.launch("environment_probe", { probe, "detached" })
+    if not pid then return nil, why end
+    print(json.encode { pid = pid })
+    return true
+  end,
+}
+```
+
+Save as `automation/environment_probe.lua`. It reports only chosen settings;
+do not dump `env.all()` into logs, because the inherited environment may hold
+tokens and passwords. The sentinel is a test value, not an application secret.
+
+```lua
+global none
+global <const> require, assert, print
+local fs, env, rt, json = require "fs", require "env", require "rt", require "json"
+local report = {
+  cwd = fs.cwd(),
+  uv = env.get("UV_CACHE_DIR"),
+  venv = env.get("UV_PROJECT_ENVIRONMENT"),
+  npm = env.get("npm_config_cache"),
+  go_build = env.get("GOCACHE"),
+  go_modules = env.get("GOMODCACHE"),
+  virtual_env = env.get("VIRTUAL_ENV") or json.null,
+  python_home = env.get("PYTHONHOME") or json.null,
+  python_path = env.get("PYTHONPATH") or json.null,
+  path_empty = env.get("PATH") == "",
+  sentinel = env.get("PROJECT_ENV_SENTINEL") or json.null,
+}
+local encoded = json.encode(report)
+if rt.args[1] == "detached" then
+  assert(fs.mkdir(".cache"))
+  assert(fs.write(".cache/detached-environment.json", encoded))
+else
+  print(encoded)
+end
+```
+
+Run `kuu run environment`, then `kuu run editor_environment`. The latter
+prints the launched PID; its short child writes `.cache/detached-environment.json`
+before exiting. A detached process has no kuu console and no supervision or
+deadline from `task.defaults`. Its launch succeeding is not a readiness check.
+There is no individual `task.exec` child record for `M.launch`; the enclosing
+task and run are recorded.
+
+For an actual editor, declare its pinned executable as a tool and call
+`project_env.launch("editor", { project_env.root })` with that editor's explicit
+arguments. Use its documented separate-instance/profile options when it might
+forward the request to an existing process. A running editor keeps the
+environment from its original launch; changing this module does not update
+that process. Close/restart or start an independent instance before checking
+its child tools. [Environment lifetime](#kuu-page-env-the-two-environments) explains
+the same boundary for consoles and persisted settings. Supervised CLI calls
+use `M.run` and retain their task/tool timeout and child records.
+
+The [editor recipe](#kuu-page-editor) demonstrates both paths with a real disposable
+GUI on a private desktop, including readiness, failure and cleanup checks.
+
+---
+
+<a id="kuu-page-relocation"></a>
+
+<a id="kuu-page-relocation-relocation-and-an-offline-doctor"></a>
+
+## Relocation and an offline doctor
+
+Derive local paths from the current project root, as in
+[the shared environment recipe](#kuu-page-project-environment). After a checkout
+moves, the next `kuu run` discovers its new root; a fresh process resolves
+declared relative tools there. Already running processes retain their old
+working directory, environment and loaded modules. Stop them before moving
+the checkout and launch them again afterwards.
+
+<a id="kuu-page-relocation-moving-maintained-source"></a>
+
+### Moving maintained source
+
+For a `scripts/` to `automation/` migration:
+
+1. Move the maintained Lua files and update `require "scripts.health"` to
+   `require "automation.health"`, including imports between project modules.
+2. Update script arguments, task tool paths, build configuration and tests that
+   intentionally name the old directory. `require "a.b"` resolves `a/b.lua` or
+   `a/b/init.lua` below the module root; `LUA_PATH` does not override kuu's
+   [module lookup](#kuu-page-index-modules).
+3. Run static `kuu check`, then `kuu list` to validate declarations. Keep
+   provisioning out of top-level Lua: listing executes the manifest.
+4. Recreate generated local launchers, editor settings and shortcuts that
+   contain absolute paths, executable targets or working directories. Keep
+   these local outputs ignored. Their previous paths are not rewritten by kuu.
+5. Inspect obsolete ignored environments separately. Checking out a tracked
+   rename, or moving tracked files individually, can leave `scripts/.venv`
+   behind. A whole-directory filesystem rename can carry ignored children;
+   do not assume every kind of move has the same result.
+
+For a whole-checkout move, retain the project's chosen pinned runtime and
+verified dependency caches. Recompute environment/cache paths in the new
+location, run the local doctor below, then explicitly recreate installations
+that retain absolute paths. A cache directory existing does not establish that
+it contains everything needed to rebuild offline.
+
+<a id="kuu-page-relocation-python-environments-and-relocation-markers"></a>
+
+### Python environments and relocation markers
+
+Recreate a Python virtual environment at its final new path using the declared
+pinned interpreter, then reinstall the locked dependencies and editable local
+packages against their current source locations. Do not move a venv and assume
+that editing `pyvenv.cfg` repairs launchers, `.pth` files, editable metadata,
+native packages or references to its base interpreter. Python documents venvs
+as disposable rather than portable. [Python venv documentation](https://docs.python.org/3/library/venv.html).
+
+For a project that uses uv, the configured `UV_PROJECT_ENVIRONMENT` selects
+one specific environment; avoid pointing several checkouts at one shared
+absolute path. uv installs packaged projects and workspace members as editable
+packages during synchronization. After a source move, rebuild that environment
+and reinstall from the new layout through the project's explicit installation
+task. Keep such synchronization out of `doctor`: it can create or change the
+environment. [uv environment location](https://docs.astral.sh/uv/concepts/projects/config/#project-environment-path),
+[uv editable installation](https://docs.astral.sh/uv/concepts/projects/sync/#editable-installation).
+
+uv's `--relocatable` adjusts standard entrypoint and activation scripts; it does
+not rewrite arbitrary binaries or guarantee that every installed package and
+editable source reference survives a move. A project's own `relocatable=true`
+receipt, or the ownership marker used below, proves neither current path
+validity nor application readiness. [uv relocatable option](https://docs.astral.sh/uv/reference/cli/#uv-venv--relocatable).
+
+<a id="kuu-page-relocation-a-non-repairing-doctor"></a>
+
+### A non-repairing doctor
+
+This example checks a small project's pinned local executable and cached
+archive. It does not launch either, access the network, provision dependencies
+or compile application packages. Missing generated assets cannot prevent it
+from diagnosing dependency state. A project's richer doctor can add bounded,
+read-only version/import probes through known installed tools; keep application
+builds and installers in separate tasks.
+
+Maintain `dependencies.json` in source control with the independently reviewed
+SHA-256 values for `.tools/tool/tool.exe` and `.cache/dependencies/tool.zip`:
+
+```json
+{
+  "tool_sha256": "REPLACE_WITH_REVIEWED_EXECUTABLE_SHA256",
+  "archive_sha256": "REPLACE_WITH_REVIEWED_ARCHIVE_SHA256"
+}
+```
+
+These placeholders deliberately fail validation. Do not generate expected
+digests from whatever files happen to be installed during a doctor run. The
+archive digest is a byte-integrity check; it does not prove unpacking or full
+offline dependency reconstruction will succeed.
+
+Save as `automation/health.lua`:
+
+```lua
+global none
+global <const> require, type, tostring
+local fs, rt, hash, json, err = require "fs", require "rt", require "hash", require "json", require "err"
+local root = fs.absolute(rt.root())
+local M = {}
+
+local function valid_digest(value)
+  return type(value) == "string" and #value == 64 and value:match("^[0-9a-fA-F]+$") ~= nil
+end
+
+local function inspect_file(relative, expected)
+  local path = fs.join(root, relative)
+  local info, why = fs.stat(path, { follow = false })
+  if not info then
+    return { path = path, status = err.is(why, "FS", "notfound") and "missing" or "unreadable",
+      message = tostring(why) }
+  end
+  if info.kind ~= "file" or info.reparse then
+    return { path = path, status = "unexpected-kind", message = "expected an ordinary file" }
+  end
+  if not expected then return { path = path, status = "present-unverified" } end
+  local digest, failure = hash.file("sha256", path)
+  if not digest then return { path = path, status = "unreadable", message = tostring(failure) } end
+  return { path = path, status = digest == expected:lower() and "verified" or "mismatch", sha256 = digest }
+end
+
+function M.inspect()
+  local text, why = fs.read(root .. "/dependencies.json", { maxbytes = "16K" })
+  if not text then return nil, why end
+  local pins, parse_error = json.decode(text)
+  if pins == nil then return nil, parse_error end
+  if type(pins) ~= "table" or not valid_digest(pins.tool_sha256) or not valid_digest(pins.archive_sha256) then
+    return nil, err.new("PROJECT", "pins", "dependencies.json requires reviewed 64-digit tool_sha256 and archive_sha256 values")
+  end
+  local report = {
+    root = root,
+    installed = inspect_file(".tools/tool/tool.exe", pins.tool_sha256),
+    cache = inspect_file(".cache/dependencies/tool.zip", pins.archive_sha256),
+    application = inspect_file("build/app.exe"),
+  }
+  if report.application.status == "missing" then report.application.status = "not-built" end
+  report.application.ready = false -- this doctor does not establish application readiness
+  report.ok = report.installed.status == "verified" and report.cache.status == "verified"
+  return report
+end
+
+return M
+```
+
+The three results mean different things: `installed.status == "verified"` says the expected
+executable bytes are present, not that every supporting DLL exists;
+`cache.status == "verified"` says this archive matches its pin; an application file remains
+`present-unverified` until a separate project-specific readiness check succeeds.
+Absent application output is `not-built` and does not fail this dependency
+doctor. Access and digest failures remain visible rather than becoming missing
+dependencies. Filesystem checks are observations, not a transaction against
+concurrent writers or a sandbox for untrusted linked ancestors.
+
+Save as `manifest.lua`. This doctor has **no provisioning dependencies**.
+`kuu run doctor` prints the report and fails when either dependency check fails.
+Run an explicit install or repair task separately after reading the report.
+Normal task/run history is still written under `.kuu`; “non-repairing” does not
+mean the entire kuu invocation performs zero writes.
+
+```lua
+global none
+global <const> require, print
+local task, json, err = require "task", require "json", require "err"
+local health = require "automation.health"
+local remove_obsolete = require "automation.remove_obsolete"
+
+task "doctor" {
+  desc = "Check local dependency bytes without installing or building",
+  run = function()
+    local report, why = health.inspect()
+    if not report then return nil, why end
+    print(json.encode(report))
+    if not report.ok then
+      return nil, err.new("PROJECT", "health", "installed=" .. report.installed.status ..
+        "; cache=" .. report.cache.status .. "; inspect the report before an explicit repair")
+    end
+    return true
+  end,
+}
+task "clean_obsolete_environment" {
+  desc = "Remove only this project's marked obsolete scripts/.venv",
+  run = function() return remove_obsolete() end,
+}
+```
+
+<a id="kuu-page-relocation-remove-only-the-owned-obsolete-environment"></a>
+
+### Remove only the owned obsolete environment
+
+Save the [bounded cleanup module](#kuu-page-cleanup-a-project-module) as `owned_ops.lua`
+at the project root, then save this function as `automation/remove_obsolete.lua`.
+It requires the readonly-directory cleanup from 0.12 described on that page;
+use `rt.version_at_least(0, 12)` as its minimum-version guard.
+The only removal target is the literal `scripts/.venv` below the canonical
+project root. It accepts no caller-supplied path. Its owner marker must have
+been written by this project's environment-creation task when it created that
+directory: `.project-owner` contains exactly `example-project/venv/v1` followed
+by a newline. Choose your own project identifier. Never add a marker to an
+uninspected directory just to make cleanup accept it.
+
+Use this only during exclusive maintenance: stop processes using or modifying
+the old environment. The trusted project root may itself resolve through a
+link; below that canonical root, every path component and the marker must be
+ordinary, without reparse metadata. These checks are not protection against
+concurrent malicious path replacement. Other files under `scripts/`, the
+current environment and dependency caches remain outside the removal target.
+
+```lua
+global none
+global <const> require, ipairs
+local fs, rt, err = require "fs", require "rt", require "err"
+local owned_ops = require "owned_ops"
+local OWNER = "example-project/venv/v1\n"
+
+return function()
+  local canonical, why = fs.canon(rt.root())
+  if not canonical then return nil, why end
+  if canonical.kind ~= "directory" then return nil, err.new("PROJECT", "ownership", "project root is not a directory") end
+  local target = canonical.path
+  for _, component in ipairs { "scripts", ".venv" } do
+    target = fs.join(target, component)
+    local info, failure = fs.stat(target, { follow = false })
+    if not info then
+      if err.is(failure, "FS", "notfound") then return true end
+      return nil, failure
+    end
+    if info.kind ~= "directory" or info.reparse then
+      return nil, err.new("PROJECT", "ownership", "refusing linked or non-directory cleanup component: " .. target)
+    end
+  end
+  local marker = target .. "/.project-owner"
+  local info, failure = fs.stat(marker, { follow = false })
+  if not info then return nil, failure end
+  if info.kind ~= "file" or info.reparse or info.size ~= #OWNER then
+    return nil, err.new("PROJECT", "ownership", "obsolete environment has no valid ordinary ownership marker")
+  end
+  local text, read_error = fs.read(marker, { maxbytes = 128 })
+  if not text then return nil, read_error end
+  if text ~= OWNER then return nil, err.new("PROJECT", "ownership", "obsolete environment belongs to another owner") end
+  return owned_ops.remove_owned(target, 0.5)
+end
+```
+
+Run `kuu run clean_obsolete_environment` only after adopting the new layout.
+Already absent cleanup succeeds; an existing unmarked, differently marked or
+linked environment fails without removal. Recursive removal can make partial
+progress before a failure, including deleting the ownership marker. Keep the
+returned error. If the marker still passes validation, rerun this same bounded
+cleanup after resolving the cause. If partial removal consumed the marker,
+this task safely refuses the remaining directory: inspect and recover it under
+explicit project ownership instead of manufacturing a new marker or broadening
+the target. The retry loop within one invocation retains the already validated
+target, which is another reason exclusive maintenance is required.
+
+---
+
+<a id="kuu-page-editor"></a>
+
+<a id="kuu-page-editor-detached-editors-and-isolated-gui-verification"></a>
+
+## Detached editors and isolated GUI verification
+
+Use the same declared executable and [project environment](#kuu-page-project-environment)
+for a bounded CLI operation and a newly launched editor. A PID means launch
+succeeded; it does not establish that the editor loaded its workspace, profile
+or extensions. Readiness needs a separate signal from the application.
+
+<a id="kuu-page-editor-a-disposable-native-gui-probe"></a>
+
+### A disposable native GUI probe
+
+The source example [gui_probe.c](examples/gui_probe.c) is a small project
+helper, not a new kuu API. Build it with the project's pinned Windows compiler
+and keep it at `.tools/gui-probe/gui_probe.exe`. In kuu's source checkout,
+`make fixtures` builds this exact source with its pinned UCRT64 toolchain into
+`build/test/gui_probe.exe`; the tests copy that artifact into disposable projects.
+The C source is supplied with the repository; it is not embedded as a Lua module.
+
+The helper's contract is:
+
+```text
+gui_probe.exe verify PROFILE REPORT [ready|no-ready|early-exit|hold-ready]
+```
+
+PROFILE and REPORT must be absolute paths with existing parents. The profile
+must be absent; an existing profile or report is refused without replacement.
+The helper creates a private Windows desktop and launches its own small editor
+there. The child creates a window with an EDIT control, verifies the desktop
+and selected environment, and signals readiness with a fresh nonce. The helper
+never switches the interactive desktop. It owns the child through a retained
+process handle and a job that terminates children when closed, then removes
+only the known files in its newly created profile. Unexpected entries or
+cleanup errors remain failures and are reported.
+
+An atomically published REPORT contains `ok`, `status`, `win32`, `desktop`,
+`private_desktop`, `window_ready`, `child_pid`, `child_exited`, `profile_created`,
+`profile_removed`, `cleanup_error`, selected `cache` and `recipe` values,
+`nonce`, and `elapsed_ms`. `ok` includes cleanup success. Read the report and
+exit status together on the supervised path; on the detached path, retain the
+PID and report location and explicitly wait for the report.
+
+`no-ready` and `early-exit` exercise failure paths. `hold-ready` is a bounded
+test handshake: after window creation the supervisor waits up to three seconds
+for PROFILE/continue to contain the exact bytes from PROFILE/ready. This lets
+an automated caller prove that both the supervisor and GUI survive the kuu
+launcher exiting, then release them. It is not an interactive user prompt.
+
+<a id="kuu-page-editor-a-complete-manifest"></a>
+
+### A complete manifest
+
+Save the shared module from [Project environment](#kuu-page-project-environment-a-shared-module)
+as `automation/project_env.lua`, keep the project's verified `kuu.exe` at its
+root, and save this manifest. Ignore `/.local/` as well as the tool and cache
+directories. The helper is the one declared project tool for both launch paths.
+
+```lua
+global none
+global <const> require, ipairs, print
+local task, fs, hash, json, proc = require "task", require "fs", require "hash", require "json", require "proc"
+local project_env = require "automation.project_env"
+local root = project_env.root
+task.defaults { timeout = "12s" }
+task.tool "editor_probe" { exe = ".tools/gui-probe/gui_probe.exe", output = "lines", timeout = "12s" }
+
+local function command(mode)
+  local directory = root .. "/.local/gui-checks"
+  local made, why = fs.mkdir(directory)
+  if not made then return nil, why end
+  local id = hash.uuid()
+  local paths = { profile = directory .. "/profile-" .. id, report = directory .. "/report-" .. id .. ".json" }
+  local overlay = project_env.overlay()
+  overlay.KUU_EDITOR_RECIPE = "isolated-v1"
+  overlay.KUU_EDITOR_CACHE = root .. "/.cache/editor"
+  return { tool = "editor_probe", "verify", paths.profile, paths.report, mode,
+    cwd = root, env = overlay }, paths
+end
+
+task "verify_editor" {
+  desc = "Verify a disposable GUI on a private desktop and clean it up",
+  run = function()
+    local spec, paths = command("ready")
+    if not spec then return nil, paths end
+    print(json.encode(paths))
+    return task.exec(spec)
+  end,
+}
+
+task "launch_editor" {
+  desc = "Detach the same disposable GUI verifier; inspect its completion report",
+  args = { { "--hold", type = "flag", help = "bounded test handshake after the kuu launcher exits" } },
+  run = function(opts)
+    local spec, paths = command(opts.hold and "hold-ready" or "ready")
+    if not spec then return nil, paths end
+    local resolved = task.command(spec)
+    local detached = { cwd = resolved.cwd, env = resolved.env }
+    for i, argument in ipairs(resolved) do detached[i] = argument end
+    local pid, why = proc.detach(detached)
+    if not pid then return nil, why end
+    paths.pid = pid
+    print(json.encode(paths))
+    return true
+  end,
+}
+```
+
+Run `kuu run verify_editor` for the bounded operation; `task.exec` records the
+child and reports helper failures. `kuu run launch_editor` returns after
+launching; its supervisor has its own internal bounds, and the task timeout
+does not govern that detached lifetime. A captured or detached child has no
+individual `task.exec` child record; its enclosing task/run still has history.
+The `--hold` option is for the automated nonce handshake, not a normal launch.
+
+For a real editor, replace the tool with its pinned project executable and use
+its documented profile, workspace and separate-instance arguments. Supply a
+fresh disposable profile for verification; an existing editor may accept a
+request without starting a new process or adopting the new environment.
+Choose an application-specific readiness check instead of treating PID
+existence, an open window or a fixed sleep as proof of a usable workspace.
+
+<a id="kuu-page-editor-profiles-and-database-snapshots"></a>
+
+### Profiles and database snapshots
+
+Use generated test settings and fresh profiles. Live cookie databases, locks
+and credentials are not ordinary portable configuration files. A copied
+profile can combine database files from different moments, or combine a newly
+copied database with an old destination WAL. Do not merge snapshots into a
+reused destination or delete a WAL merely because it looks stale: SQLite's
+[WAL is part of persistent database state](https://www.sqlite.org/wal.html).
+For legitimate application backups, use its supported export/backup operation,
+or establish a consistent cold snapshot after its writers stop. This recipe
+does not import browser profiles or copy live user databases.
+
+<a id="kuu-page-editor-platform-limits"></a>
+
+### Platform limits
+
+The test creates a desktop in the current session and uses ordinary Win32 GUI
+controls. It requires permission to create that desktop and launch a process
+on it; noninteractive services, restrictive enclosing jobs and session policy
+can prevent the operation. It reports failure rather than falling back to the
+interactive desktop. See Microsoft's [desktop access rights](https://learn.microsoft.com/en-us/windows/win32/winstation/desktop-security-and-access-rights).
+
+A private desktop keeps this probe's windows off the interactive desktop; it
+is not a filesystem, network or security sandbox. These checks establish this
+probe's GUI creation, selected environment, lifetime and cleanup. They do not
+certify arbitrary editors, GPU rendering, extension loading, login flows or
+application-specific profile formats. No application outside the owned test
+processes is terminated or modified.
+
+---
+
+<a id="kuu-page-native-helper"></a>
+
+<a id="kuu-page-native-helper-a-cached-native-helper-and-local-shortcuts"></a>
+
+## A cached native helper and local shortcuts
+
+Use a small project helper when an operation needs a Windows interface outside
+kuu's palette. The source [shell_link.c](examples/shell_link.c) creates a
+Shell Link through `IShellLinkW` and `IPersistFile`; it is supplied with this
+repository, not embedded as a Lua module. Copy it into `native/shell_link.c`
+in the adopting project. Its interface is:
+
+```text
+shell_link.exe create LINK TARGET CWD [ARG ...]
+```
+
+All three paths are absolute. TARGET is the executable path alone, CWD is its
+working directory, and each following value is a separate child argument.
+The helper encodes those arguments using Windows C-runtime quoting, including
+empty values, embedded quotes and trailing backslashes. It creates LINK without
+replacing an existing file. It prints operation/HRESULT diagnostics to stderr
+and fails if creation or publication fails. The APIs are documented by
+Microsoft: [Shell Links](https://learn.microsoft.com/en-us/windows/win32/shell/links),
+[SetArguments](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ishelllinkw-setarguments),
+[IPersistFile::Save](https://learn.microsoft.com/en-us/windows/win32/api/objidl/nf-objidl-ipersistfile-save),
+and [C argument parsing](https://learn.microsoft.com/en-us/cpp/c-language/parsing-c-command-line-arguments).
+
+<a id="kuu-page-native-helper-inputs-and-ownership"></a>
+
+### Inputs and ownership
+
+Provision the project's pinned compiler under `.tools/msys2/ucrt64`, following
+the complete [UCRT64 package closure](#kuu-page-toolchain-the-ucrt64-pins). No compiler
+is installed on the machine. Save the reviewed package list and the expected
+installed compiler hash in `toolchain.lock.json`:
+
+```json
+{
+  "v": 1,
+  "compiler_sha256": "REPLACE_WITH_REVIEWED_GCC_EXE_SHA256",
+  "packages": [
+    { "file": "REPLACE_WITH_EACH_PINNED_PACKAGE_FILENAME", "sha256": "REPLACE_WITH_REVIEWED_PACKAGE_SHA256" }
+  ]
+}
+```
+
+Replace the placeholders with the **whole** reviewed closure, not just gcc's
+package. Provisioning must verify those archives before extraction; record the
+compiler digest from that verified installation. Do not repair a pin from
+unexpected installed bytes. The recipe hashes the complete lockfile and checks
+the actual compiler driver against its pin. It does not re-hash every installed
+header, library or compiler subprocess on each cache hit; those remain part of
+the project's trusted, exclusively maintained toolchain installation.
+
+Save [owned_ops.lua](#kuu-page-cleanup-a-project-module) at the project root. Ignore
+`/.tools/`, `/.cache/`, `/.local/`, and `/.kuu/`. The generated helper cache and
+`.local/native-helper/shell_link.exe` belong exclusively to this recipe.
+`.local/project.lnk` is its one replaceable shortcut. No desktop, Start menu,
+user profile or machine-wide path is modified.
+
+This uses the cleanup recipe's APIs from 0.12. Require
+`rt.version_at_least(0, 12)` and adopt the project's approved runtime by hash.
+
+<a id="kuu-page-native-helper-build-and-verify-a-cache-entry"></a>
+
+### Build and verify a cache entry
+
+Save as `automation/native_helper.lua`. Its key includes the source bytes, the
+actual build-module bytes and flags, the complete toolchain lockfile, and the
+verified compiler-driver digest. A recipe edit therefore invalidates the cache
+even when the C source stays unchanged. Every reuse checks the receipt and the
+cached executable hash. Corruption is an error with the exact cache path; the
+recipe never silently executes, deletes or repairs a corrupt cache entry.
+
+```lua
+global none
+global <const> require, ipairs, type, tostring, table
+local fs, rt, task, hash = require "fs", require "rt", require "task", require "hash"
+local json, err, ops = require "json", require "err", require "owned_ops"
+local root = fs.absolute(rt.root())
+local M = {}
+local FLAGS = { "-std=c23", "-O2", "-Wall", "-Wextra", "-Werror", "-municode", "-static", "-s" }
+local LIBRARIES = { "-lole32", "-luuid" }
+
+local function digest(value)
+  return type(value) == "string" and #value == 64 and value:match("^%x+$") ~= nil
+end
+local function failure(code, message, cause)
+  return nil, err.new("PROJECT", code, message .. (cause and (": " .. tostring(cause)) or ""), { cause = cause })
+end
+local function ordinary(path, kind)
+  local info, why = fs.stat(path, { follow = false })
+  if not info then return nil, why end
+  if info.kind ~= kind or info.reparse then return failure("cache", "expected ordinary " .. kind .. ": " .. path) end
+  return info
+end
+local function inputs()
+  local lock, why = fs.read(root .. "/toolchain.lock.json", { maxbytes = "256K" })
+  if not lock then return nil, why end
+  local pins, parse_error = json.decode(lock)
+  if pins == nil then return nil, parse_error end
+  if type(pins) ~= "table" or pins.v ~= 1 or not digest(pins.compiler_sha256)
+      or type(pins.packages) ~= "table" or not json.is_array(pins.packages) or #pins.packages == 0 then
+    return failure("pins", "toolchain.lock.json requires v=1, compiler_sha256 and the complete pinned packages array")
+  end
+  for _, package in ipairs(pins.packages) do
+    if type(package) ~= "table" or type(package.file) ~= "string" or package.file == "" or not digest(package.sha256) then
+      return failure("pins", "each toolchain package needs its reviewed filename and SHA-256")
+    end
+  end
+  local compiler = task.command { tool = "cc" }
+  local actual, hash_error = hash.file("sha256", compiler[1])
+  if not actual then return nil, hash_error end
+  if actual ~= pins.compiler_sha256:lower() then return failure("compiler", "installed gcc does not match compiler_sha256") end
+  local source, source_error = fs.read(root .. "/native/shell_link.c", { maxbytes = "256K" })
+  if not source then return nil, source_error end
+  local builder, builder_error = fs.read(root .. "/automation/native_helper.lua", { maxbytes = "256K" })
+  if not builder then return nil, builder_error end
+  local identity = {
+    source_sha256 = hash.sum("sha256", source),
+    recipe_sha256 = hash.sum("sha256", builder .. "\0" .. json.encode(json.array(FLAGS)) .. json.encode(json.array(LIBRARIES))),
+    toolchain_sha256 = hash.sum("sha256", lock), compiler_sha256 = actual,
+  }
+  identity.key = hash.sum("sha256", table.concat({ identity.source_sha256, identity.recipe_sha256,
+    identity.toolchain_sha256, identity.compiler_sha256 }, ":"))
+  identity.source = source
+  return identity
+end
+local function cached(directory, expected)
+  local info, why = ordinary(directory, "directory")
+  if not info then return failure("cache", "invalid cache directory " .. directory, why) end
+  local receipt_info, receipt_error = ordinary(directory .. "/receipt.json", "file")
+  if not receipt_info then return failure("cache", "invalid cache receipt at " .. directory, receipt_error) end
+  local text, read_error = fs.read(directory .. "/receipt.json", { maxbytes = "16K" })
+  if not text then return failure("cache", "cannot read cache receipt at " .. directory, read_error) end
+  local receipt = json.decode(text)
+  if type(receipt) ~= "table" or receipt.v ~= 1 or not digest(receipt.executable_sha256) then
+    return failure("cache", "malformed cache receipt at " .. directory)
+  end
+  for _, field in ipairs { "key", "source_sha256", "recipe_sha256", "toolchain_sha256", "compiler_sha256" } do
+    if receipt[field] ~= expected[field] then return failure("cache", "cache receipt disagrees on " .. field .. " at " .. directory) end
+  end
+  local file, file_error = ordinary(directory .. "/shell_link.exe", "file")
+  if not file then return failure("cache", "invalid cached executable at " .. directory, file_error) end
+  local actual, hash_error = hash.file("sha256", directory .. "/shell_link.exe")
+  if not actual then return failure("cache", "cannot hash cached executable at " .. directory, hash_error) end
+  if actual ~= receipt.executable_sha256 then return failure("cache", "cached executable hash mismatch at " .. directory) end
+  return receipt
+end
+local function finish(stage, ok, primary)
+  local removed, cleanup = ops.remove_owned(stage, 0.5)
+  if ok then
+    if not removed then return nil, cleanup end
+    return true
+  end
+  return nil, primary, not removed and cleanup or nil
+end
+local function install(cache, receipt)
+  local directory = root .. "/.local/native-helper"
+  local made, why = fs.mkdir(directory)
+  if not made then return nil, why end
+  local target = directory .. "/shell_link.exe"
+  local existing, absent = fs.stat(target, { follow = false })
+  if existing then
+    if existing.kind ~= "file" or existing.reparse then return failure("cache", "refusing non-file helper target: " .. target) end
+    if hash.file("sha256", target) == receipt.executable_sha256 then return true end
+  elseif not err.is(absent, "FS", "notfound") then return nil, absent end
+  local stage, stage_error = fs.tempdir { dir = directory, prefix = ".stage-" }
+  if not stage then return nil, stage_error end
+  local bytes, read_error = fs.read(cache .. "/shell_link.exe", { maxbytes = "16M" })
+  if not bytes then return finish(stage, nil, read_error) end
+  if hash.sum("sha256", bytes) ~= receipt.executable_sha256 then
+    return finish(stage, nil, err.new("PROJECT", "cache", "cache changed before helper installation: " .. cache))
+  end
+  local written, write_error = fs.write(stage .. "/shell_link.exe", bytes)
+  if not written then return finish(stage, nil, write_error) end
+  local placed, place_error = fs.rename(stage .. "/shell_link.exe", target, { replace = true })
+  return finish(stage, placed, place_error)
+end
+
+function M.ensure()
+  local expected, why = inputs()
+  if not expected then return nil, why end
+  local base = root .. "/.cache/native-helper"
+  local directory = base .. "/" .. expected.key
+  local info, absent = fs.stat(directory, { follow = false })
+  local receipt, reused = nil, info ~= nil
+  if info then
+    receipt, why = cached(directory, expected)
+    if not receipt then return nil, why end
+  else
+    if not err.is(absent, "FS", "notfound") then return nil, absent end
+    local made, make_error = fs.mkdir(base)
+    if not made then return nil, make_error end
+    local stage, stage_error = fs.tempdir { dir = base, prefix = ".stage-" }
+    if not stage then return nil, stage_error end
+    local published, primary, cleanup = ops.publish(stage, directory, function(path)
+      local written, write_error = fs.write(path .. "/shell_link.c", expected.source)
+      if not written then return nil, write_error end
+      local spec = { tool = "cc", cwd = path, timeout = "1m", env = {
+        PATH = root .. "/.tools/msys2/ucrt64/bin", CPATH = false, C_INCLUDE_PATH = false,
+        CPLUS_INCLUDE_PATH = false, OBJC_INCLUDE_PATH = false, COMPILER_PATH = false,
+        LIBRARY_PATH = false, GCC_EXEC_PREFIX = false,
+      } }
+      for _, flag in ipairs(FLAGS) do spec[#spec + 1] = flag end
+      spec[#spec + 1] = "shell_link.c"
+      spec[#spec + 1] = "-o"; spec[#spec + 1] = "shell_link.exe"
+      for _, library in ipairs(LIBRARIES) do spec[#spec + 1] = library end
+      local built, build_error = task.exec(spec)
+      if not built then return nil, build_error end
+      local executable_hash, hash_error = hash.file("sha256", path .. "/shell_link.exe")
+      if not executable_hash then return nil, hash_error end
+      local record = { v = 1, executable_sha256 = executable_hash }
+      for _, field in ipairs { "key", "source_sha256", "recipe_sha256", "toolchain_sha256", "compiler_sha256" } do
+        record[field] = expected[field]
+      end
+      local saved, save_error = fs.write(path .. "/receipt.json", json.encode(record))
+      if not saved then return nil, save_error end
+      return cached(path, expected)
+    end, 0.5)
+    if not published then
+      if not cleanup and err.is(primary, "FS", "exists") then
+        receipt, why = cached(directory, expected)
+        if not receipt then return nil, why end
+        reused = true
+      else return nil, primary, cleanup end
+    else receipt, why = cached(directory, expected) end
+    if not receipt then return nil, why end
+  end
+  local installed, install_error, cleanup = install(directory, receipt)
+  if not installed then return nil, install_error, cleanup end
+  return { key = expected.key, cache = directory, reused = reused,
+    helper = root .. "/.local/native-helper/shell_link.exe", sha256 = receipt.executable_sha256 }
+end
+
+function M.shortcut(arguments)
+  local built, why, cleanup = M.ensure()
+  if not built then return nil, why, cleanup end
+  local destination = root .. "/.local/project.lnk"
+  local old, absent = fs.stat(destination, { follow = false })
+  if old and (old.kind ~= "file" or old.reparse) then return failure("shortcut", "refusing non-file shortcut target: " .. destination) end
+  if not old and not err.is(absent, "FS", "notfound") then return nil, absent end
+  local stage, stage_error = fs.tempdir { dir = root .. "/.local", prefix = ".shortcut-stage-" }
+  if not stage then return nil, stage_error end
+  local spec = { tool = "shell_link", "create", stage .. "/project.lnk", root .. "/kuu.exe", root, cwd = root }
+  for _, argument in ipairs(arguments) do spec[#spec + 1] = argument end
+  local made, make_error = task.exec(spec)
+  if not made then return finish(stage, nil, make_error) end
+  local placed, place_error = fs.rename(stage .. "/project.lnk", destination, { replace = true })
+  local done, failure_error, cleanup_error = finish(stage, placed, place_error)
+  if not done then return nil, failure_error, cleanup_error end
+  built.shortcut = destination
+  return built
+end
+
+return M
+```
+
+The cache directory is published only after compilation and its receipt are
+complete, using a rename without replacement. A competing publisher's entry
+is accepted only after the same validation. The literal declared helper path
+is installed atomically from the verified cache; this keeps tool discovery
+useful even though cache keys vary. The shortcut is likewise created at a fresh
+owned path, then atomically replaces only `.local/project.lnk`. A failed replace
+leaves the preceding destination intact. A cleanup failure after successful
+publication still fails the task and may leave its new output in place.
+
+Compilation runs inside its staging directory with relative source and output
+filenames. This avoids passing a Unicode checkout path through the compiler's
+linker filename arguments; kuu supplies the working directory through Windows'
+Unicode process API. The declared compiler still resolves from the project root.
+
+The recipe requires exclusive maintenance of sources, toolchain and these
+generated paths. It does not sandbox linked ancestors or authenticate receipts
+against someone who can rewrite the whole project. Receipts detect changed
+bytes relative to the recorded build. Primary and secondary cleanup errors are
+returned separately; the manifest below reports both. After a cache error,
+inspect that exact entry and deliberately remove/rebuild it if appropriate;
+do not delete the entire cache or regenerate its receipt from corrupt bytes.
+
+<a id="kuu-page-native-helper-declare-and-call-the-tools"></a>
+
+### Declare and call the tools
+
+Save as `manifest.lua`, with the verified project runtime at `kuu.exe`. Loading
+the module declares no tasks, creates no cache, and runs no compiler; work
+begins only inside the requested task.
+
+```lua
+global none
+global <const> require, print, io, tostring
+local task, fs, rt, json = require "task", require "fs", require "rt", require "json"
+local helper = require "automation.native_helper"
+task.tool "cc" { exe = ".tools/msys2/ucrt64/bin/gcc.exe", output = "lines", timeout = "1m" }
+task.tool "shell_link" { exe = ".local/native-helper/shell_link.exe", output = "none", timeout = "10s" }
+local function report(value, why, cleanup)
+  if cleanup then io.stderr:write("cleanup also failed: ", tostring(cleanup), "\n") end
+  if not value then return nil, why end
+  print(json.encode(value))
+  return true
+end
+task "build_helper" {
+  desc = "Build or verify the pinned native shortcut helper",
+  run = function() return report(helper.ensure()) end,
+}
+task "shortcut" {
+  desc = "Regenerate this checkout's owned local shortcut",
+  args = { { "argv", type = "string", rest = true, help = "arguments passed to this project's kuu" } },
+  run = function(opts)
+    local arguments = opts.argv
+    if #arguments == 0 then arguments = { "run", "shortcut_probe" } end
+    return report(helper.shortcut(arguments))
+  end,
+}
+task "shortcut_probe" {
+  desc = "Show where the shortcut ran and the exact arguments it delivered",
+  args = { { "argv", type = "string", rest = true } },
+  run = function(opts)
+    print(json.encode { cwd = fs.cwd(), exe = rt.exe, argv = json.array(opts.argv) })
+    return true
+  end,
+}
+```
+
+Run `kuu run build_helper`, then `kuu run shortcut -- run shortcut_probe -- VALUE`.
+The resulting link targets this checkout's `kuu.exe`, with its root as cwd.
+Argument values are passed as arrays up to the native helper; do not prequote
+them or join shell command text. The helper's encoding targets kuu's Windows
+C-runtime argv parsing, not a shell or an arbitrary program's custom parser.
+
+After moving the checkout, rerun `kuu run shortcut`. The content cache can be
+reused if its identities and hashes still agree, but the link must be rebuilt:
+its executable, arguments containing paths, and working directory are local
+values. Do not rely on Windows link tracking to choose the intended checkout.
+See [relocation](#kuu-page-relocation) for other generated absolute-path artifacts.
+
+The repository tests compile this exact source, read the link through an
+independent COM fixture and launch its stored target to inspect actual argv
+and cwd. Their disposable project aliases this repository's already pinned
+compiler tree through a junction to avoid duplicating its thousands of files;
+that alias is a test-harness arrangement, not independent provisioning.
+
+---
+
+<a id="kuu-page-reconstruction"></a>
+
+<a id="kuu-page-reconstruction-reconstructing-tools-and-reconciling-publication"></a>
+
+## Reconstructing tools and reconciling publication
+
+A retained cache, a reachable upstream download and an independent backup are
+three different recovery options. Keep reviewed pins in maintained source;
+record which archives are necessary for an offline rebuild. A cache directory
+alone proves neither completeness nor that upstream URLs will remain available.
+This recipe requires 0.12 for the [attribute APIs](#kuu-page-fs-file-attributes) and
+readonly-directory removal, with the complete `owned_ops.lua` module from
+[cleanup](#kuu-page-cleanup). Use `rt.version_at_least(0, 12)` as its minimum-version guard.
+
+| Recovery source | What must remain available |
+|---|---|
+| Retained cache | Every required pinned archive, for offline reconstruction. |
+| Pinned upstream | Network, URL and access still working; a hash does not preserve availability. |
+| Independent backup | A separately retained complete set of verified archives and reviewed pins, with restore testing. |
+
+<a id="kuu-page-reconstruction-restore-an-installation-from-local-bytes"></a>
+
+### Restore an installation from local bytes
+
+Save the following as `restore_cached.lua`. This example package contains
+`package.json` with `{schema:1, package, target, recipe}` and `bin/tool.exe`.
+The independently reviewed pin adds `archive_sha256` and `tool_sha256`, both
+lowercase SHA-256 values. Set `target` to `windows-x86_64` and `recipe` to
+`tool-layout-v1`; deliberately revise this recipe before accepting another
+layout or platform. An archive's own receipt cannot establish its trust.
+
+Paths and their parents must be project-owned, with writers stopped throughout
+the operation. The destination must be absent; publication never replaces an
+existing installation. Extraction occurs only after the archive matches its
+pin, into a newly created sibling directory. The full tree is inspected before
+readonly normalization, rejecting reparse objects and multiply linked files.
+These checks close their handles and do not prevent concurrent path replacement.
+Use this with reviewed packages, not arbitrary untrusted archives.
+Post-extraction checks are not an archive sandbox: review must exclude aliases
+outside staging during extraction too. Recursive failure cleanup can clear a
+readonly flag shared by hardlinks; rejecting a hardlink during validation does
+not undo that risk or establish ownership of its other names.
+
+```lua
+global none
+global <const> require, type, ipairs
+local fs, hash, json = require "fs", require "hash", require "json"
+local archive, err, ops = require "archive", require "err", require "owned_ops"
+local M = {}
+local function refused(code, message) return nil, err.new("PROJECT", code, message) end
+local function digest(value)
+  return type(value) == "string" and #value == 64 and value:match("^[0-9a-f]+$") ~= nil
+end
+local function pin_valid(pin)
+  return type(pin) == "table" and pin.schema == 1 and type(pin.package) == "string"
+    and #pin.package > 0 and pin.target == "windows-x86_64" and pin.recipe == "tool-layout-v1"
+    and digest(pin.archive_sha256) and digest(pin.tool_sha256)
+end
+local function matches(path, expected)
+  local actual, why = hash.file("sha256", path)
+  if not actual then return nil, why end
+  if actual ~= expected then return refused("hash", "pinned bytes differ: " .. path) end
+  return true
+end
+
+-- Only call for a newly created, exclusively owned staging tree.
+function M.normalize_staging(staging)
+  local ordinary = {}
+  local function inspect(path, depth)
+    if depth > 64 or #ordinary >= 100000 then return refused("layout", "staging inspection limit") end
+    local info, why = fs.stat(path, { follow = false })
+    if not info then return nil, why end
+    if (info.attrs & 0x400) ~= 0 or (info.kind ~= "directory" and info.kind ~= "file")
+      or (info.kind == "file" and info.links > 1) then
+      return refused("layout", "staging requires ordinary unaliased files/directories: " .. path)
+    end
+    ordinary[#ordinary + 1] = path
+    if info.kind == "directory" then
+      local listing, listing_error = fs.list(path)
+      if not listing then return nil, listing_error end
+      if #listing.errors > 0 then return refused("layout", "incomplete staging directory listing") end
+      for _, entry in ipairs(listing.entries) do
+        local ok, child_error = inspect(path .. "/" .. entry.name, depth + 1)
+        if not ok then return nil, child_error end
+      end
+    end
+    return true
+  end
+  local inspected, why = inspect(staging, 0)
+  if not inspected then return nil, why end
+  for _, path in ipairs(ordinary) do
+    local flags, flag_error = fs.attributes(path) -- nofollow
+    if not flags then return nil, flag_error end
+    if flags.readonly then
+      local ok, update_error = fs.set_attributes(path, { readonly = false })
+      if not ok then return nil, update_error end
+    end
+  end
+  return true
+end
+
+local function staged(destination, validate)
+  local parent = fs.dirname(destination)
+  local made, why = fs.mkdir(parent)
+  if not made then return nil, why end
+  local stage, stage_error = fs.tempdir { dir = parent, prefix = ".reconstruct-" }
+  if not stage then return nil, stage_error end
+  local ok, primary, cleanup = ops.publish(stage, destination, validate, 0.5)
+  return ok, primary, cleanup, stage -- retain the exact owned path if cleanup failed
+end
+
+function M.restore(cached, destination, pin)
+  if not pin_valid(pin) then return refused("pin", "reviewed compatible package pin required") end
+  return staged(destination, function(stage)
+    local ok, why = matches(cached, pin.archive_sha256)
+    if not ok then return nil, why end
+    ok, why = archive.unpack(cached, stage, { timeout = "2m" })
+    if not ok then return nil, why end
+    ok, why = M.normalize_staging(stage)
+    if not ok then return nil, why end
+    local bytes, read_error = fs.read(stage .. "/package.json", { maxbytes = "16K" })
+    if not bytes then return nil, read_error end
+    local receipt, parse_error = json.decode(bytes)
+    if receipt == nil then return nil, parse_error end
+    if type(receipt) ~= "table" or receipt.schema ~= pin.schema or receipt.package ~= pin.package
+      or receipt.target ~= pin.target or receipt.recipe ~= pin.recipe then
+      return refused("receipt", "package receipt does not match the reviewed pin")
+    end
+    local tool, missing = fs.stat(stage .. "/bin/tool.exe", { follow = false })
+    if not tool then return nil, missing end
+    if tool.kind ~= "file" then return refused("layout", "bin/tool.exe must be a file") end
+    return matches(stage .. "/bin/tool.exe", pin.tool_sha256)
+  end)
+end
+
+function M.backup(cached, destination, pin)
+  if not pin_valid(pin) then return refused("pin", "reviewed compatible package pin required") end
+  return staged(destination, function(stage)
+    local ok, why = matches(cached, pin.archive_sha256)
+    if not ok then return nil, why end
+    ok, why = fs.copy(cached, stage .. "/package.zip")
+    if not ok then return nil, why end
+    ok, why = fs.write(stage .. "/pin.json", json.encode(pin))
+    if not ok then return nil, why end
+    return matches(stage .. "/package.zip", pin.archive_sha256)
+  end)
+end
+return M
+```
+
+Save this driver as `reconstruct.lua`. For example, run
+`kuu reconstruct.lua restore .cache/tool.zip .tools/tool tool-pin.json` or
+`kuu reconstruct.lua backup .cache/tool.zip E:/project-backup/tool tool-pin.json`.
+The backup destination must be a new directory on separately retained storage;
+the tests use a separate disposable directory, not a simulated disk failure.
+Restore from its `package.zip` with the maintained pin, comparing its saved
+`pin.json` with the reviewed source. Rehash after any later transfer. Use ZIP
+caches with this driver so the backup filename matches its format.
+Successful byte reconstruction does not prove
+that an application built with the tool is ready or that its runtime works.
+
+```lua
+global none
+global <const> require, assert, io, tostring, print
+local rt, fs, json = require "rt", require "fs", require "json"
+local rebuild = require "restore_cached"
+assert(#rt.args == 4, "usage: reconstruct.lua restore|backup CACHE DEST PIN")
+local mode, cached, destination, pin_path = rt.args[1], rt.args[2], rt.args[3], rt.args[4]
+assert(mode == "restore" or mode == "backup", "mode must be restore or backup")
+local pin, parse_error = json.decode(assert(fs.read(pin_path, { maxbytes = "16K" })))
+assert(pin ~= nil, parse_error)
+local ok, primary, cleanup, stage = rebuild[mode](cached, destination, pin)
+if cleanup then io.stderr:write("owned staging remains at ", stage, ": ", tostring(cleanup), "\n") end
+assert(ok, primary)
+print(json.encode { status = "verified", operation = mode, destination = fs.absolute(destination) })
+```
+
+Keep the primary error and any secondary cleanup error. Removal can make partial
+progress; inspect the exact reported staging path before recovering it. The
+recipe clears only readonly, preserving hidden and other flags; it does not
+repair ACLs or modify the retained source archive. It does not provision or
+download anything. A missing archive requires a separate deliberate decision
+to restore a backup or fetch the already pinned upstream bytes.
+
+<a id="kuu-page-reconstruction-an-upload-timed-out-reconcile-before-deciding-what-to-do"></a>
+
+### An upload timed out: reconcile before deciding what to do
+
+Save this module as `publish_asset.lua`. It is an executable project recipe with
+an injected remote adapter, not a GitHub client. Its journal, local artifact and
+scratch parent belong to one publisher: exclude all concurrent writers and
+publishers. Keep the journal after failure; removing or rolling it back removes
+the protection against a duplicate attempt. An atomic local write is not a
+power-loss durability guarantee or a distributed lock.
+
+The maintained `spec` contains `repository`, numeric `release_id`, `name`,
+`size`, `sha256`, `file`, `journal` and `scratch`. Use a stable release ID, not
+only a mutable tag. The adapter's three functions return `value` or `nil,error`:
+
+- `lookup(spec)` returns one asset or `false` for confirmed absence. It must
+  enumerate all pages for that release, reject duplicates, and never turn a
+  failed or incomplete listing into absence. Assets contain `repository`,
+  `release_id`, `name`, `id`, `size`, `sha256` and `state="uploaded"`; normalize
+  a provider's `sha256:` digest prefix before returning it. A missing provider
+  digest is unsupported confirmation; never fill it from the local pin.
+- `upload(spec)` attempts once, without internal retries, and returns a result
+  or an error. A timeout may mean the server accepted it.
+- `download(asset, path)` fetches that exact asset ID into the new owned path,
+  with a byte cap of `asset.size` and a finite timeout. It returns true or an error.
+
+Bound each complete adapter call (for example 30 seconds), the number of listing
+pages (for example 20), and each page's size. Pages and redirects share the call's
+remaining deadline; they do not reset it. An exceeded limit is an error. This
+module makes at most two lookups, one upload and one verification download per
+invocation; it has no polling, delete, replacement or automatic upload retry.
+
+```lua
+global none
+global <const> require, type, math, pcall
+local fs, hash, json = require "fs", require "hash", require "json"
+local err, ops = require "err", require "owned_ops"
+local M = {}
+local function fail(code, message, context) return nil, err.new("PROJECT", code, message, context) end
+local function integer(value) return type(value) == "number" and math.type(value) == "integer" and value > 0 end
+local function same(a, b)
+  return a.repository == b.repository and a.release_id == b.release_id and a.name == b.name
+    and a.size == b.size and a.sha256 == b.sha256
+end
+function M.reconcile(remote, spec)
+  if type(spec) ~= "table" or type(spec.repository) ~= "string" or #spec.repository == 0
+    or not integer(spec.release_id) or type(spec.name) ~= "string" or #spec.name == 0
+    or not integer(spec.size) or type(spec.sha256) ~= "string" or #spec.sha256 ~= 64
+    or not spec.sha256:match("^[0-9a-f]+$") then
+    return fail("intent", "complete pinned asset identity required")
+  end
+  local info, why = fs.stat(spec.file, { follow = false })
+  if not info then return nil, why end
+  if info.kind ~= "file" or (info.attrs & 0x400) ~= 0 or info.size ~= spec.size then
+    return fail("artifact", "local artifact kind or size differs")
+  end
+  local digest, hash_error = hash.file("sha256", spec.file)
+  if not digest then return nil, hash_error end
+  if digest ~= spec.sha256 then return fail("artifact", "local artifact digest differs") end
+  local state = { schema = 1, repository = spec.repository, release_id = spec.release_id,
+    name = spec.name, size = spec.size, sha256 = spec.sha256, attempted = false, confirmed = false }
+  local bytes, read_error = fs.read(spec.journal, { maxbytes = "16K" })
+  if bytes then
+    local saved, parse_error = json.decode(bytes)
+    if saved == nil then return nil, parse_error end
+    if type(saved) ~= "table" or saved.schema ~= 1 or not same(saved, state)
+      or type(saved.attempted) ~= "boolean" or type(saved.confirmed) ~= "boolean"
+      or (saved.asset_id ~= nil and not integer(saved.asset_id))
+      or (saved.confirmed and saved.asset_id == nil) then
+      return fail("intent", "saved publication identity or state differs")
+    end
+    state = saved
+  elseif not err.is(read_error, "FS", "notfound") then return nil, read_error end
+  local function save() return fs.write(spec.journal, json.encode(state)) end
+  local asset, lookup_error = remote.lookup(spec)
+  local upload_error
+  if asset == nil then return nil, lookup_error end
+  if asset == false then
+    if state.attempted or state.confirmed or state.asset_id then
+      return fail("pending", "previous attempt is unresolved; retain journal and inspect the release")
+    end
+    state.attempted = true -- persist BEFORE allowing the only upload attempt
+    local saved, save_error = save()
+    if not saved then return nil, save_error end
+    local called, uploaded, why_upload = pcall(remote.upload, spec)
+    if not called then upload_error = uploaded
+    elseif not uploaded then upload_error = why_upload end
+    asset, lookup_error = remote.lookup(spec)
+    if asset == nil or asset == false then
+      return fail("pending", "upload outcome unresolved; do not retry or delete",
+        { upload_error = upload_error, lookup_error = lookup_error })
+    end
+  end
+  if type(asset) ~= "table" or not same(asset, spec) or asset.state ~= "uploaded" or not integer(asset.id)
+    or (state.asset_id ~= nil and state.asset_id ~= asset.id) then
+    return fail("conflict", "remote asset identity, state, size or digest differs", { upload_error = upload_error })
+  end
+  state.asset_id = asset.id
+  local saved, save_error = save()
+  if not saved then return nil, save_error end
+  local stage, stage_error = fs.tempdir { dir = spec.scratch, prefix = ".verify-asset-" }
+  if not stage then return nil, stage_error end
+  local path = stage .. "/asset.bin"
+  local called, ok, primary = pcall(function()
+    local downloaded_ok, download_error = remote.download(asset, path)
+    if not downloaded_ok then return nil, download_error end
+    local downloaded, inspect_error = fs.stat(path, { follow = false })
+    if not downloaded then return nil, inspect_error end
+    if downloaded.kind ~= "file" or (downloaded.attrs & 0x400) ~= 0 or downloaded.size ~= spec.size then
+      return fail("download", "downloaded asset kind or size differs")
+    end
+    local actual, verify_error = hash.file("sha256", path)
+    if not actual then return nil, verify_error end
+    if actual ~= spec.sha256 then return fail("download", "downloaded asset digest differs") end
+    return true
+  end)
+  if not called then primary, ok = ok, nil end
+  local removed, cleanup = ops.remove_owned(stage, 0.5)
+  if removed then cleanup = nil end
+  if not ok then return nil, primary, cleanup, stage end
+  if cleanup then return nil, err.new("PROJECT", "cleanup", "verified download cleanup failed"), cleanup, stage end
+  state.confirmed = true
+  saved, save_error = save()
+  if not saved then return nil, save_error end
+  return { status = "confirmed", asset_id = asset.id, size = spec.size, sha256 = spec.sha256 }
+end
+return M
+```
+
+Retain the primary diagnostic and any cleanup error returned by `reconcile`.
+Unresolved post-upload errors also retain `upload_error` and `lookup_error`
+when available; inspect those Lua fields when reporting the failure.
+An upload's immediate response is deliberately insufficient evidence of success
+or failure; a verified remote object resolves even a lost response. Re-running
+with the same journal performs inspection and download verification, without
+uploading again. A previously confirmed asset is reverified, never deleted.
+The journal's `confirmed` flag records a past successful observation; only the
+current invocation's return establishes its latest verification result.
+If an attempted asset stays absent, investigate before making a new, explicitly
+reviewed publication decision. Tests simulate timeout after acceptance, missing
+assets, conflicts, corrupt downloads and cleanup failure; they make no live
+release or network changes.
+
+GitHub returns asset IDs, state, size and digest. Download endpoints can redirect;
+handle that according to the API, preserving normal certificate validation.
+A failed upload can leave a `starter` asset; this recipe reports it for review
+and does not delete it. Choose a provider-stable filename: GitHub can rename
+special characters, which would fail this recipe's exact-name check. See the
+[release assets API](https://docs.github.com/en/rest/releases/assets).
+
+For public API failures, distinguish anonymous rate limits from missing assets:
+use the documented status and rate-limit headers, authenticated requests where
+appropriate, and `Retry-After`/reset timing. A throttled or truncated asset list
+cannot prove absence. See [GitHub rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+
+For `HTTP tls`, preserve the native WinHTTP code. Client-certificate private-key
+absence and lack of access to that key require different certificate/account
+repairs; neither calls for disabling TLS verification. Inspect the Windows
+certificate configuration and the account running the request, using
+[WinHTTP errors](https://learn.microsoft.com/en-us/windows/win32/winhttp/error-messages)
+and [WinHTTP SSL guidance](https://learn.microsoft.com/en-us/windows/win32/winhttp/ssl-in-winhttp).
+
+---
+
 <a id="kuu-page-inheritance"></a>
 
 <a id="kuu-page-inheritance-inheritance"></a>
@@ -5903,6 +8698,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | what kuu is | the front door of a project: everything that *runs* in a project runs through `kuu.exe` — a task, a build, a test, a tool, a fetch — and gets a job, a deadline, limits, tree-kill on the door's death, a record, and where the door can read it, a check. Writing code is not a crossing; what an agent writes becomes the door's business the moment it first runs, and `check` stands at that threshold | decided 2026-09-13, after the review of 2026-09-12 ([plan](notes/plan-front-door-2026-09-13_001735.md)). The door is the only part that must last fifteen years, so it is Lua on C, small, built with great care, and it stops growing; what a project needs beyond it is a tool the project builds, in any technology, and calls through the door. The earlier row — a power tool in the agent's hand that removes the fumbling, not the knowing — stands as the description of the palette |
 | dependencies | no lock: verification is a capability (`http.get` with `sha256`, `fs.unpack`), and the agent writes its own setup | the lock was formalism for a shared-payload world that no longer exists |
 | memory across runs | `mem`, a small JSON notebook per project, Lua only, capped at 1 MiB | agents need to remember between runs; the executable stays nimble; SQLite stays out |
+| execution history | record tasks, child processes and runs; no automatic filesystem-change tracking | owner decision after large-project acceptance measurements: source-tree snapshots and comparisons made trivial runs scale with maintained file count. Remove that responsibility instead of adding a watcher, journal or index. Checking, module inventory, safe traversal, scan exclusions and explicit `fs.watch` remain useful capabilities |
 
 <a id="kuu-page-roadmap-inventory"></a>
 
@@ -5955,6 +8751,9 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `text.trim`, native, replacing a helper hand-rolled six times; the unanchored `$` out of every hot path in `lua/` and `tools/`; `check` lexes by byte | 0.10.0 |
 | `kuu.md`: what kuu is, what its predecessors taught, and the whole manual inlined by `tools/bundle_docs.lua`, held to `docs/` by the suite | 0.10.0 |
 | `manifest.lua` as the declaration file, with a warned `tasks.lua` fallback that remains supported; tools declared beside tasks with `task.tool` and called with `task.exec { tool = }`, read by `check` as literals and held to; the ledger under `.kuu/ledger`, chained, with the tree delta and the repository's head; `kuu run --json` as a stream | 0.10.0 |
+| execution-history ledger records v2; removal of automatic tree snapshots and deltas, with immutable v1 history still readable | 0.12; see [migration note](#kuu-page-upgrading-from-011) |
+| `fs.attributes` and `fs.set_attributes`; readonly-directory removal; safe shared inspection with declarative exclusions; literal declaration validation and consistent task help | 0.12; see [migration note](#kuu-page-upgrading-from-011) |
+| tested project recipes for process outcomes, cwd, shared environments, relocation, private GUI verification, native helpers, verified reconstruction and uncertain publication | 0.12; [manual map](#kuu-page-index-pages) |
 | `kuu docs agent`, what is expected of an agent and the `kuu-eval.md` report back, named by every entry point and counted by `capabilities`; `docs` a verb like the others with sections, descriptions, search and `--json`; `rt.page` | 0.10.0 |
 | every verb points onward: a manifest that declares nothing, a misspelt verb, an unknown task with the nearest name, no project, a first `.kuu/` not ignored, the 0.8 version guard found by `check`; `notes` on the JSON envelopes; `kuu run TASK --help` exits 0; `TASK failed` carries `status` and `limit` | 0.10.0 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
@@ -5972,6 +8771,10 @@ add to it is a tool the project builds, called through the door.
 <a id="kuu-page-roadmap-milestones"></a>
 
 ### Milestones
+
+The milestones below record each release's behavior. 0.12 follows the
+execution-history decision above: the tree-delta behavior introduced in 0.10
+is removed, while existing history is preserved.
 
 1. **0.1, the runner.** Routes, decoding, the state, `rt`, errors and exit
    codes, the entry test suite. Done 2026-09-09.
@@ -6284,7 +9087,16 @@ add to it is a tool the project builds, called through the door.
    section. [Upgrading to 0.11](#kuu-page-upgrading-011) records the version, behavior and
    schema changes. The next evidence comes from agents doing ordinary work in
    prepared projects, with kuu as the execution entry point.
-12. **1.0.** Criteria for the owner to set. Proposed: three projects driven
+12. **0.12, project adoption and execution history.** Feedback from FlowNet
+   led to file-attribute operations, readonly-directory cleanup, shared
+   inspection exclusions, stronger literal declaration checks and consistent
+   task help. Normal runs keep execution history without automatic tree
+   snapshots, deltas, watchers or indexes. New ledger records use v2; existing
+   v1 bytes and hash links remain readable. The manual adds tested project
+   recipes and names [Upgrading from 0.11](#kuu-page-upgrading-from-011) from its
+   entry points, including the checklist for existing project instructions,
+   report consumers and ongoing `kuu-eval.md` feedback.
+13. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
    verdict. Two amendments agreed on 2026-09-11: a **clean soak gate on every
@@ -6292,7 +9104,7 @@ add to it is a tool the project builds, called through the door.
    promise on a signal nobody trusts; and **at least one cold adopter**,
    because every adoption finding on record comes from Time Actual, which
    co-evolved with the runtime and therefore routes around contract mistakes
-   instead of reporting them. Between 0.11 and 1.0: the freeze, the month of
+   instead of reporting them. Between 0.12 and 1.0: the freeze, the month of
    use, and corrections driven by what that use finds.
 
 <a id="kuu-page-roadmap-the-05-review-fixes-implemented"></a>
@@ -7027,11 +9839,11 @@ Windows surfaces to shape wrongly, and a wrong shape inside the freeze costs
 the whole 1.x line. They are brought in at 1.1 with adoption evidence behind
 them. Nothing is removed from the executable; only the promise is withheld.
 
-`capabilities` is outside for the same reason, one release later: it arrived
-in 0.10.0 and nothing has driven it yet. What it reports is kuu describing
-itself, so the shape of that description is exactly what a consuming agent
-would build on, and a descriptor is cheaper to widen after adoption evidence
-than to narrow inside the freeze.
+`capabilities` arrived in 0.10.0 and remains provisional while its descriptor
+contract is evaluated through project use and feedback. Consuming agents build
+on the fields and their meanings, so the freeze needs adoption evidence for
+that contract. A later release must explicitly bring it into the freeze;
+current project use alone does not change its provisional status.
 
 Private modules and names starting with `_`, command implementation modules
 under `cmd`, internal helper processes, build artifacts, and undocumented
@@ -7075,8 +9887,8 @@ version text:
 global none
 global <const> require, assert
 local rt = require "rt"
-assert(rt.version_at_least(0, 11),
-  "this project requires kuu 0.11 or later; found " .. rt.version)
+assert(rt.version_at_least(0, 12),
+  "this project requires kuu 0.12 or later; found " .. rt.version)
 ```
 
 `rt.version_at_least(first [, second])` answers whether the running kuu is
@@ -7085,20 +9897,24 @@ components raise `RT badvalue`. It compares numbers, so 0.11
 comes after 0.10, and 1.0 after both.
 
 A third argument remains accepted for compatibility with guards written when
-releases had three components. The running 0.11 compares as `(0, 11, 0)` for
+releases had three components. The running 0.12 compares as `(0, 12, 0)` for
 those calls; no third component appears in its published version. Use two
 arguments in new guards.
 
 Version text changed from two components to three at 0.9.0 and returns to two
 at 0.11. A three-component pattern no longer matches `rt.version`; replace
-it with the call above. [Upgrading to 0.11](#kuu-page-upgrading-011) gives the
-current migration; [upgrading to 0.9](#kuu-page-upgrading-09) records the earlier
+it with the call above. [Upgrading to 0.11](#kuu-page-upgrading-011) records that
+migration; [upgrading to 0.9](#kuu-page-upgrading-09) records the earlier
 change as history.
 
 Place this before declarations that use newer capabilities. The guard tests
-the minimum capability level, while the checked-in release hash and the
-project's tests decide which executable the project adopts. Run those tests
-when updating, and read the upgrading notes for every intervening release.
+the minimum released capability level, while the reviewed executable hash and
+the project's tests decide which executable the project adopts. Development
+artifacts can share version text with an earlier release; identify those by
+build/hash and check feature availability where needed. Run the project's
+tests when updating, and read the upgrading notes for every intervening release.
+For 0.12's execution-history, inspection and file-attribute changes, read
+[Upgrading from 0.11](#kuu-page-upgrading-from-011).
 
 For the changes introduced with this statement, see
 [Upgrading to 0.7](#kuu-page-upgrading-07). For a complete `manifest.lua`, see
@@ -7242,7 +10058,7 @@ as a required release check and run by hand, and on 2026-09-12 its build was
 found 22 commits stale. `SOAK` defaults to
 60 seconds; `FUZZ` and `FUZZ_SEED` below are inherited by the gate.
 
-`analyze` compiles all authored `src/*.c` files separately into `build/analyze`
+`analyze` compiles all authored `src/*.c` and `examples/*.c` files separately into `build/analyze`
 with GCC's `-fanalyzer`, no optimization, and the normal warning-as-error gate.
 It does not analyze vendored libraries or claim to prove memory safety.
 
@@ -7367,9 +10183,13 @@ refused.
 whose defaults fit the owner's machine; `GH` names the gh executable when it
 is not on `PATH`.
 
-A project takes a release by copying `kuu.exe` directly into its root, after
-checking the download against the sidecar, and states the version it expects
-at the top of its `manifest.lua`.
+A project keeps its chosen `kuu.exe` directly in its root, either downloaded
+and ignored or committed as a signed binary. In both models it verifies the
+exact reviewed SHA-256, accepted signature and expected signing identity before
+first execution; see [adoption and runtime verification](#kuu-page-adopting-1-give-the-repository-its-kuu).
+The runtime pin identifies the approved bytes, while the minimum-version guard
+in `manifest.lua` states the capabilities its recipes require. Upgrades are
+deliberate project decisions, not automatic changes to a shared installation.
 
 Before publishing a release:
 
@@ -7380,6 +10200,271 @@ Before publishing a release:
    the production gate before signing and publishing that commit.
 4. Verify the release tag, signed executable, and SHA-256 sidecar, then run
    the exerciser with a copy of the released executable.
+
+---
+
+<a id="kuu-page-upgrading-from-011"></a>
+
+<a id="kuu-page-upgrading-from-011-upgrading-from-011"></a>
+
+## Upgrading from 0.11
+
+Move a project from signed kuu 0.11 to 0.12 by reviewing its runtime
+assumptions, inspection policy and history consumers before running its tasks.
+This page describes the changes in 0.12; [Upgrading to 0.11](#kuu-page-upgrading-011)
+records that release's changes from 0.10.0.
+
+Keep working task and tool declarations; there is no wholesale manifest rewrite.
+The checklist identifies the expectations and consumers that may need changes.
+
+**These changes require kuu 0.12.** Use `rt.version_at_least(0, 12)` when a
+project depends on them. That guard establishes a minimum capability level;
+the reviewed SHA-256 and signing identity still identify the approved runtime.
+No runtime upgrade is performed by reading this page.
+
+<a id="kuu-page-upgrading-from-011-upgrade-in-order"></a>
+
+### Upgrade in order
+
+1. **Verify the chosen candidate.** Follow the project's owner-approved runtime
+   choice and [verification procedure](#kuu-page-adopting-verify-before-first-execution).
+   Keep the candidate separate from the live executable during evaluation. Match
+   its reviewed SHA-256 and signing identity, or the explicitly approved identity
+   of a development artifact, before executing it. Keep the project's downloaded
+   or committed-runtime model; a newer version alone does not authorize new pins.
+2. **Read the candidate's own manual before loading project code.** Run its
+   `docs agent` and `docs upgrading-from-0.11` commands. `docs`, including searches
+   and sections, reads only the embedded manual: it needs no network or manifest.
+   `kuu check` is static inspection without executing project Lua; omit `--fix`
+   for a read-only check. `capabilities` and `list` execute the manifest to learn
+   its declarations, so review it before using those commands with the candidate.
+3. **Review the project's expectations.** Read `AGENTS.md`, README instructions,
+   automation helpers and report consumers against [the list below](#kuu-page-upgrading-from-011-project-instructions-and-assumptions).
+   Update statements that describe retired behavior and adapt consumers of removed
+   fields. Keep the owner's task, verification and approval policies; the embedded
+   manual describes what this executable does, not permission to replace them.
+   Read the existing `kuu-eval.md` at the project root and identify reported
+   difficulties to recheck during candidate validation.
+4. **Check which source will be inspected.** Review `kuu.config.json` and the
+   [directory exclusions](#kuu-page-upgrading-from-011-explicit-project-inspection). Maintained source under
+   an optional default name needs a deliberate policy. A missing configuration
+   selects defaults; no new configuration file is required when those are right.
+   Run the candidate's `check`, read warnings as well as errors, and correct
+   declaration mistakes it now detects before running tasks.
+5. **Validate in an isolated project copy.** Put the candidate at that copy's
+   expected project runtime path so nested tasks use the same verified bytes.
+   Keep its paths, outputs and task side effects isolated from the live project;
+   a copied manifest may still refer to external locations. Then inspect
+   `capabilities` and `list`, and run the project's relevant tests. Where history
+   compatibility matters, include a preserved copy of its old history and check
+   the resulting mixed-version chain and report consumers. New runs append v2
+   records; the old executable has not been validated against them.
+6. **Adopt the verified result together.** Stop tasks using the old runtime before
+   replacing it. Review the runtime pins, changed project instructions, configuration
+   and helpers together; change minimum-version guards only for features actually
+   required. Retain the old approved runtime and a separate pre-upgrade history copy
+   if rollback is required. After new runs write live v2 history, replacing only the
+   binary is not an established rollback procedure. Preserve both histories; do not
+   edit, merge or delete ledger lines to make an older executable accept them.
+   Record the adopted identity and validation evidence in the project's upgrade record.
+7. **Maintain the project's `kuu-eval.md`.** Append a concise dated entry for the
+   upgrade evaluation, including an unsuccessful or deferred adoption, using
+   [the reporting format](#kuu-page-agent-reporting-back). Create the file if missing;
+   preserve earlier entries. Record the actual runtime tested, commands and
+   outcomes, what helped, remaining difficulties and new regressions. Recheck
+   earlier issues and reference their dated entries in a new follow-up; call an
+   issue resolved only after verifying it with the candidate.
+   Bring the relevant results from an isolated test copy back to the project's
+   root evaluation document. Continue maintaining it after subsequent work with
+   kuu; the upgrade entry does not replace ongoing feedback.
+
+The runtime API remains available to `kuu -e` for immediate queries. Find an API
+with `kuu docs search NAME`, then use the printed `Read:` command to retrieve its
+section. Full pages and section retrieval also support `--json`.
+
+<a id="kuu-page-upgrading-from-011-project-instructions-and-assumptions"></a>
+
+### Project instructions and assumptions
+
+An agent returning to an established project should check these specific claims,
+including copies of old kuu advice in `AGENTS.md` and README files:
+
+| Assumption to review | What to use now |
+|---|---|
+| A run snapshots the source tree and records which edits it ran against | Runs record execution. Use the project's explicit source-review or version-control workflow when changed files matter. There is no automatic watcher or index. |
+| A missing `delta`, `observation` or `project.ledger.unaccounted` means no files changed | These fields are absent by contract. Absence makes no claim about file changes or who caused them. |
+| `.kuu/ledger/tree.json` must be refreshed, repaired or migrated | Leave the existing file alone. It is ignored, and there is no replacement baseline. |
+| Every ledger record is v1, or report timing includes scan phases | Accept the documented v1/v2 history and current run-report shape below. Stream-event v1 is a separate schema. |
+| Git ignore rules determine which Lua files kuu checks | Review `kuu.config.json` and the explicit inspection exclusions below. |
+| Calling `proc.run` is always a bypass, even when output must be captured | Resolve a declared tool with `task.command`, then use `proc.run` for capture. This is supported: the enclosing task/run remain recorded, but there is no individual child ledger record or child event. Prefer `task.exec` when capture is unnecessary. |
+| `kuu capabilities` or `kuu list` merely reads manifest text | Both execute its declarations. Use `kuu check` for static inspection and `kuu docs` for documentation without loading the manifest. |
+| `rt.version_at_least(0, 11)` proves the APIs described here are present | Use `rt.version_at_least(0, 12)` for 0.12 capabilities, and keep the project's reviewed runtime pins. |
+
+For process capture, successful nonzero child exits and actionable failure reports,
+read the [process recipes](#kuu-page-process-recipes). File attributes and the checker
+changes below may also let the project simplify existing workarounds. Adopt only
+the recipes relevant to that project; they are examples, not new mandatory tasks.
+
+Keep a short bootstrap instruction in the project's existing agent instructions
+instead of copying the manual. Adapt this text to its approved runtime path:
+
+```text
+Use the project's pinned kuu.exe and follow its runtime-verification instructions.
+Read that executable's `kuu docs agent` when starting work; use `kuu docs search`
+and section retrieval for current APIs. On a runtime upgrade, read the candidate's
+embedded migration notes before running project code. When moving from signed
+0.11, start with `kuu docs upgrading-from-0.11` in the verified candidate.
+`kuu check` without --fix inspects project Lua statically; `kuu capabilities`
+and `kuu list` execute the manifest. Follow this project's task and approval
+policies. Resolve stale runtime claims against the current embedded manual and
+update the affected instructions as part of the authorized upgrade.
+Read and maintain `kuu-eval.md` at the project root. Append a dated entry for
+each piece of work using `kuu docs agent reporting-back`; create it if missing.
+Preserve earlier entries and report retested issues in a new follow-up, with
+the runtime identity, commands and outcomes; leave untested issues unverified.
+```
+
+<a id="kuu-page-upgrading-from-011-execution-history"></a>
+
+### Execution history
+
+0.12 changes the ledger and run-report contract. These changes are not part of
+the signed 0.11 release.
+
+Normal `kuu run` execution no longer takes project-tree snapshots, compares
+file changes or publishes a baseline. It does not start a watcher or maintain
+a filesystem index. The [ledger](#kuu-page-ledger) retains task, child and run
+records, outcomes, timings, arguments and best-effort repository ref/head
+metadata. Repository identity does not describe dirty files or attribute
+changes to a task. Explicit filesystem operations, including `fs.watch`,
+remain available; [checking](#kuu-page-check), [module inventory](#kuu-page-capabilities)
+and their [scan exclusions](#kuu-page-scan) remain supported.
+
+Consumers of reports and history should adapt these fields:
+
+- New durable ledger records have `v:2` and omit `delta` and `observation`.
+  The new reader and chain verifier accept both versions 1 and 2. Existing
+  NDJSON lines keep their original bytes and hash links, subject to normal
+  ninety-day retention. Treat old change metadata as historical only.
+  Older executables have not been validated against version 2; do not assume
+  a downgrade can read or append the new history.
+- An existing `.kuu/ledger/tree.json` is ignored and left untouched. No
+  migration, cleanup or replacement baseline is required.
+- `run --json` no longer emits result `scope` or `scans`, ledger `observation`
+  or `publication`, or timing phases `initial_scan` and `final_scan`.
+  `result.ledger` instead reports `{records, complete, error?}` once opening
+  is attempted: successful appends for this invocation, whether recording
+  succeeded, and any opening or recording error. Failures remain nonfatal to
+  tasks and appear in `notes`. Preflight failures and dry runs omit the
+  summary. See [Tasks](#kuu-page-task) for the complete shape.
+- Stream events still have `v:1`; their schema version is separate from
+  durable ledger records. Existing task and child durations keep their
+  meanings. The `ledger` timing measures opening and append work.
+- `capabilities --json` no longer emits `project.ledger.unaccounted`. Kuu
+  makes no claim to know which project edits a crossing accounts for.
+
+<a id="kuu-page-upgrading-from-011-explicit-project-inspection"></a>
+
+### Explicit project inspection
+
+Checking and module inventory now use a shared declarative inspection policy
+from `kuu.config.json` beside the project's manifest. Its automatic directory
+exclusions are:
+
+| Kind | Directory basenames, at any depth |
+|---|---|
+| Mandatory | `.git`, `.kuu` |
+| Optional defaults | `.tools`, `build`, `node_modules`, `.cache`, `.local`, `.venv`, `__pycache__` |
+
+A missing configuration file selects those defaults. If a conventional name
+such as `build/` or `.local/` contains maintained source, disable the optional
+set and add only the exclusions the project needs:
+
+```json
+{
+  "v": 1,
+  "scan": {
+    "defaults": false,
+    "exclude_dirs": [".tools", "node_modules"],
+    "exclude_paths": ["vendor/generated"]
+  }
+}
+```
+
+`exclude_dirs` matches an exact basename at any depth; `exclude_paths` matches
+a project-relative directory subtree. These rules add exclusions, without
+negation or include patterns. `defaults:false` leaves `.git` and `.kuu`
+mandatory for automatic inspection. An explicitly named checker file or
+starting directory overrides its own exclusion; descendant rules still apply.
+Git ignore rules do not configure this policy. See [scan configuration](#kuu-page-scan)
+for path validation and the reported scope and scan metadata.
+
+`check`, `capabilities`, `run` and `list` validate this file before project code
+can execute. Checking still reads the manifest as text. Invalid or unreadable
+configuration makes `check`, `run` and `list` exit 2 with `SCAN config`;
+`capabilities` reports the error and an incomplete inventory without loading
+the manifest. Each invocation retains its captured policy. The configuration
+controls inspection only and does not change `require` resolution. Normal
+`run` and `list` do not automatically scan the project tree or track changes.
+
+<a id="kuu-page-upgrading-from-011-file-attributes"></a>
+
+### File attributes
+
+`fs.attributes(path, options)` and `fs.set_attributes(path, patch, options)`
+add inspection and mutation of six named Windows file attributes. Options
+are optional. The getter returns `attrs` plus six booleans; setters preserve
+unspecified bits and accept only named boolean flags. Read the
+[file-attribute contract](#kuu-page-fs-file-attributes) for examples and errors.
+
+Both calls select the final link itself by default; use `{follow=true}` for
+its target. Existing `fs.stat` behavior is unchanged. `{}` validates readable
+metadata without testing write permission; every nonempty patch requests
+write-attribute access, even when its values already match. Directory
+`temporary=true` is rejected without applying any of the patch. Attributes
+do not replace ACL permissions or imply recursive cleanup.
+
+These calls require 0.12; use `rt.version_at_least(0, 12)` before declarations
+that need them. Signed 0.11 does not provide them.
+
+<a id="kuu-page-upgrading-from-011-cleanup-declarations-and-task-help"></a>
+
+### Cleanup, declarations and task help
+
+0.12 also fixes recursive removal of readonly
+directories. Clearing a readonly bit now checks errors and leaves link targets
+untouched. Removal remains nontransactional; the [cleanup guide](#kuu-page-cleanup)
+provides bounded project-level retries and preserves primary and cleanup errors.
+
+`kuu check` now validates literal task/tool identifiers and independently known
+declaration fields, including a misplaced task-level `timeout` beside a run
+function. Direct, curried and simple aliased constructors work; dynamic values
+stay conservative. See [declaration checking](#kuu-page-check-task-and-tool-declarations).
+
+Task help shows non-empty descriptions above usage with or without an explicit
+argument schema. Tasks without a schema accept a lone trailing `--`, while
+still rejecting real extra arguments. Rest forwarding and child exit codes are
+preserved. [Task help](#kuu-page-task-running-and-failing) explains `run TASK --help`
+versus deliberately forwarding `run TASK -- --help`.
+
+The 0.11 executable does not include these corrections.
+
+<a id="kuu-page-upgrading-from-011-adoption-recipes"></a>
+
+### Adoption recipes
+
+The manual now includes tested recipes for [process descriptions and
+diagnostics](#kuu-page-process-recipes), [caller working directories](#kuu-page-working-directories),
+[shared project environments](#kuu-page-project-environment),
+[relocation with non-repairing health checks](#kuu-page-relocation),
+[isolated editor launch checks](#kuu-page-editor), [cached native helpers and local
+shortcuts](#kuu-page-native-helper), and [cache reconstruction and uncertain publication
+recovery](#kuu-page-reconstruction). These use project Lua to express the policy; each
+page states any minimum-version requirement.
+
+[Adopting kuu](#kuu-page-adopting) supports both a downloaded, ignored runtime and a
+committed signed runtime. Both models pin approved bytes and signing identity;
+a minimum-version guard alone does not identify an approved executable.
 
 ---
 
@@ -7397,9 +10482,14 @@ capabilities descriptor should read the changes below before replacing it.
 Version text has two components again, so programs that parse it must also
 read the version migration below.
 
-Verify the replacement's signature and SHA-256 against the release. If a
-project depends on a correction described here, use
-`rt.version_at_least(0, 11)` for its minimum-version guard. For the earlier
+Follow the project's owner-approved runtime upgrade and
+[pre-execution verification](#kuu-page-adopting-verify-before-first-execution): compare
+the chosen replacement with the reviewed SHA-256 and expected signing identity
+before running it. This applies whether the project downloads and ignores the
+runtime or commits the signed binary. For corrections included in the signed
+0.11 release, use `rt.version_at_least(0, 11)` for the minimum-version guard.
+Changes in 0.12 have their own [Upgrading from 0.11](#kuu-page-upgrading-from-011)
+page; read it when replacing that release. For the earlier
 manifest, task-report and checker changes, read
 [upgrading to 0.10](#kuu-page-upgrading-010).
 
@@ -7692,6 +10782,10 @@ first record. Nothing asks for it and nothing depends on it: a ledger that
 cannot be written is one line on standard error and the run goes on. Add
 `.kuu/` to the repository's `.gitignore` if it is not there already for
 `mem`. [The ledger](#kuu-page-ledger) is the page.
+
+That describes the 0.10 release. 0.12 removes automatic tree
+deltas and keeps execution history; existing records remain readable. See the
+[0.12 migration note](#kuu-page-upgrading-from-011).
 
 <a id="kuu-page-upgrading-010-kuu-run---json-is-a-stream"></a>
 

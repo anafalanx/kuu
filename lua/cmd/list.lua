@@ -8,6 +8,7 @@ local project = require "project"
 local task = require "task"
 local json = require "json"
 local clean = require "_jsonsafe"
+local policy = require "_scan_policy"
 
 local spec = { { "--json", type = "flag", help = "machine-readable listing" } }
 local opts, e = cli.parse(rt.args, spec, "kuu list")
@@ -26,6 +27,8 @@ end
 local root, found = project.find()
 if not root then fail(found) end
 local file = found
+local context, config_error = policy.load(root)
+if not context then fail(config_error) end
 local entered, e4 = project.enter(root)
 if not entered then fail(e4) end
 local loaded, e5 = project.load_tasks(root)

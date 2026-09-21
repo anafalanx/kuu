@@ -3,6 +3,11 @@ global none
 global <const> require, ipairs, pairs, tostring, type, pcall, string, table, io, os,
                rawset, _G
 
+local timing = require "_timings"
+local command_began = timing.clock()
+local measured = {}
+local ledger_seconds
+
 local rt = require "rt"
 local project = require "project"
 local task = require "task"
@@ -21,15 +26,16 @@ local function note(text)
   io.stderr:write("kuu: warning: ", text, "\n")
 end
 
-local USAGE = "usage: kuu run [--json] [--dry-run] [TASK [arg ...]]\n  runs TASK, or the default task, after its dependencies; kuu list shows them\n  --dry-run shows the plan, in order, and runs nothing\n"
+local USAGE = "usage: kuu run [--json] [--dry-run] [--timings] [TASK [arg ...]]\n  runs TASK, or the default task, after its dependencies; kuu list shows them\n  --dry-run shows the plan, in order, and runs nothing\n  --timings writes measured phase times to standard error\n"
 
-local want_json, dry_run = false, false
+local want_json, dry_run, want_timings = false, false, false
 local i = 1
 while rt.args[i] ~= nil and rt.args[i]:sub(1, 2) == "--" do
   local a = rt.args[i]
   i = i + 1
   if a == "--json" then want_json = true
   elseif a == "--dry-run" then dry_run = true
+  elseif a == "--timings" then want_timings = true
   elseif a == "--help" then io.write(USAGE) os.exit(0)
   elseif a == "--" then break
   else io.stderr:write("kuu: TASK usage: unknown option '", a, "'\n", USAGE) os.exit(2) end
@@ -71,6 +77,15 @@ end
 -- run goes on; the record is the door's, never a condition on the work.
 local ledger = require "_ledger"
 local book = nil
+local ledger_result
+local function ledger_failure(action, failure)
+  local diagnostic = { message = tostring(failure) }
+  if err.is(failure) then
+    diagnostic.domain, diagnostic.code, diagnostic.message = failure.domain, failure.code, failure.message
+  end
+  ledger_result.complete, ledger_result.error = false, diagnostic
+  note("the ledger was not " .. action .. ": " .. tostring(failure))
+end
 local run_began = sched.clock()
 local run_at = require("time").now()
 -- Whether git ignores .kuu/ under the root: a .gitignore at the root or in
@@ -100,12 +115,15 @@ end
 
 local function crossing(fields)
   if book == nil then return end
+  local began = timing.clock()
   local called, ok, e = pcall(ledger.record, book, clean(fields))
+  ledger_seconds = (ledger_seconds or 0) + timing.clock() - began
   if not called or not ok then
-    note("the ledger was not written: " .. tostring(called and e or ok))
+    ledger_failure("written", called and e or ok)
     book = nil
     return
   end
+  ledger_result.records = book.written
   -- The first crossing creates .kuu/ under the root; the one thing to do
   -- about that is said once, the first time, when the repository does not
   -- yet ignore it.
@@ -116,13 +134,19 @@ end
 -- Installed once the plan is checked and something is about to run: a
 -- child the manifest starts at its top level is not a crossing of this
 -- run, and a run that runs nothing -- --dry-run, an unknown task, a wrong
--- argument -- writes nothing, so the next real run's delta still names
--- the edits it ran against.
+-- argument -- writes nothing.
 local function open_the_door(root)
   local fresh = fs.exists(fs.join(root, ".kuu")) == false
-  local opened, result = pcall(ledger.open, root)
-  if opened then book = result book.fresh = fresh
-  else io.stderr:write("kuu: warning: the ledger was not opened: ", tostring(result), "\n") end
+  local began = timing.clock()
+  ledger_result = { records = 0, complete = true }
+  local opened, result, failure = pcall(ledger.open, root)
+  ledger_seconds = (ledger_seconds or 0) + timing.clock() - began
+  if opened and result then
+    book = result
+    book.fresh = fresh
+  else
+    ledger_failure("opened", opened and failure or result)
+  end
   task.observer = function(record)
     record.task = current
     if record.argv then record.argv = json.array(record.argv) end
@@ -138,8 +162,18 @@ end
 
 local function exit_code_for(e)
   if type(e.exit) == "number" then return e.exit end
-  if err.is(e, "CLI", "usage") or err.is(e, "TASK") then return 2 end
+  if err.is(e, "CLI", "usage") or err.is(e, "TASK") or err.is(e, "SCAN", "config") then return 2 end
   return 1
+end
+
+-- Report only work actually performed. Execution can contain child time
+-- and ledger appends; these timings are overlapping, not a partition.
+local function report(result)
+  if measured.setup == nil then measured.setup = timing.clock() - command_began end
+  measured.ledger = ledger_seconds
+  result.timings = timing.finish(measured, command_began)
+  if want_timings then timing.write("run", measured) end
+  return result
 end
 
 local function finish(ok, e, extra)
@@ -150,16 +184,13 @@ local function finish(ok, e, extra)
       at = run_at, seconds = sched.clock() - run_began, status = ok and "ok" or "failed",
       code = ok and 0 or exit_code_for(e),
       error = (not ok) and { domain = e.domain, code = e.code, message = e.message } or nil }
-    -- A failed final record disables the ledger, just as an earlier one
-    -- does. Keep the previous tree so the next run still sees those edits.
-    if book ~= nil then
-      local called, closed, e7 = pcall(ledger.close, book)
-      if not called or not closed then note("the ledger's tree was not written: " .. tostring(called and e7 or closed)) end
-    end
   end
+  local result = { tasks = ran, notes = notes }
+  if ledger_result then result.ledger = ledger_result end
+  if extra ~= nil then for k, v in pairs(extra) do result[k] = v end end
+  report(result)
   if want_json then
-    local envelope = { ok = ok, result = { tasks = ran, notes = notes } }
-    if extra ~= nil then for k, v in pairs(extra) do envelope.result[k] = v end end
+    local envelope = { ok = ok, result = result }
     if not ok then envelope.error = { domain = e.domain, code = e.code, message = e.message, exit = e.exit } end
     io.stdout:write(json.encode(clean(envelope)), "\n")
     io.stdout:flush()
@@ -172,6 +203,8 @@ end
 local root, found = project.find()
 if not root then finish(false, found) end
 local file = found
+local scan_scope, config_error = require("_scan_policy").load(root)
+if not scan_scope then finish(false, config_error, { root = root }) end
 local entered, e2 = project.enter(root)
 if not entered then finish(false, e2) end
 local loaded, e3 = project.load_tasks(root)
@@ -236,12 +269,14 @@ end
 
 if dry_run then
   -- the plan, checked as above, and nothing run
+  measured.setup = timing.clock() - command_began
+  local steps = json.array {}
+  for _, entry in ipairs(plan) do
+    steps[#steps + 1] = { name = entry.name, desc = entry.desc, deps = json.array(entry.deps) }
+  end
+  local result = report { root = root, task = name, plan = steps, notes = notes }
   if want_json then
-    local steps = json.array {}
-    for _, entry in ipairs(plan) do
-      steps[#steps + 1] = { name = entry.name, desc = entry.desc, deps = json.array(entry.deps) }
-    end
-    io.stdout:write(json.encode(clean { ok = true, result = { root = root, task = name, plan = steps, notes = notes } }), "\n")
+    io.stdout:write(json.encode(clean { ok = true, result = result }), "\n")
   else
     for k, entry in ipairs(plan) do
       io.stdout:write(string.format("%d. %s%s\n", k, entry.name, entry.desc ~= "" and ("  " .. entry.desc) or ""))
@@ -250,6 +285,7 @@ if dry_run then
   os.exit(0)
 end
 
+measured.setup = timing.clock() - command_began
 open_the_door(root)
 local names = json.array {}
 for _, entry in ipairs(plan) do names[#names + 1] = entry.name end
@@ -261,6 +297,7 @@ for _, entry in ipairs(plan) do
   local started = sched.clock()
   local ok, e6 = task.execute(entry, opts_for[entry.name])
   local elapsed = sched.clock() - started
+  measured.execution = (measured.execution or 0) + elapsed
   ran[#ran + 1] = { name = entry.name, seconds = elapsed, ok = ok == true }
   if not ok then
     if not want_json then

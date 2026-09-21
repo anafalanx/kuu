@@ -1,7 +1,7 @@
 -- check.lua -- `kuu check`: syntax errors with lines, undeclared globals under a
 -- declaration, the warning without one, require resolution, pruning, JSON.
 global none
-global <const> require, ipairs, pairs, tostring, type, table, pcall
+global <const> require, ipairs, pairs, tostring, type, table, pcall, io
 
 return function(T)
   local check, contains = T.check, T.contains
@@ -58,6 +58,147 @@ return function(T)
   fs.write(loose .. "/b.lua", "global none\nreturn 1\n")
   r = T.kuu({ "check" }, { cwd = loose })
   check("outside a project, the current directory is checked and is the require root", r.code == 0 and contains(r.err, "2 files, 0 errors, 0 warnings"), T.describe(r))
+
+  -- The native collector reports directory links, but marks them nofollow.
+  -- Automatic checking must not reopen those paths with fs.list.
+  -- All targets here are owned sibling fixtures, never another project.
+  do
+    local scratch = fs.tempdir { dir = fs.absolute(T.work), prefix = "check-links-" }
+    check("a private directory for checker link fixtures is created", scratch ~= nil)
+    if scratch then
+      local proc = require "proc"
+      local dir, outside, deeper = scratch .. "/project", scratch .. "/outside", scratch .. "/deeper"
+      fs.mkdir(dir .. "/src")
+      fs.mkdir(outside)
+      fs.mkdir(deeper)
+      local sentinel = 'global none\nlocal M = {}\nM.sentinel = print\nreturn M\n'
+      fs.write(dir .. "/manifest.lua", "global none\n")
+      fs.write(dir .. "/src/local.lua", sentinel)
+      fs.write(outside .. "/external.lua", sentinel)
+      fs.write(deeper .. "/deep.lua", sentinel)
+      local function junction(path, target)
+        local made = proc.run { "cmd.exe", "/c", "mklink", "/J", path:gsub("/", "\\"), target:gsub("/", "\\"), timeout = "10s" }
+        check("checker fixture junction is created: " .. path, made and made.code == 0, made and T.describe(made))
+        return made and made.code == 0
+      end
+      local root_link = junction(dir .. "/linked", outside)
+      local nested_link = junction(dir .. "/src/nested", outside)
+      local target_link = junction(outside .. "/nested", deeper)
+      if root_link and nested_link and target_link then
+        local before = T.kuu({ "check", "--json" }, { cwd = dir })
+        local before_report = json.decode(before.out)
+        check("automatic check reports ordinary Lua files but no root or nested junction targets",
+          before.code == 1 and before_report and #before_report.result.files == 2
+            and before_report.result.errors == 1 and not contains(before.out, "external.lua")
+            and not contains(before.out, "deep.lua"), T.describe(before))
+        local fixed = T.kuu({ "check", "--fix", "--json" }, { cwd = dir })
+        local fixed_report = json.decode(fixed.out)
+        check("automatic check --fix repairs the ordinary in-project file",
+          fixed.code == 0 and fixed_report and #fixed_report.result.files == 2 and #fixed_report.result.fixed == 1
+            and contains(fs.read(dir .. "/src/local.lua"), "global <const> print"), T.describe(fixed))
+        check("automatic check --fix leaves both outside junction sentinels byte-for-byte unchanged",
+          fs.read(outside .. "/external.lua") == sentinel and fs.read(deeper .. "/deep.lua") == sentinel)
+        local inventory = checker.modules(dir)
+        check("module inventory excludes root and nested junction targets without becoming incomplete",
+          inventory.complete and #inventory.errors == 0 and inventory.files == 2 and #inventory.modules == 1
+            and inventory.modules[1].name == "src.local", json.encode(inventory))
+
+        local explicit = checker.tree(dir .. "/linked", dir)
+        check("an explicitly supplied check.tree starting junction is entered but its nested junction is not",
+          #explicit.reports == 1 and contains(explicit.reports[1].path, "/linked/external.lua")
+            and #explicit.reports[1].errors == 1, json.encode(explicit))
+        local rejected = T.kuu({ "check", "linked" }, { cwd = dir })
+        check("the CLI preserves rejection of a directly named directory-link entry",
+          rejected.code == 2 and contains(rejected.err, "CHECK notfound"), T.describe(rejected))
+        local named = T.kuu({ "check", "--fix", "--json", "linked/external.lua" }, { cwd = dir })
+        local named_report = json.decode(named.out)
+        check("a deliberately named ordinary file beneath a junction can still be checked and fixed",
+          named.code == 0 and named_report and #named_report.result.files == 1 and #named_report.result.fixed == 1
+            and fs.read(outside .. "/external.lua") ~= sentinel and fs.read(deeper .. "/deep.lua") == sentinel,
+          T.describe(named))
+        local explicit_modules = checker.modules(dir .. "/linked")
+        check("an explicitly supplied module-inventory starting junction retains ordinary target modules",
+          explicit_modules.complete and explicit_modules.files == 1 and #explicit_modules.modules == 1
+            and explicit_modules.modules[1].name == "external", json.encode(explicit_modules))
+      end
+
+      -- Symbolic file links need a Windows privilege or Developer Mode.
+      -- Always cover their metadata contract below; use a real one as well
+      -- whenever the host permits it, without changing host policy.
+      fs.write(outside .. "/file-target.lua", sentinel)
+      local linked = proc.run { "cmd.exe", "/c", "mklink", (dir .. "/file-link.lua"):gsub("/", "\\"),
+        (outside .. "/file-target.lua"):gsub("/", "\\"), timeout = "10s" }
+      if linked and linked.code == 0 then
+        check("a real file symlink is identified as a link", fs.exists(dir .. "/file-link.lua") == "link")
+        local automatic = T.kuu({ "check", "--fix", "--json" }, { cwd = dir })
+        check("automatic fixing skips a real file symlink and preserves its target",
+          automatic.code == 0 and not contains(automatic.out, "file-link.lua")
+            and fs.read(outside .. "/file-target.lua") == sentinel, T.describe(automatic))
+        local inventory = checker.modules(dir)
+        check("automatic inventory does not count a real file symlink", inventory.complete and inventory.files == 2,
+          json.encode(inventory))
+        local explicit = checker.file(dir .. "/file-link.lua", dir)
+        check("check.file preserves deliberately named file-link inspection", #explicit.errors == 1, json.encode(explicit))
+        local rejected = T.kuu({ "check", "file-link.lua" }, { cwd = dir })
+        check("the CLI preserves rejection of a directly named file-link entry",
+          rejected.code == 2 and contains(rejected.err, "CHECK notfound"), T.describe(rejected))
+      else
+        io.write("skip real checker file-symlink fixture: Windows did not allow mklink; metadata cases still run\n")
+      end
+      fs.remove(scratch, { recursive = true })
+    end
+  end
+
+  -- A filter/cloud reparse tag is not a name-surrogate. Pin that distinction
+  -- without requiring a cloud provider on the test machine. Likewise a
+  -- nofollow row (including DFS) is authoritative even with surrogate=false.
+  do
+    local dir = fs.tempdir { dir = fs.absolute(T.work), prefix = "check-link-metadata-" }
+    check("a private directory for link metadata cases is created", dir ~= nil)
+    if dir then
+      fs.mkdir(dir .. "/filtered-dir")
+      fs.mkdir(dir .. "/blocked-dir")
+      local source = "global none\nlocal M = { present = true }\nreturn M\n"
+      for _, name in ipairs { "ordinary.lua", "filtered.lua", "file-link.lua", "filtered-dir/inside.lua", "blocked-dir/outside.lua" } do
+        fs.write(dir .. "/" .. name, source)
+      end
+      local native = require "_scan_native"
+      local original_collect, original_list = native.collect, fs.list
+      local blocked_lists = 0
+      native.collect = function(path, opts)
+        local walk, why = original_collect(path, opts)
+        if path == dir and walk then
+          walk.links[#walk.links + 1] = { path = dir .. "/filtered-dir", kind = "directory", tag = "0x9000001a", surrogate = false, action = "descended" }
+          walk.links[#walk.links + 1] = { path = dir .. "/blocked-dir", kind = "directory", tag = "0x8000000a", surrogate = false, action = "nofollow" }
+          walk.links[#walk.links + 1] = { path = dir .. "/file-link.lua", kind = "file", tag = "0xa000000c", surrogate = true, action = "nofollow" }
+          local files = {}
+          for _, entry in ipairs(walk.files) do
+            if entry.path == dir .. "/filtered.lua" then entry.reparse, entry.attrs = "0x9000001a", 1024 end
+            if entry.path ~= dir .. "/file-link.lua" and entry.path ~= dir .. "/blocked-dir/outside.lua" then
+              files[#files + 1] = entry
+            end
+          end
+          walk.files = files
+        end
+        return walk, why
+      end
+      fs.list = function(path, opts)
+        if path == dir .. "/blocked-dir" then blocked_lists = blocked_lists + 1 end
+        return original_list(path, opts)
+      end
+      local collected, tree, inventory = pcall(function() return checker.tree(dir), checker.modules(dir) end)
+      native.collect, fs.list = original_collect, original_list
+      check("nofollow paths are never listed, regardless of the surrogate flag", collected and blocked_lists == 0, tostring(tree))
+      check("automatic checking skips file-link entries but retains ordinary file and directory reparse metadata",
+        collected and #tree.reports == 3 and tree.reports[1].path == dir .. "/filtered-dir/inside.lua"
+          and tree.reports[2].path == dir .. "/filtered.lua" and tree.reports[3].path == dir .. "/ordinary.lua",
+        collected and json.encode(tree) or tostring(tree))
+      check("module inventory retains filter-backed files and directories while excluding link entries",
+        collected and inventory.complete and inventory.files == 3 and #inventory.modules == 3,
+        collected and json.encode(inventory) or tostring(tree))
+      fs.remove(dir, { recursive = true })
+    end
+  end
 
   -- the module in-process
   local report = checker.file(project .. "/ghost.lua", project)
@@ -214,6 +355,22 @@ other.custom()
 
     report = inspect(head .. 'local r = proc.run { "git", cwd = "x", timeout = "30s" }\nprint(r)\n')
     check("the options it does take are not", #report.errors == 0, first(report))
+
+    local attributes_head = 'global none\nglobal <const> require, print\nlocal fs = require "fs"\n'
+    report = inspect(attributes_head .. 'local a = fs.attributes("missing", { follow = false })\n'
+      .. 'print(a.attrs, a.readonly, a.hidden, a.system, a.archive, a.temporary, a.not_content_indexed)\n'
+      .. 'fs.set_attributes("missing", { readonly = false }, { follow = true })\n')
+    check("attribute calls and ordinary result access are accepted without accessing paths",
+      #report.errors == 0, first(report))
+    for _, source in ipairs {
+      'fs.attributes("missing", { folow = true })\n',
+      'fs.set_attributes("missing", { hidden = false }, { folow = true })\n',
+    } do
+      report = inspect(attributes_head .. source)
+      check("attribute follow-option checking uses the correct argument position",
+        #report.errors == 1 and report.errors[1].kind == "option"
+          and report.errors[1].suggestion == "follow", first(report))
+    end
 
     report = inspect(head .. 'if rt.version == "0.9" then print(1) end\n')
     check("the version compared by text is an error",
@@ -675,18 +832,20 @@ other.custom()
       #unicode.errors == 0 and #unicode.warnings == 0 and unicode_found and not dotted_found and modules.complete and loaded.code == 0,
       json.encode(modules) .. T.describe(loaded))
 
-    local original_dirs, original_list, original_read = fs.dirs, fs.list, fs.read
-    fs.dirs = function() return { paths = {}, errors = { { path = dir .. "/hidden", win32 = 32, reason = "sharing violation" } } } end
+    local native = require "_scan_native"
+    local original_collect, original_read = native.collect, fs.read
+    native.collect = function() return { root = dir, paths = {}, files = {}, links = {}, skipped = {}, enumerated = 1, pruned = 0,
+      errors = { { path = dir .. "/hidden", win32 = 32, reason = "sharing violation" } } } end
     local walked, tree, inventory = pcall(function() return checker.tree(dir), checker.modules(dir) end)
-    fs.dirs = original_dirs
+    native.collect = original_collect
     check("unreadable subtrees produce read findings and incomplete module inventories",
       walked and #tree.reports == 1 and tree.reports[1].errors[1].kind == "read"
         and tree.reports[1].errors[1].win32 == 32 and not inventory.complete and #inventory.errors == 1,
       tostring(tree))
-    fs.dirs = function() return { paths = { dir }, errors = {} } end
-    fs.list = function() return { entries = {}, errors = { "the listing stopped early" } } end
+    native.collect = function() return { root = dir, paths = { dir }, files = {}, links = {}, skipped = {}, enumerated = 1, pruned = 0,
+      errors = { { path = dir, win32 = 5, reason = "the listing stopped early" } } } end
     local listed, partial, partial_modules = pcall(function() return checker.tree(dir), checker.modules(dir) end)
-    fs.dirs, fs.list = original_dirs, original_list
+    native.collect = original_collect
     check("partial directory listings cannot become successful empty check results",
       listed and #partial.reports == 1 and contains(partial.reports[1].errors[1].message, "stopped early")
         and not partial_modules.complete and #partial_modules.errors == 1, tostring(partial))

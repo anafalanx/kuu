@@ -34,6 +34,7 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | what kuu is | the front door of a project: everything that *runs* in a project runs through `kuu.exe` — a task, a build, a test, a tool, a fetch — and gets a job, a deadline, limits, tree-kill on the door's death, a record, and where the door can read it, a check. Writing code is not a crossing; what an agent writes becomes the door's business the moment it first runs, and `check` stands at that threshold | decided 2026-09-13, after the review of 2026-09-12 ([plan](../notes/plan-front-door-2026-09-13_001735.md)). The door is the only part that must last fifteen years, so it is Lua on C, small, built with great care, and it stops growing; what a project needs beyond it is a tool the project builds, in any technology, and calls through the door. The earlier row — a power tool in the agent's hand that removes the fumbling, not the knowing — stands as the description of the palette |
 | dependencies | no lock: verification is a capability (`http.get` with `sha256`, `fs.unpack`), and the agent writes its own setup | the lock was formalism for a shared-payload world that no longer exists |
 | memory across runs | `mem`, a small JSON notebook per project, Lua only, capped at 1 MiB | agents need to remember between runs; the executable stays nimble; SQLite stays out |
+| execution history | record tasks, child processes and runs; no automatic filesystem-change tracking | owner decision after large-project acceptance measurements: source-tree snapshots and comparisons made trivial runs scale with maintained file count. Remove that responsibility instead of adding a watcher, journal or index. Checking, module inventory, safe traversal, scan exclusions and explicit `fs.watch` remain useful capabilities |
 
 ## Inventory
 
@@ -84,6 +85,9 @@ embeds PUC Lua instead. This page records the decisions and the milestones.
 | `text.trim`, native, replacing a helper hand-rolled six times; the unanchored `$` out of every hot path in `lua/` and `tools/`; `check` lexes by byte | 0.10.0 |
 | `kuu.md`: what kuu is, what its predecessors taught, and the whole manual inlined by `tools/bundle_docs.lua`, held to `docs/` by the suite | 0.10.0 |
 | `manifest.lua` as the declaration file, with a warned `tasks.lua` fallback that remains supported; tools declared beside tasks with `task.tool` and called with `task.exec { tool = }`, read by `check` as literals and held to; the ledger under `.kuu/ledger`, chained, with the tree delta and the repository's head; `kuu run --json` as a stream | 0.10.0 |
+| execution-history ledger records v2; removal of automatic tree snapshots and deltas, with immutable v1 history still readable | 0.12; see [migration note](upgrading-from-0.11.md) |
+| `fs.attributes` and `fs.set_attributes`; readonly-directory removal; safe shared inspection with declarative exclusions; literal declaration validation and consistent task help | 0.12; see [migration note](upgrading-from-0.11.md) |
+| tested project recipes for process outcomes, cwd, shared environments, relocation, private GUI verification, native helpers, verified reconstruction and uncertain publication | 0.12; [manual map](index.md#pages) |
 | `kuu docs agent`, what is expected of an agent and the `kuu-eval.md` report back, named by every entry point and counted by `capabilities`; `docs` a verb like the others with sections, descriptions, search and `--json`; `rt.page` | 0.10.0 |
 | every verb points onward: a manifest that declares nothing, a misspelt verb, an unknown task with the nearest name, no project, a first `.kuu/` not ignored, the 0.8 version guard found by `check`; `notes` on the JSON envelopes; `kuu run TASK --help` exits 0; `TASK failed` carries `status` and `limit` | 0.10.0 |
 | deferred: elevated runs, `xml`, ACLs, clipboard, ICMP, scheduled tasks as a module, `kuu run --watch`, credentials and certificates, CI | later, on a real need |
@@ -99,6 +103,10 @@ means here, and the number is meant to go down, not up: a module that would
 add to it is a tool the project builds, called through the door.
 
 ## Milestones
+
+The milestones below record each release's behavior. 0.12 follows the
+execution-history decision above: the tree-delta behavior introduced in 0.10
+is removed, while existing history is preserved.
 
 1. **0.1, the runner.** Routes, decoding, the state, `rt`, errors and exit
    codes, the entry test suite. Done 2026-09-09.
@@ -411,7 +419,16 @@ add to it is a tool the project builds, called through the door.
    section. [Upgrading to 0.11](upgrading-0.11.md) records the version, behavior and
    schema changes. The next evidence comes from agents doing ordinary work in
    prepared projects, with kuu as the execution entry point.
-12. **1.0.** Criteria for the owner to set. Proposed: three projects driven
+12. **0.12, project adoption and execution history.** Feedback from FlowNet
+   led to file-attribute operations, readonly-directory cleanup, shared
+   inspection exclusions, stronger literal declaration checks and consistent
+   task help. Normal runs keep execution history without automatic tree
+   snapshots, deltas, watchers or indexes. New ledger records use v2; existing
+   v1 bytes and hash links remain readable. The manual adds tested project
+   recipes and names [Upgrading from 0.11](upgrading-from-0.11.md) from its
+   entry points, including the checklist for existing project instructions,
+   report consumers and ongoing `kuu-eval.md` feedback.
+13. **1.0.** Criteria for the owner to set. Proposed: three projects driven
    for a month without a runtime defect, a manual page for every module, a
    signed release cadence, and the Lua-versus-Tcl ledger closed with a
    verdict. Two amendments agreed on 2026-09-11: a **clean soak gate on every
@@ -419,7 +436,7 @@ add to it is a tool the project builds, called through the door.
    promise on a signal nobody trusts; and **at least one cold adopter**,
    because every adoption finding on record comes from Time Actual, which
    co-evolved with the runtime and therefore routes around contract mistakes
-   instead of reporting them. Between 0.11 and 1.0: the freeze, the month of
+   instead of reporting them. Between 0.12 and 1.0: the freeze, the month of
    use, and corrections driven by what that use finds.
 
 ## The 0.5 review: fixes implemented

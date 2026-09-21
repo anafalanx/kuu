@@ -1,8 +1,7 @@
 -- ledger.lua -- the door's memory: one record per crossing, chained across
--- days, rotated by age, with the tree delta between runs and the
--- repository's head read from .git without git.
+-- days, rotated by age, with the repository's head read from .git without git.
 global none
-global <const> require, tostring, type, pcall, ipairs, pairs, string, table
+global <const> require, tostring, type, pcall, ipairs, string, table
 
 return function(T)
   local check, contains = T.check, T.contains
@@ -89,20 +88,20 @@ return function(T)
       and records[4].status == "ok" and records[4].code == 0, text)
   local child = records[1] or {}
   check("a child's record says what ran, as what, and how it ended, from what kuu observed",
-    child.v == 1 and child.kuu == rt.version and child.root == project and type(child.pid) == "number"
+    child.v == 2 and child.kuu == rt.version and child.root == project and type(child.pid) == "number"
       and child.argv and child.argv[1] == fs.absolute(rt.exe) and child.argv[2] == "-e" and child.status == "exit" and child.code == 0
       and child.bytes == nil and type(child.at) == "number" and type(child.seconds) == "number",
     lines[1])
   check("the repository's head is read from .git, no git assumed",
     child.git and child.git.ref == "refs/heads/main" and child.git.head == "0123456789abcdef0123456789abcdef01234567", lines[1])
-  check("the first record of a run carries the delta since the previous run, and the others do not",
-    child.delta and child.delta.added >= 1 and child.delta.removed == 0 and records[2].delta == nil and records[4].delta == nil,
-    json.encode(child.delta))
+  check("new records describe execution without filesystem observations",
+    child.delta == nil and child.observation == nil and records[2].delta == nil and records[4].observation == nil,
+    lines[1])
   check("the chain starts from the line that was last, and each record hashes the one before it",
     child.prev == hash.sum("sha256", old_line) and records[2].prev == hash.sum("sha256", lines[1])
       and records[4].prev == hash.sum("sha256", lines[3]), lines[2])
 
-  -- An edit between runs is what the next run's delta says it ran against.
+  -- Source edits do not add observations to the next execution record.
   fs.mkdir(project .. "/src")
   fs.write(project .. "/src/new.lua", "return 1\n")
   r = T.kuu({ "run", "--json", "plain" }, { cwd = project })
@@ -111,10 +110,9 @@ return function(T)
   records, lines = {}, {}
   for line in (text or ""):gmatch("[^\n]+") do lines[#lines + 1] = line records[#records + 1] = json.decode(line) end
   local second = records[5] or {}
-  check("the second run's first record names the file added in between, with its content hash",
-    #records == 7 and second.delta and second.delta.added == 1 and second.delta.changed == 0
-      and second.delta.paths[1].path == "src/new.lua" and second.delta.paths[1].change == "added"
-      and second.delta.paths[1].sha256 == hash.sum("sha256", "return 1\n"), json.encode(second.delta))
+  check("source edits between runs are not surveyed or included in execution records",
+    #records == 7 and second.v == 2 and second.delta == nil and second.observation == nil
+      and not contains(lines[5], "src/new.lua"), lines[5])
   check("a failed child, task and run are recorded as they ended, with the bytes kuu relayed under --json",
     second.status == "exit" and second.code == 4 and second.bytes and second.bytes.out == 0 and second.bytes.err == 0
       and records[6].kind == "task" and records[6].status == "failed"
@@ -131,9 +129,9 @@ return function(T)
   r = T.kuu({ "capabilities", "--json" }, { cwd = project })
   local descriptor = json.decode(r.out)
   local shown = descriptor and descriptor.result.project.ledger
-  check("capabilities carries the last crossings, the chain's count and state, and the unaccounted count",
+  check("capabilities carries the last crossings and chain state without inferred unaccounted work",
     shown ~= nil and #shown.last == 5 and shown.last[5].kind == "verb" and shown.last[5].status == "failed"
-      and shown.records == 7 and shown.intact == true and shown.broken == nil and shown.unaccounted == 0,
+      and shown.records == 7 and shown.intact == true and shown.broken == nil and shown.unaccounted == nil,
     r.out:sub(1, 300))
 
   -- An edited line no longer hashes to what the next record says.
@@ -178,17 +176,15 @@ return function(T)
   fs.remove(corrupt, { recursive = true })
 
   -- Fault injection at the final write: storage failure does not undo the
-  -- task's success or prevent its envelope. A failed record must not save a
-  -- new tree baseline that would hide those unrecorded changes next time.
-  for _, mode in ipairs { "record-return", "record-raise", "close-return", "close-raise" } do
+  -- task's success or prevent its envelope.
+  for _, mode in ipairs { "record-return", "record-raise" } do
     local failed = small_project("ledger-" .. mode, ".kuu/\n")
     fs.write(failed .. "/manifest.lua", table.concat({
       'local ledger, fs, err = require "_ledger", require "fs", require "err"',
-      'local record, close = ledger.record, ledger.close',
+      'local record = ledger.record',
       'local mode = ' .. string.format("%q", mode),
       'local function fail() local e=err.new("FS","oserror","injected final write failure"); if mode:match("raise$") then error(e) end; return nil,e end',
       'ledger.record=function(book,fields) if mode:match("^record") and fields.kind=="verb" then return fail() end; return record(book,fields) end',
-      'ledger.close=function(book) fs.write("close-called.txt","yes"); if mode:match("^close") then return fail() end; return close(book) end',
       'local task = require "task"; task "ok" {run=function() fs.write("worked.txt","yes") end}',
     }, "\n") .. "\n")
     local finished = T.kuu({ "run", "--json", "ok" }, { cwd = failed })
@@ -197,14 +193,12 @@ return function(T)
       finished.code == 0 and envelope and envelope.ok == true and #envelope.result.tasks == 1
         and #envelope.result.notes == 1 and contains(envelope.result.notes[1], "injected final write failure")
         and fs.read(failed .. "/worked.txt") == "yes" and not contains(finished.err, "traceback"), T.describe(finished))
-    check("failed final storage does not replace the tree baseline: " .. mode,
-      fs.exists(failed .. "/.kuu/ledger/tree.json") == false
-        and (not mode:match("^record") or fs.exists(failed .. "/close-called.txt") == false), T.describe(finished))
+    check("failed final storage does not create tree state: " .. mode,
+      fs.exists(failed .. "/.kuu/ledger/tree.json") == false, T.describe(finished))
     fs.remove(failed, { recursive = true })
   end
 
-  -- A run that runs nothing writes nothing: the next real run's delta
-  -- still names the edits it ran against.
+  -- A run that runs nothing writes nothing.
   local before = fs.read(file)
   r = T.kuu({ "run", "nosuch" }, { cwd = project })
   local after_unknown = fs.read(file)
@@ -229,39 +223,6 @@ return function(T)
   check("under --json the same run ends on its envelope, the message cleaned the same way",
     r.code == 1 and envelope and envelope.ok == false and contains(envelope.error.message, "caf\u{FFFD} broken")
       and stream[#stream - 1].event == "task" and stream[#stream - 1].state == "finished", r.out)
-  text = fs.read(file, { encoding = "utf-8" })
-  check("a run against an unchanged tree names no path, and paths is still an array", contains(text, '"paths":[]'), text:sub(-600))
-
-  -- What the tree holds is described, never a reason to stop: a name
-  -- Windows would rewrite is one the hasher refuses, and the delta names
-  -- it without its hash.
-  local proc = require "proc"
-  local dotted = "\\\\?\\" .. project:gsub("/", "\\") .. "\\dot."
-  proc.run { "cmd.exe", "/c", "echo x> " .. dotted, timeout = "10s" }
-  local listed = false
-  for _, e in ipairs(fs.list(project).entries) do if e.name == "dot." then listed = true end end
-  check("a file named with a trailing dot can be made", listed)
-  r = T.kuu({ "run", "hello" }, { cwd = project })
-  local first = ledger.tail(project, 3)[1] or {}
-  local named
-  for _, p in ipairs(first.delta and first.delta.paths or {}) do if p.path == "dot." then named = p end end
-  check("the run starts, and the delta names the file without a hash",
-    r.code == 0 and named ~= nil and named.change == "added" and named.sha256 == nil, json.encode(first.delta))
-  proc.run { "cmd.exe", "/c", "del " .. dotted, timeout = "10s" }
-
-  -- A junction under the root is listed and not entered, as fs.dirs does.
-  local outside = fs.absolute(T.work .. "/ledger-outside")
-  fs.remove(outside, { recursive = true })
-  fs.mkdir(outside .. "/deep")
-  fs.write(outside .. "/deep/far.txt", "far")
-  fs.write(outside .. "/near.txt", "near")
-  proc.run { "cmd.exe", "/c", "mklink /J " .. (project .. "/linked"):gsub("/", "\\") .. " " .. outside:gsub("/", "\\"), timeout = "10s" }
-  local book = ledger.open(project)
-  local entered = false
-  for rel in pairs(book.tree) do if rel:match("^linked/") then entered = true end end
-  check("a junction's files are not the root's", fs.exists(project .. "/linked") ~= false and not entered, json.encode(book.delta))
-  fs.remove(project .. "/linked", { recursive = true })
-
   -- A worktree's .git is a file naming the real directory; its refs are
   -- in the common directory it names.
   local wt = fs.absolute(T.work .. "/ledger-worktree")
@@ -291,10 +252,6 @@ return function(T)
   check("a run against a day of two thousand records is chained to the last of them, quickly",
     r.code == 0 and took < 10 and #chained == 3 and chained[1].prev == hash.sum("sha256", bulk[#bulk])
       and chained[2].prev ~= nil and chained[3].kind == "verb", string.format("%.1fs %s", took, T.describe(r)))
-
-  -- A root that cannot be listed is an empty tree, not a raised error.
-  local opened, nowhere = pcall(ledger.open, T.work .. "/ledger-nowhere")
-  check("opening the ledger of a root that is not there raises nothing", opened and nowhere.delta.added == 0, tostring(nowhere))
 
   do
     local blocked = small_project("ledger-unreadable", ".kuu/\n")

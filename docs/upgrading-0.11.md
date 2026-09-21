@@ -8,9 +8,14 @@ capabilities descriptor should read the changes below before replacing it.
 Version text has two components again, so programs that parse it must also
 read the version migration below.
 
-Verify the replacement's signature and SHA-256 against the release. If a
-project depends on a correction described here, use
-`rt.version_at_least(0, 11)` for its minimum-version guard. For the earlier
+Follow the project's owner-approved runtime upgrade and
+[pre-execution verification](adopting.md#verify-before-first-execution): compare
+the chosen replacement with the reviewed SHA-256 and expected signing identity
+before running it. This applies whether the project downloads and ignores the
+runtime or commits the signed binary. For corrections included in the signed
+0.11 release, use `rt.version_at_least(0, 11)` for the minimum-version guard.
+Changes in 0.12 have their own [Upgrading from 0.11](upgrading-from-0.11.md)
+page; read it when replacing that release. For the earlier
 manifest, task-report and checker changes, read
 [upgrading to 0.10](upgrading-0.10.md).
 

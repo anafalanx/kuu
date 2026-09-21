@@ -7,9 +7,30 @@ before [Pitfalls](pitfalls.md).
 
 ## Arriving
 
-Run `kuu capabilities` to discover the runtime and the project's tasks and
-tools. The manual is inside the executable; no network or source checkout
-is needed. With the project's copy in the current directory:
+First establish that the project's copy matches its reviewed runtime pin,
+using the [adoption verification procedure](adopting.md#verify-before-first-execution)
+before executing a newly downloaded or checked-out binary. The project may
+download and ignore its runtime or commit the signed binary; both are supported.
+Keep that choice and its approved version, hash and signing identity. Change
+them only as part of an owner-authorized runtime upgrade.
+
+If this project previously used signed 0.11, read
+`kuu docs upgrading-from-0.11` before running project code with a replacement.
+It explains the changes to execution history, inspection, reports and project
+instructions; old advice in `AGENTS.md` or README files can describe behavior
+this executable no longer has. Follow its ordered upgrade checklist while
+keeping the project's own task and approval policies.
+
+Read the project's existing `kuu-eval.md` for earlier experience and unresolved
+difficulties. Recheck relevant reports as you work and [report back](#reporting-back)
+with new evidence, including when an upgrade changes an earlier result.
+
+Run `kuu capabilities` to discover the runtime and the project's tasks and tools
+once its manifest is ready to execute. Like `kuu list`, this loads the manifest
+to learn its declarations. `kuu check` without `--fix` is read-only static
+inspection. The manual is inside the executable; reading it needs no network,
+source checkout or manifest execution. With the verified project copy in the
+current directory:
 
 ```powershell
 .\kuu.exe docs                         # list pages and their descriptions
@@ -52,8 +73,8 @@ any children or network operations they start.
 
 - **Everything that runs in the project runs through `kuu.exe`.** A
   crossing is a task run by `kuu run`, and each child that task starts
-  with `task.exec`; each gets a job, the limits and the timeout it was
-  given, and a record in [the ledger](ledger.md). `kuu FILE` and `kuu -e`
+  with `task.exec`; each crossing gets a record in [the ledger](ledger.md),
+  and each child gets a job, the limits and the timeout it was given. `kuu FILE` and `kuu -e`
   are for trying something once: what they start is in a job with
   whatever `timeout` and `limits` the call gives, and nothing is recorded.
   Anything that will run again is a task in `manifest.lua`.
@@ -63,9 +84,13 @@ any children or network operations they start.
   declaration — a name computed at run time is not judged, so write it in
   the call — and `capabilities` lists the tool. A bare `task.exec {
   "prog.exe" }` is a warning from `check` for that reason. A project
-  program started from a shell without `kuu.exe`, or with `proc.run` where
-  `task.exec { tool = ... }` was possible, is a bypass: it runs, and the
-  door does not see it. [Tools](tools.md).
+  program started from a shell without `kuu.exe` bypasses that history.
+  When a task must capture and inspect output, use `task.command` to resolve
+  its declared tool, then `proc.run`. This is supported, but the captured
+  child has no individual ledger record or child event; the enclosing task
+  and run remain recorded. Prefer `task.exec` when capture is unnecessary,
+  including when a tool documents successful nonzero exits. The
+  [process recipes](process-recipes.md) show both paths and their diagnostics.
 - **Bound what you run.** `task.defaults { timeout = "10m" }` in the
   manifest gives every child a timeout it does not set itself; without
   it, and without a `timeout` on the call or the declaration, a child has
@@ -99,8 +124,9 @@ any children or network operations they start.
   install nothing on the machine: nothing goes on `PATH`, and nothing is
   shared between repositories. [Adopting](adopting.md).
 - **`.kuu/` is kuu's** — the notebook and the ledger. It sits in
-  `.gitignore` beside `kuu.exe`, `.tools/` and `build/`, and nothing in it
-  is yours to edit.
+  `.gitignore` beside `.tools/` and `build/`, and nothing in it is yours to
+  edit. Ignore `kuu.exe` only when the project downloads its pinned runtime;
+  a project may instead commit that signed binary.
 
 ## Reporting back
 
@@ -108,7 +134,9 @@ kuu is built for you, and the only way it improves is being told where it
 helped and where it stood in the way. When you have worked in a project
 through kuu, append an entry to `kuu-eval.md` at the project root — a
 UTF-8 file the project commits, since `.kuu/` never travels and kuu sends
-nothing — and never rewrite an earlier entry. One entry per piece of work:
+nothing — and never rewrite an earlier entry. Create the file if it is missing.
+Keep it with the project's maintained source and include its updates in the
+project's normal review and commit workflow. One entry per piece of work:
 
 ```markdown
 ## 2026-09-13 — kuu 0.11 — adding the release task
@@ -125,6 +153,20 @@ nothing — and never rewrite an earlier entry. One entry per piece of work:
 - The timeout message should name the bound and where it was set.
 ```
 
+Maintain this history across runtime upgrades. Record the version actually
+tested; for a development build sharing a released version string, include its
+build or SHA-256 in the entry. When revisiting a difficulty, reproduce it where
+practical and append a follow-up referring to the earlier entry's date and issue.
+Say whether it still occurs, is resolved by the tested change, has a workaround,
+or remains unverified; release notes alone do not establish a fix in this project.
+Preserve the original report and its evidence; append corrections as follow-ups.
+Summarize relevant results from disposable validation copies in the project's
+root document, including a failed or deferred upgrade. Identify the test copy,
+project revision and Windows version when they affect the conclusion; distinguish
+candidate testing from actual adoption. Continue reporting after subsequent work
+with kuu. Record observed results and useful requests, without inventing problems
+to fill the example's sections.
+
 The heading is `## YYYY-MM-DD — kuu VERSION — what the work was`, on one
 line: `## `, the date in that form first, then the rest; a hyphen does as
 well as the dash. That is the line `kuu capabilities` counts, and a
@@ -134,11 +176,16 @@ an opinion, and belongs under *Should change*. An entry may name the
 ledger record it is about, by its day file and its `at`. Keep entries
 short: kuu counts them, and people read them where the project keeps
 them. Run `kuu capabilities` when you have written; its `eval` line shows
-the count and the date of the last entry, and nothing fails without it.
+the count and the date of the last entry, and nothing fails without it. That count
+confirms entry discovery; it does not validate evidence or determine issue status.
 
 ## The short form
 
-Run `kuu capabilities` first. Read pitfalls once. Everything that runs,
+Verify a newly obtained runtime against the project's reviewed pins before
+executing it. Coming from signed 0.11, read `kuu docs upgrading-from-0.11`
+before running project code with a replacement. Read `agent` for the current
+workflow, then use `kuu capabilities` to discover the project; it executes the
+manifest. Read pitfalls once. Everything that runs,
 runs through the door as a task with declared tools; try things with `kuu -e`
 or `kuu FILE`, keep them as tasks. Find APIs with `kuu docs search`, then copy
 the command to read their section. Bound every child. `global none` at the top of

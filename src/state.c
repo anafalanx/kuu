@@ -543,6 +543,8 @@ lua_State *ku_state_new(const ku_launch *launch, ku_fail *fail)
     lua_setfield(L, -2, "json");
     lua_pushcfunction(L, open_fs_full);
     lua_setfield(L, -2, "fs");
+    lua_pushcfunction(L, ku_open_scan_native);
+    lua_setfield(L, -2, "_scan_native"); /* private shared metadata collector */
     lua_pushcfunction(L, ku_open_archive_native);
     lua_setfield(L, -2, "_archive"); /* private, synchronous worker; archive.list supervises it */
     lua_pushcfunction(L, ku_open_http);

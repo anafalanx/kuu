@@ -22,7 +22,7 @@ if not made or made.code ~= 0 then
   os.exit(2)
 end
 
-local cases = { "entry", "err", "sched", "deadline", "proc", "limits", "pty", "json", "hash", "text", "re", "time", "fs", "paths", "sys", "svc", "evt", "sync", "mem", "log", "cli", "http", "net", "csv", "ini", "reg", "env", "task", "ledger", "docs", "archive", "check", "check_corpus", "capabilities", "cookbook", "embed", "bundle", "palette", "fixglobals" }
+local cases = { "entry", "err", "sched", "deadline", "proc", "limits", "pty", "json", "hash", "text", "re", "time", "fs", "attributes", "removal", "cleanup_recipe", "process_recipes", "working_directories", "project_environment", "relocation", "editor_recipe", "native_helper", "reconstruction", "paths", "sys", "svc", "evt", "sync", "mem", "log", "cli", "http", "net", "csv", "ini", "reg", "env", "task", "task_help", "ledger", "ledger_execution", "ledger_tail", "scan_policy", "scan_native", "scan", "scan_activation", "execution_acceptance", "reporting", "docs", "upgrade_discovery", "archive", "check", "check_corpus", "declarations", "capabilities", "cookbook", "embed", "bundle", "palette", "fixglobals" }
 if #rt.args > 0 then cases = rt.args end
 
 local started = require("sched").clock()

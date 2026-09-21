@@ -56,7 +56,7 @@ LINK_LIBS  := -lbcrypt -lwinhttp -liphlpapi -lws2_32 -ladvapi32 -lwintrust -lcry
 
 # Test fixtures: small C programs the suite drives as children.
 FIXTURE_SRC := test/fixtures
-FIXTURES    := $(BUILD)/test/http_fixture.exe $(BUILD)/test/reg_fixture.exe $(BUILD)/test/http_error_fixture.exe $(BUILD)/test/limits_fixture.exe $(BUILD)/test/pty_fixture.exe $(BUILD)/test/loop_orphan_fixture.exe $(BUILD)/test/proc_waiter_fixture.exe $(BUILD)/test/proc_stdin_fixture.exe $(BUILD)/test/lock_fixture.exe $(BUILD)/test/versionrc_fixture.exe
+FIXTURES    := $(BUILD)/test/http_fixture.exe $(BUILD)/test/reg_fixture.exe $(BUILD)/test/http_error_fixture.exe $(BUILD)/test/limits_fixture.exe $(BUILD)/test/pty_fixture.exe $(BUILD)/test/loop_orphan_fixture.exe $(BUILD)/test/proc_waiter_fixture.exe $(BUILD)/test/proc_stdin_fixture.exe $(BUILD)/test/lock_fixture.exe $(BUILD)/test/versionrc_fixture.exe $(BUILD)/test/scan_fixture.exe $(BUILD)/test/attributes_fixture.exe $(BUILD)/test/removal_fixture.exe $(BUILD)/test/gui_probe.exe $(BUILD)/test/shell_link_reader.exe
 
 LUA_C    := $(filter-out $(LUA_SRC)/lua.c $(LUA_SRC)/luac.c,$(wildcard $(LUA_SRC)/*.c))
 LUA_O    := $(patsubst $(LUA_SRC)/%.c,$(BUILD)/obj/lua/%.o,$(LUA_C))
@@ -66,6 +66,8 @@ PCRE2_O  := $(patsubst $(PCRE2_SRC)/%.c,$(BUILD)/obj/pcre2/%.o,$(PCRE2_C))
 HOST_C   := $(wildcard $(HOST_SRC)/*.c)
 HOST_O   := $(patsubst $(HOST_SRC)/%.c,$(BUILD)/obj/host/%.o,$(HOST_C))
 ANALYZE_O := $(patsubst $(HOST_SRC)/%.c,$(BUILD)/analyze/%.o,$(HOST_C))
+EXAMPLE_C := $(wildcard examples/*.c)
+ANALYZE_EXAMPLE_O := $(patsubst examples/%.c,$(BUILD)/analyze/examples/%.o,$(EXAMPLE_C))
 
 # The payload: kuu's own Lua and the manual, turned into C by tools/embed.c
 # (compiled here, run by make; kuu is never used to build kuu).
@@ -117,7 +119,10 @@ $(BUILD)/analyze/%.o: $(HOST_SRC)/%.c | $(BUILD)/analyze
 	$(CC) $(filter-out -O2,$(HOST_FLAGS)) -O0 -fanalyzer -MMD -MP -c $< -o $@
 
 .PHONY: analyze
-analyze: $(ANALYZE_O)
+$(BUILD)/analyze/examples/%.o: examples/%.c | $(BUILD)/analyze/examples
+	$(CC) $(filter-out -O2,$(HOST_FLAGS)) -O0 -fanalyzer -MMD -MP -c $< -o $@
+
+analyze: $(ANALYZE_O) $(ANALYZE_EXAMPLE_O)
 	@echo native static analysis passed
 
 $(EMBED): tools/embed.c | $(BUILD)
@@ -148,7 +153,22 @@ $(BUILD)/test/loop_orphan_fixture.exe: $(FIXTURE_SRC)/loop_orphan_fixture.c $(HO
 $(BUILD)/test/%.exe: $(FIXTURE_SRC)/%.c | $(BUILD)/test
 	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 -o $@ $< -lws2_32
 
-$(BUILD) $(BUILD)/analyze $(BUILD)/gen $(BUILD)/test $(BUILD)/obj/lua $(BUILD)/obj/host $(BUILD)/obj/vendor $(BUILD)/obj/pcre2 $(BUILD)/obj/gen:
+$(BUILD)/test/scan_fixture.exe: $(FIXTURE_SRC)/scan_fixture.c | $(BUILD)/test
+	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -municode -static -o $@ $<
+
+$(BUILD)/test/attributes_fixture.exe: $(FIXTURE_SRC)/attributes_fixture.c | $(BUILD)/test
+	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -municode -static -o $@ $< -ladvapi32
+
+$(BUILD)/test/removal_fixture.exe: $(FIXTURE_SRC)/removal_fixture.c | $(BUILD)/test
+	$(CC) -std=c23 -O1 -Wall -Wextra -Werror -municode -static -o $@ $< -ladvapi32
+
+$(BUILD)/test/gui_probe.exe: examples/gui_probe.c | $(BUILD)/test
+	$(CC) -std=c23 -O2 -Wall -Wextra -Wpedantic -Wformat=2 -Werror -D_WIN32_WINNT=0x0A00 -municode -static -o $@ $< -luser32 -lbcrypt
+
+$(BUILD)/test/shell_link_reader.exe: $(FIXTURE_SRC)/shell_link_reader.c | $(BUILD)/test
+	$(CC) -std=c23 -O2 -Wall -Wextra -Wpedantic -Wformat=2 -Werror -D_WIN32_WINNT=0x0A00 -municode -static -o $@ $< -lole32 -luuid -lshell32 -lpropsys
+
+$(BUILD) $(BUILD)/analyze $(BUILD)/analyze/examples $(BUILD)/gen $(BUILD)/test $(BUILD)/obj/lua $(BUILD)/obj/host $(BUILD)/obj/vendor $(BUILD)/obj/pcre2 $(BUILD)/obj/gen:
 	@if not exist "$(subst /,\,$@)" mkdir "$(subst /,\,$@)"
 
 .PHONY: fixtures
@@ -169,7 +189,7 @@ test: $(OUT) $(FIXTURES)
 clean:
 	@if exist $(BUILD) rmdir /s /q $(BUILD)
 
--include $(LUA_O:.o=.d) $(HOST_O:.o=.d) $(PCRE2_O:.o=.d) $(ANALYZE_O:.o=.d)
+-include $(LUA_O:.o=.d) $(HOST_O:.o=.d) $(PCRE2_O:.o=.d) $(ANALYZE_O:.o=.d) $(ANALYZE_EXAMPLE_O:.o=.d)
 
 # Deterministic, bounded parser fuzzing, with a single-seed replay option.
 FUZZ ?= 10000

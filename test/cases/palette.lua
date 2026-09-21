@@ -24,6 +24,8 @@ return function(T)
   check("the description loads", ok and type(description) == "table",
     tostring(description))
   if not ok or type(description) ~= "table" then return end
+  check("the activated scan configuration domain has its public closed code set",
+    description.errors.SCAN ~= nil and table.concat(description.errors.SCAN, " ") == "config")
 
   -- Against the runtime: every module named must exist, and every name
   -- attributed to it must be one of its exports.

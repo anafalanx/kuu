@@ -11,12 +11,17 @@ If you are an agent working in a project that runs through kuu, [For the
 agent](agent.md) says what is expected of you and how to report back. Read
 it first, then Pitfalls once.
 
+For a project that previously used signed 0.11, read
+[Upgrading from 0.11](upgrading-from-0.11.md) before running project tasks:
+`kuu docs upgrading-from-0.11`. It explains the execution-history contract,
+inspection defaults and the project instructions that need review.
+
 kuu runs on Windows 11 version 23H2 and later, and Windows Server 2025 and
 later. The runtime uses native Windows process, console and filesystem APIs.
 Console shutdown adapts to the older 23H2 lifetime contract; the Lua API is
 the same on every supported version.
 
-This is version 0.11: the runner, the scheduler with scoped deadlines,
+This is version 0.12: the runner, the scheduler with scoped deadlines,
 processes with resource limits (its own children and the others on the machine), files, JSON, CSV, INI, HTTP, archives,
 hashing, text encodings, regular expressions, time, logging, argument
 parsing, a repository's tasks and the tools they call, declared once in
@@ -47,16 +52,17 @@ usage: kuu FILE [arg ...]        run a Lua program file
        kuu - [arg ...]           run a program read from standard input
        kuu -e SCRIPT [arg ...]   run an inline script
        kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
-       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua
+       kuu run [--json] [--dry-run] [--timings] [TASK [arg ...]]   a task from the nearest manifest.lua
        kuu list [--json]         those tasks
-       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
-       kuu capabilities [--json] what a program can reach from here, and what to read
+       kuu check [--json] [--timings] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
+       kuu capabilities [--json] [--timings]   what a program can reach from here, and what to read
        kuu version | --version | --help
 
 Try a query now: all modules are available with -e; no file or manifest is needed.
   kuu -e "print(require('json').encode(require('sys').info()))"
 Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing
 kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.
+From signed 0.11: read kuu docs upgrading-from-0.11 before running project tasks.
 ```
 <!-- /usage -->
 
@@ -84,8 +90,8 @@ array of the `rt` module. There is no `arg` global.
 ```lua
 local rt = require("rt")
 print(rt.version, rt.lua, rt.route, rt.exe, rt.program, #rt.args)
--- 0.11  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
-rt.version_at_least(0, 11)  -- true: this runtime is 0.11 or newer
+-- 0.12  Lua 5.5.1  file  C:\work\app\kuu.exe  build.lua  2
+rt.version_at_least(0, 12)  -- true: this runtime is 0.12 or newer
 ```
 
 `rt.route` is `"file"`, `"stdin"`, `"eval"`, or `"cmd"` for a verb such as
@@ -109,7 +115,7 @@ hashing, and every other organ are behind `require`.
 | module | gives |
 |---|---|
 | [`proc`](proc.md) | children with decided lifetimes and resource limits: run, start, wait, kill, detach; the other processes: list, find, tree |
-| [`fs`](fs.md) | files, directories, identity, links, walks, watches, with Windows truth |
+| [`fs`](fs.md) | files, directories, attributes, identity, links, walks, watches, with Windows truth |
 | [`http`](http.md) | fetch and post over WinHTTP, with the machine's proxy and certificates |
 | [`sched`](sched.md) | tasks, sleep, a monotonic clock, wall time, scoped deadlines |
 | [`json`](json.md) | strict decoding and exact encoding |
@@ -227,7 +233,25 @@ type DocsSearch = { ok: true; result: { text: string;
   provisional.
 - [Cookbook](cookbook.md): fourteen complete programs for common automation
   jobs, the last four shaped by the front door.
+- [Bounded publication and cleanup](cleanup.md): retry Windows denials within
+  a project budget, publish validated staging, and retain both failure causes.
+- [Process recipes](process-recipes.md): serialize command descriptions,
+  classify child outcomes and preserve captured diagnostics.
+- [Working directories](working-directories.md): preserve the caller's directory
+  and exact arguments through a wrapper, a task and a child process.
+- [Project environment](project-environment.md): share root-derived cache paths
+  between command-line tools and newly launched editors.
+- [Relocation and health checks](relocation.md): move a checkout, rebuild local
+  environments, and inspect dependencies without provisioning them.
+- [Detached editors and GUI verification](editor.md): use fresh profiles and
+  a bounded native probe on a private desktop, with explicit readiness checks.
+- [Native helper and shortcut](native-helper.md): cache a helper by verified
+  build inputs and regenerate a local shortcut after moving the project.
+- [Reconstruction and publication recovery](reconstruction.md): verify cached
+  restores and independent backups, and reconcile uncertain upload outcomes.
 - [Stability](stability.md): the future 1.x contract and minimum-version guards.
+- [Upgrading from 0.11](upgrading-from-0.11.md): the migration checklist for
+  0.12, execution history, inspection policy and new APIs.
 - [Upgrading to 0.11](upgrading-0.11.md): N.N version numbers, corrections and
   behavior changes since 0.10.0, and the shorter route to an inline command.
 - [proc](proc.md), [fs](fs.md), [http](http.md), [net](net.md),
@@ -245,6 +269,9 @@ type DocsSearch = { ok: true; result: { text: string;
 - [The ledger](ledger.md): what `kuu run` remembers of every crossing, under
   `.kuu/ledger`, chained and kept ninety days.
 - [check](check.md): what `kuu check` finds without running a file.
+- [Scan configuration](scan.md): `kuu.config.json` controls shared project
+  inspection for checking and module inventory, with validated exclusions and
+  safe traversal.
 - [Toolchain](toolchain.md): what kuu's own `.tools` holds and where it comes
   from.
 - [Upgrading to 0.10](upgrading-0.10.md): no call moves, but `check` reports

@@ -40,11 +40,11 @@ Windows surfaces to shape wrongly, and a wrong shape inside the freeze costs
 the whole 1.x line. They are brought in at 1.1 with adoption evidence behind
 them. Nothing is removed from the executable; only the promise is withheld.
 
-`capabilities` is outside for the same reason, one release later: it arrived
-in 0.10.0 and nothing has driven it yet. What it reports is kuu describing
-itself, so the shape of that description is exactly what a consuming agent
-would build on, and a descriptor is cheaper to widen after adoption evidence
-than to narrow inside the freeze.
+`capabilities` arrived in 0.10.0 and remains provisional while its descriptor
+contract is evaluated through project use and feedback. Consuming agents build
+on the fields and their meanings, so the freeze needs adoption evidence for
+that contract. A later release must explicitly bring it into the freeze;
+current project use alone does not change its provisional status.
 
 Private modules and names starting with `_`, command implementation modules
 under `cmd`, internal helper processes, build artifacts, and undocumented
@@ -84,8 +84,8 @@ version text:
 global none
 global <const> require, assert
 local rt = require "rt"
-assert(rt.version_at_least(0, 11),
-  "this project requires kuu 0.11 or later; found " .. rt.version)
+assert(rt.version_at_least(0, 12),
+  "this project requires kuu 0.12 or later; found " .. rt.version)
 ```
 
 `rt.version_at_least(first [, second])` answers whether the running kuu is
@@ -94,20 +94,24 @@ components raise `RT badvalue`. It compares numbers, so 0.11
 comes after 0.10, and 1.0 after both.
 
 A third argument remains accepted for compatibility with guards written when
-releases had three components. The running 0.11 compares as `(0, 11, 0)` for
+releases had three components. The running 0.12 compares as `(0, 12, 0)` for
 those calls; no third component appears in its published version. Use two
 arguments in new guards.
 
 Version text changed from two components to three at 0.9.0 and returns to two
 at 0.11. A three-component pattern no longer matches `rt.version`; replace
-it with the call above. [Upgrading to 0.11](upgrading-0.11.md) gives the
-current migration; [upgrading to 0.9](upgrading-0.9.md) records the earlier
+it with the call above. [Upgrading to 0.11](upgrading-0.11.md) records that
+migration; [upgrading to 0.9](upgrading-0.9.md) records the earlier
 change as history.
 
 Place this before declarations that use newer capabilities. The guard tests
-the minimum capability level, while the checked-in release hash and the
-project's tests decide which executable the project adopts. Run those tests
-when updating, and read the upgrading notes for every intervening release.
+the minimum released capability level, while the reviewed executable hash and
+the project's tests decide which executable the project adopts. Development
+artifacts can share version text with an earlier release; identify those by
+build/hash and check feature availability where needed. Run the project's
+tests when updating, and read the upgrading notes for every intervening release.
+For 0.12's execution-history, inspection and file-attribute changes, read
+[Upgrading from 0.11](upgrading-from-0.11.md).
 
 For the changes introduced with this statement, see
 [Upgrading to 0.7](upgrading-0.7.md). For a complete `manifest.lua`, see

@@ -4,6 +4,8 @@
  *   fs.read(path [, { encoding = "utf-8", maxbytes = "1G" }])  -> bytes | nil, err
  *   fs.write(path, data [, { atomic = true, append = false }]) -> true | nil, err
  *   fs.stat(path [, { follow = true }])   -> table | nil, err
+ *   fs.attributes(path [, { follow = false }]) -> flags table | nil, err
+ *   fs.set_attributes(path, patch [, { follow = false }]) -> true | nil, err
  *   fs.exists(path)                       -> "file" | "directory" | "link" | "other" | false
  *   fs.mkdir(path [, { parents = true }]) -> true | nil, err
  *   fs.remove(path [, { recursive = false }])
@@ -509,6 +511,193 @@ static int l_fs_stat(lua_State *L)
     return 1;
 }
 
+/* ---- named attribute inspection and patching ---------------------------------- */
+
+typedef struct attribute_flag {
+    const char *name;
+    DWORD bit;
+} attribute_flag;
+
+static const attribute_flag attribute_flags[] = {
+    {"readonly", FILE_ATTRIBUTE_READONLY},
+    {"hidden", FILE_ATTRIBUTE_HIDDEN},
+    {"system", FILE_ATTRIBUTE_SYSTEM},
+    {"archive", FILE_ATTRIBUTE_ARCHIVE},
+    {"temporary", FILE_ATTRIBUTE_TEMPORARY},
+    {"not_content_indexed", FILE_ATTRIBUTE_NOT_CONTENT_INDEXED},
+};
+
+/* These new interfaces deliberately do not use opt_boolean/ku_check_options:
+ * truthy values and C-string-prefix keys are not their contract. Raw traversal
+ * also leaves inherited fields absent, without invoking project metamethods.
+ * All validation runs before any native path buffer or handle is acquired. */
+static int attribute_follow(lua_State *L, int idx)
+{
+    int follow = 0;
+    if (lua_isnoneornil(L, idx)) {
+        return follow;
+    }
+    luaL_checktype(L, idx, LUA_TTABLE);
+    lua_pushnil(L);
+    while (lua_next(L, idx) != 0) {
+        size_t length = 0;
+        const char *key = lua_type(L, -2) == LUA_TSTRING ? lua_tolstring(L, -2, &length) : NULL;
+        if (key == NULL || length != sizeof("follow") - 1 || memcmp(key, "follow", length) != 0) {
+            return ku_err_raise(L, "FS", "usage", "attribute options accept only the exact key 'follow'");
+        }
+        if (lua_type(L, -1) != LUA_TBOOLEAN) {
+            return ku_err_raise(L, "FS", "badvalue", "follow must be a boolean");
+        }
+        follow = lua_toboolean(L, -1);
+        lua_pop(L, 1);
+    }
+    return follow;
+}
+
+static void attribute_patch(lua_State *L, int idx, DWORD *set, DWORD *clear)
+{
+    luaL_checktype(L, idx, LUA_TTABLE);
+    *set = 0;
+    *clear = 0;
+    lua_pushnil(L);
+    while (lua_next(L, idx) != 0) {
+        size_t length = 0;
+        const char *key = lua_type(L, -2) == LUA_TSTRING ? lua_tolstring(L, -2, &length) : NULL;
+        const attribute_flag *flag = NULL;
+        for (size_t i = 0; key != NULL && i < sizeof attribute_flags / sizeof attribute_flags[0]; ++i) {
+            if (length == strlen(attribute_flags[i].name) && memcmp(key, attribute_flags[i].name, length) == 0) {
+                flag = &attribute_flags[i];
+                break;
+            }
+        }
+        if (flag == NULL) {
+            ku_err_raise(L, "FS", "usage", "attribute patches accept only readonly, hidden, system, archive, temporary and not_content_indexed");
+            return;
+        }
+        if (lua_type(L, -1) != LUA_TBOOLEAN) {
+            ku_err_raise(L, "FS", "badvalue", "%s must be a boolean", flag->name);
+            return;
+        }
+        if (lua_toboolean(L, -1)) {
+            *set |= flag->bit;
+        } else {
+            *clear |= flag->bit;
+        }
+        lua_pop(L, 1);
+    }
+}
+
+/* No Lua allocation while a native resource is owned. Unlike the historical
+ * stat helper, this opener never diagnoses access denial as a dangling link.
+ * A diagnostic nofollow query after a missing-target error is best effort;
+ * failures and non-surrogate tags preserve the original native error. */
+static HANDLE open_attributes(lua_State *L, int follow, DWORD access, FILE_BASIC_INFO *info, int *pushed)
+{
+    ku_wpath path;
+    path_arg(L, 1, &path);
+    const char *shown = lua_tostring(L, 1); /* the caller already required a string */
+    DWORD flags = FILE_FLAG_BACKUP_SEMANTICS | (follow ? 0 : FILE_FLAG_OPEN_REPARSE_POINT);
+    HANDLE h = CreateFileW(path.text, access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                           NULL, OPEN_EXISTING, flags, NULL);
+    DWORD error = h == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS;
+    int dangling = 0;
+    if (h == INVALID_HANDLE_VALUE && follow && (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND)) {
+        HANDLE raw = open_meta(path.text, 0);
+        if (raw != INVALID_HANDLE_VALUE) {
+            FILE_ATTRIBUTE_TAG_INFO tag;
+            if (GetFileInformationByHandleEx(raw, FileAttributeTagInfo, &tag, sizeof tag)) {
+                dangling = (tag.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 &&
+                           (tag.ReparseTag & KU_TAG_SURROGATE) != 0;
+            }
+            CloseHandle(raw);
+        }
+    }
+    ku_wpath_free(&path);
+    if (h == INVALID_HANDLE_VALUE) {
+        *pushed = dangling ? ku_err_fail(L, "FS", "dangling", "'%s' exists but its target cannot be resolved (Windows error %lu)",
+                                        shown, (unsigned long)error)
+                           : fail_win(L, error, "open attributes for", shown);
+        return INVALID_HANDLE_VALUE;
+    }
+    SetLastError(ERROR_SUCCESS);
+    DWORD type = GetFileType(h);
+    error = GetLastError();
+    if (type != FILE_TYPE_DISK) {
+        CloseHandle(h);
+        *pushed = type == FILE_TYPE_UNKNOWN && error != ERROR_SUCCESS
+                      ? fail_win(L, error, "identify", shown)
+                      : ku_err_fail(L, "FS", "badvalue", "'%s' is not a filesystem object", shown);
+        return INVALID_HANDLE_VALUE;
+    }
+    if (!GetFileInformationByHandleEx(h, FileBasicInfo, info, sizeof *info)) {
+        error = GetLastError();
+        CloseHandle(h);
+        *pushed = fail_win(L, error, "read attributes for", shown);
+        return INVALID_HANDLE_VALUE;
+    }
+    return h;
+}
+
+/* fs.attributes(path [, { follow = false }]) -> snapshot | nil, err */
+static int l_fs_attributes(lua_State *L)
+{
+    luaL_checktype(L, 1, LUA_TSTRING);
+    int follow = attribute_follow(L, 2);
+    FILE_BASIC_INFO info;
+    int pushed = 0;
+    HANDLE h = open_attributes(L, follow, FILE_READ_ATTRIBUTES, &info, &pushed);
+    if (h == INVALID_HANDLE_VALUE) {
+        return pushed;
+    }
+    CloseHandle(h);
+    lua_createtable(L, 0, 7);
+    lua_pushinteger(L, (lua_Integer)info.FileAttributes);
+    lua_setfield(L, -2, "attrs");
+    for (size_t i = 0; i < sizeof attribute_flags / sizeof attribute_flags[0]; ++i) {
+        lua_pushboolean(L, (info.FileAttributes & attribute_flags[i].bit) != 0);
+        lua_setfield(L, -2, attribute_flags[i].name);
+    }
+    return 1;
+}
+
+/* fs.set_attributes(path, patch [, { follow = false }]) -> true | nil, err */
+static int l_fs_set_attributes(lua_State *L)
+{
+    luaL_checktype(L, 1, LUA_TSTRING);
+    DWORD set, clear;
+    attribute_patch(L, 2, &set, &clear);
+    int follow = attribute_follow(L, 3);
+    DWORD touched = set | clear;
+    FILE_BASIC_INFO before;
+    int pushed = 0;
+    HANDLE h = open_attributes(L, follow, FILE_READ_ATTRIBUTES | (touched ? FILE_WRITE_ATTRIBUTES : 0), &before, &pushed);
+    if (h == INVALID_HANDLE_VALUE) {
+        return pushed;
+    }
+    if ((set & FILE_ATTRIBUTE_TEMPORARY) && (before.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        CloseHandle(h);
+        return ku_err_fail(L, "FS", "badvalue", "temporary=true requires a file, not a directory");
+    }
+    DWORD attributes = ((before.FileAttributes | set) & ~clear) & ~(DWORD)FILE_ATTRIBUTE_NORMAL;
+    if (attributes == 0) {
+        attributes = FILE_ATTRIBUTE_NORMAL;
+    }
+    if (touched && attributes != before.FileAttributes) {
+        /* Zero timestamps mean leave them alone. Copying `before` would
+         * restore stale timestamps if another handle wrote in the meantime. */
+        FILE_BASIC_INFO after = {0};
+        after.FileAttributes = attributes;
+        if (!SetFileInformationByHandle(h, FileBasicInfo, &after, sizeof after)) {
+            DWORD error = GetLastError();
+            CloseHandle(h);
+            return fail_win(L, error, "set attributes for", lua_tostring(L, 1));
+        }
+    }
+    CloseHandle(h);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 /* fs.exists(path) -> kind | false; the name itself, never its target */
 static int l_fs_exists(lua_State *L)
 {
@@ -611,7 +800,33 @@ static int l_fs_mkdir(lua_State *L)
 static int remove_one(const wchar_t *path, DWORD attributes, DWORD *error)
 {
     if (attributes & FILE_ATTRIBUTE_READONLY) {
-        SetFileAttributesW(path, attributes & ~(DWORD)FILE_ATTRIBUTE_READONLY);
+        /* SetFileAttributesW may affect a link target. Open the final entry
+         * itself, and preserve its current bits rather than a stale directory
+         * enumeration snapshot. Attribute clearing is part of this fallible,
+         * nontransactional removal: never hide its failure or roll it back. */
+        HANDLE h = CreateFileW(path, FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES,
+                               FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+                               OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+        if (h == INVALID_HANDLE_VALUE) {
+            *error = GetLastError();
+            return -1;
+        }
+        FILE_BASIC_INFO before;
+        BOOL ok = GetFileInformationByHandleEx(h, FileBasicInfo, &before, sizeof before);
+        if (ok && (before.FileAttributes & FILE_ATTRIBUTE_READONLY)) {
+            FILE_BASIC_INFO after = {0};
+            after.FileAttributes = before.FileAttributes & ~(DWORD)(FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_NORMAL);
+            if (after.FileAttributes == 0) {
+                after.FileAttributes = FILE_ATTRIBUTE_NORMAL;
+            }
+            ok = SetFileInformationByHandle(h, FileBasicInfo, &after, sizeof after);
+        }
+        DWORD failure = ok ? ERROR_SUCCESS : GetLastError();
+        CloseHandle(h);
+        if (!ok) {
+            *error = failure;
+            return -1;
+        }
     }
     BOOL ok = (attributes & FILE_ATTRIBUTE_DIRECTORY) ? RemoveDirectoryW(path) : DeleteFileW(path);
     if (!ok) {
@@ -623,10 +838,11 @@ static int remove_one(const wchar_t *path, DWORD attributes, DWORD *error)
 
 /* Remove a tree without ever following a reparse point: a junction or
  * symlink directory is removed as a link, its target untouched. */
-static int remove_tree(const wchar_t *root, DWORD *error, wchar_t **failed)
+static int remove_tree(const wchar_t *root, DWORD attributes, DWORD *error, wchar_t **failed)
 {
     typedef struct item {
         wchar_t *path;
+        DWORD attributes;
         int expanded;
     } item;
     size_t n = 0, capacity = 64;
@@ -636,6 +852,12 @@ static int remove_tree(const wchar_t *root, DWORD *error, wchar_t **failed)
         return -1;
     }
     stack[0].path = _wcsdup(root);
+    if (stack[0].path == NULL) {
+        free(stack);
+        *error = ERROR_NOT_ENOUGH_MEMORY;
+        return -1;
+    }
+    stack[0].attributes = attributes;
     stack[0].expanded = 0;
     n = 1;
     int rc = 0;
@@ -643,8 +865,7 @@ static int remove_tree(const wchar_t *root, DWORD *error, wchar_t **failed)
         item it = stack[n - 1];
         if (it.expanded) {
             n--;
-            if (!RemoveDirectoryW(it.path)) {
-                *error = GetLastError();
+            if (remove_one(it.path, it.attributes, error) != 0) {
                 *failed = it.path;
                 rc = -1;
                 break;
@@ -700,6 +921,7 @@ static int remove_tree(const wchar_t *root, DWORD *error, wchar_t **failed)
                     capacity *= 2;
                 }
                 stack[n].path = child;
+                stack[n].attributes = k->attributes;
                 stack[n].expanded = 0;
                 n++;
             } else {
@@ -741,17 +963,16 @@ static int l_fs_remove(lua_State *L)
     FILE_ATTRIBUTE_TAG_INFO info;
     memset(&info, 0, sizeof info);
     BOOL ok = GetFileInformationByHandleEx(h, FileAttributeTagInfo, &info, sizeof info);
+    DWORD error = ok ? ERROR_SUCCESS : GetLastError();
     CloseHandle(h);
     if (!ok) {
-        DWORD error = GetLastError();
         ku_wpath_free(&path);
         return fail_win(L, error, "identify", shown);
     }
-    DWORD error = 0;
     int plain_dir = (info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) && !(info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT);
     if (plain_dir && recursive) {
         wchar_t *failed = NULL;
-        if (remove_tree(path.text, &error, &failed) != 0) {
+        if (remove_tree(path.text, info.FileAttributes, &error, &failed) != 0) {
             char *where = failed != NULL ? ku_wpath_show(failed, path.unc) : NULL;
             free(failed);
             ku_wpath_free(&path);
@@ -1293,6 +1514,8 @@ int ku_open_fs(lua_State *L)
         {"read", l_fs_read},
         {"write", l_fs_write},
         {"stat", l_fs_stat},
+        {"attributes", l_fs_attributes},
+        {"set_attributes", l_fs_set_attributes},
         {"exists", l_fs_exists},
         {"mkdir", l_fs_mkdir},
         {"remove", l_fs_remove},

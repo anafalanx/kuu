@@ -235,6 +235,12 @@ function task.plan(name)
   return order
 end
 
+local function argument_help(entry, cli, program_name)
+  local text = cli.usage(entry.args or {}, program_name)
+  if entry.desc ~= nil and entry.desc ~= "" then text = entry.desc .. "\n\n" .. text end
+  return nil, err.new("CLI", "usage", text, { help = true })
+end
+
 -- task.arguments(entry [, args [, program_name]]) -> opts | nil, err
 -- The task's arguments parsed against its spec; `--help` and every mistake
 -- are CLI usage.  A task without a spec accepts no arguments.  The runner
@@ -246,8 +252,10 @@ function task.arguments(entry, args, program_name)
   if entry.args == nil then
     -- A task with no arguments still answers --help, with the usage that says so.
     if #args == 1 and args[1] == "--help" then
-      return nil, err.new("CLI", "usage", cli.usage({}, program_name), { help = true })
+      return argument_help(entry, cli, program_name)
     end
+    -- Match an empty cli spec without consuming arguments meant for a rest spec.
+    if #args == 1 and args[1] == "--" then return {} end
     if #args > 0 then return nil, err.new("CLI", "usage", "task '" .. entry.name .. "' takes no arguments") end
     return {}
   end
@@ -255,7 +263,7 @@ function task.arguments(entry, args, program_name)
   if not parsed then return nil, e end
   -- --help is not a mistake: the usage comes back as the message, with
   -- `help` set, so the runner prints it and exits 0 like every other --help.
-  if parsed.help then return nil, err.new("CLI", "usage", cli.usage(entry.args, program_name), { help = true }) end
+  if parsed.help then return argument_help(entry, cli, program_name) end
   return parsed
 end
 

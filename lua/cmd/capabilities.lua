@@ -9,12 +9,13 @@
 -- It reports only what kuu can know. The palette comes from the modules' own
 -- export tables, so it cannot drift from the runtime; the project's modules
 -- are read from their text and never executed, so one whose exports the text
--- does not bound is counted and not named. What a task installs under .tools
--- is not reported at all: kuu keeps no manifest of it, and a guess would be
--- worse than the silence.
+-- does not bound is counted and not named. Installed executables that a task
+-- never declares are not inferred; project modules follow inspection scope.
 global none
 global <const> require, ipairs, pairs, pcall, tostring, type, table, string, io, os
 
+local timing = require "_timings"
+local began, times = timing.clock(), {}
 local rt = require "rt"
 local cli = require "cli"
 local fs = require "fs"
@@ -23,18 +24,24 @@ local clean = require "_jsonsafe"
 local project = require "project"
 local task = require "task"
 local check = require "check"
+local policy = require "_scan_policy"
+local scan = require "_scan"
 
 -- What to read and do next, in order, said the same way in both forms:
--- the descriptor is the first thing an agent runs, so it carries the
--- conduct as well as the inventory.
+-- the descriptor is an agent's project-discovery command, so it carries
+-- the conduct as well as the inventory.
 local NEXT = {
   "kuu docs agent: what is expected of an agent here, and how to report back; read it first",
+  "kuu docs upgrading-from-0.11: migrating a project from signed 0.11; read before running project tasks",
   "kuu docs pitfalls: where kuu differs from the Lua you know; read it once",
   "kuu docs index: the map of the manual; kuu docs PAGE prints a page, kuu docs search TEXT finds lines",
   "if something cannot be done from here, build a tool for it and call it through the door: kuu docs tools",
 }
 
-local spec = { { "--json", type = "flag", help = "machine-readable descriptor" } }
+local spec = {
+  { "--json", type = "flag", help = "machine-readable descriptor" },
+  { "--timings", type = "flag", help = "print measured command phases on stderr" },
+}
 local opts, e = cli.parse(rt.args, spec, "kuu capabilities")
 if not opts then io.stderr:write("kuu: ", tostring(e), "\n") os.exit(2) end
 if opts.help then io.write(cli.usage(spec, "kuu capabilities")) os.exit(0) end
@@ -108,9 +115,16 @@ if root then
   -- list` and `kuu run` already do that. A failure costs the task list and
   -- nothing else, so it is reported here rather than raised.
   local loaded, why = false, nil
-  local entered, e2 = project.enter(root)
-  if not entered then why = e2 else
-    loaded, why = project.load_tasks(root)
+  local context, config_error = policy.load(root)
+  if not context then
+    here.config_error = { domain = config_error.domain, code = config_error.code, message = config_error.message }
+    why = config_error
+  else
+    here.scope = scan.describe(context)
+    local entered, e2 = project.enter(root)
+    if not entered then why = e2 else
+      loaded, why = project.load_tasks(root)
+    end
   end
   if loaded then
     for _, t in ipairs(task.all()) do
@@ -129,21 +143,22 @@ if root then
         emits = json.array(t.emits), timeout = t.timeout, reach = reach }
     end
   else
-    here.note = file .. " did not load: " .. tostring(why)
+    here.note = config_error and ("project scan configuration is invalid: " .. tostring(why))
+      or (file .. " did not load: " .. tostring(why))
   end
 
   -- The door's memory: the last crossings, the chain held to itself --
   -- every record hashes the line before it, and this is where an edited
-  -- line is found -- and the count of changes no crossing accounts for,
-  -- which is zero until something watches.
+  -- line is found. No workspace-change counts are inferred from history.
   local ledger = require "_ledger"
-  here.ledger = { last = json.array {}, records = 0, intact = true, unaccounted = 0 }
-  local recent, tail_error = ledger.tail(root, 5)
+  times.setup = timing.clock() - began
+  here.ledger = { last = json.array {}, records = 0, intact = true }
+  local recent, tail_error = timing.measure(times, "ledger_tail", ledger.tail, root, 5)
   for _, record in ipairs(recent or {}) do
     here.ledger.last[#here.ledger.last + 1] = { at = record.at, kind = record.kind, name = record.name,
       status = record.status, seconds = record.seconds }
   end
-  local sound, detail = ledger.verify(root)
+  local sound, detail = timing.measure(times, "ledger_verification", ledger.verify, root)
   if sound then here.ledger.records = detail
   else
     here.ledger.intact, here.ledger.records = false, nil
@@ -178,19 +193,26 @@ if root then
     end
   end
 
-  local found = check.modules(root)
+  local found
+  if context then found = timing.measure(times, "inventory", check.modules, root, context)
+  else found = { root = root, files = 0, modules = {}, complete = false,
+    errors = { { path = fs.join(root, policy.FILE), message = tostring(config_error),
+      domain = config_error.domain, code = config_error.code } } }
+  end
   here.files = found.files
+  here.scan = found.scan
   here.modules_complete, here.module_errors = found.complete, json.array(found.errors)
   for _, module in ipairs(found.modules) do
     here.modules[#here.modules + 1] = { name = module.name,
       path = module.path:sub(#found.root + 2), names = json.array(module.exports) }
   end
 end
+if times.setup == nil then times.setup = timing.clock() - began end
 
 -- ---- saying it -----------------------------------------------------------
 
 if opts.json then
-  io.write(json.encode(clean {
+  local envelope = {
     ok = true,
     result = {
       kuu = { version = rt.version, lua = rt.lua, exe = rt.exe,
@@ -200,11 +222,19 @@ if opts.json then
       errors = domains,
       sets = sets,
       project = here,
+      timings = times,
     },
-  }), "\n")
+  }
+  timing.finish(times, began)
+  io.write(json.encode(clean(envelope)), "\n")
+  if opts.timings then timing.write("capabilities", times) end
   os.exit(0)
 end
 
+-- Buffer the human descriptor so total ends at completed report assembly,
+-- before final output/flush, just as it does before JSON serialization.
+local output, human_io = {}, io
+local io = { write = function(...) output[#output + 1] = table.concat { ... } end }
 local WIDTH, LABEL = 78, 13
 
 -- A list that wraps under its first item rather than under its label, so a
@@ -331,9 +361,14 @@ else
   end
 end
 
-io.write("\nWhatever a task installs under .tools and never declares is not listed: kuu\n",
-  "keeps no manifest of it, and a guess would be worse than the silence.\n",
+io.write("\nInstalled executables are listed only when declared as tools; project modules\n",
+  "follow the inspection scope (kuu docs scan).\n",
   "Everything that runs in a project runs through kuu.exe; if something cannot\n",
   "be done from here, build a tool for it and call it through the door (kuu docs tools).\n",
   "Read kuu docs agent first: what is expected of you here, and how to report back.\n",
+  "From signed 0.11: read kuu docs upgrading-from-0.11 before running project tasks.\n",
   "Then kuu docs pitfalls, once; it is where kuu differs from the Lua you know.\n")
+local text = table.concat(output)
+timing.finish(times, began)
+human_io.write(text)
+if opts.timings then timing.write("capabilities", times) end

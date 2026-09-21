@@ -67,6 +67,9 @@ return function(T)
     ok and r.out:sub(1, 200) or tostring(report))
   if not ok or report == nil or report.result == nil then return end
   local result = report.result
+  check("execution history makes no unaccounted filesystem-change claim",
+    result.project.ledger and result.project.ledger.unaccounted == nil,
+    json.encode(result.project.ledger))
 
   check("it names this runtime", result.kuu.version == rt.version and result.kuu.lua == rt.lua,
     json.encode(result.kuu.version) .. " " .. json.encode(result.kuu.lua))
@@ -165,6 +168,43 @@ return function(T)
   check("but every .lua file below the root is counted, and pruned ones are not",
     here.files == 5, tostring(here.files))
 
+  -- A directory link is listed by fs.dirs, but is not permission to inventory
+  -- its target. Use sibling fixtures and real junctions at two depths.
+  do
+    local scratch = fs.tempdir { dir = fs.absolute(T.work), prefix = "capabilities-links-" }
+    check("a private directory for capabilities link fixtures is created", scratch ~= nil)
+    if scratch then
+      local proc = require "proc"
+      local dir, target = scratch .. "/project", scratch .. "/outside"
+      fs.mkdir(dir .. "/src")
+      fs.mkdir(target)
+      fs.write(dir .. "/manifest.lua", "global none\n")
+      fs.write(dir .. "/src/ordinary.lua", "global none\nlocal M = { ordinary = true }\nreturn M\n")
+      local sentinel = "global none\nlocal M = { outside = true }\nreturn M\n"
+      fs.write(target .. "/sentinel.lua", sentinel)
+      local links_ready = true
+      for _, path in ipairs { dir .. "/linked", dir .. "/src/nested" } do
+        local made = proc.run { "cmd.exe", "/c", "mklink", "/J", path:gsub("/", "\\"), target:gsub("/", "\\"), timeout = "10s" }
+        check("capabilities fixture junction is created: " .. path, made and made.code == 0, made and T.describe(made))
+        links_ready = links_ready and made ~= nil and made.code == 0
+      end
+      if links_ready then
+        local described = T.kuu({ "capabilities", "--json" }, { cwd = dir })
+        local envelope = json.decode(described.out)
+        local project = envelope and envelope.result.project
+        check("capabilities counts ordinary files and excludes root and nested junction targets",
+          described.code == 0 and project and project.files == 2 and #project.modules == 1
+            and project.modules[1].name == "src.ordinary" and project.modules_complete
+            and #project.module_errors == 0 and not contains(described.out, "sentinel"), T.describe(described))
+        local text = T.kuu({ "capabilities" }, { cwd = dir })
+        check("capabilities text does not advertise modules from junction targets",
+          text.code == 0 and contains(text.out, "src.ordinary") and not contains(text.out, "sentinel"), T.describe(text))
+        check("capabilities leaves the outside Lua sentinel untouched", fs.read(target .. "/sentinel.lua") == sentinel)
+      end
+      fs.remove(scratch, { recursive = true })
+    end
+  end
+
   -- What agents wrote back is counted: one entry per `## YYYY-MM-DD` heading
   -- outside fenced code, whatever the bytes after the date; a file that is
   -- there with no such heading is told apart from no file.
@@ -234,8 +274,8 @@ return function(T)
   r = T.kuu({ "capabilities", "--nope" }, { cwd = work })
   check("an unknown option exits 2", r.code == 2 and contains(r.err, "CLI usage"), T.describe(r))
 
-  fs.write(work .. "/manifest.lua", 'global none\nglobal <const> require\nlocal fs=require "fs"\n'
-    .. 'fs.dirs=function(root) return {paths={},errors={{path=root.."/held",win32=32,reason="sharing violation"}}} end\n')
+  fs.write(work .. "/manifest.lua", 'global none\nglobal <const> require\nlocal scan=require "_scan_native"\n'
+    .. 'scan.collect=function(root) return {root=root,paths={},files={},links={},skipped={},enumerated=1,pruned=0,errors={{path=root.."/held",win32=32,reason="sharing violation"}}} end\n')
   r = T.kuu({ "capabilities", "--json" }, { cwd = work })
   local incomplete = json.decode(r.out)
   local inventory = incomplete and incomplete.result.project

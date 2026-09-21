@@ -17,12 +17,12 @@
  * is the source the Makefile and Windows version resource read, and the numeric
  * minimum-version guard parses it rather than keeping a second copy. */
 #define KUU_NAME "kuu"
-#define KUU_VERSION "0.11"
-#define KUU_VERSION_W L"0.11"
+#define KUU_VERSION "0.12"
+#define KUU_VERSION_W L"0.12"
 
-/* Exit codes.  2 means kuu never started the program (usage, entry, state);
- * 1 means the program itself failed; anything else is the program's own
- * os.exit value. */
+/* Exit codes. 2 covers usage, entry and state errors; in-task CLI usage can
+ * also return it after execution began. 1 means the program itself failed;
+ * programs may choose their own os.exit value. */
 #define KUU_EXIT_OK 0
 #define KUU_EXIT_PROGRAM 1
 #define KUU_EXIT_ENTRY 2

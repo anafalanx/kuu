@@ -36,6 +36,7 @@ inspection calls can be synchronous, as their manual pages describe.
 | `Add-Content` | `fs.write(p, data, { append = true })` | |
 | `Test-Path` | `fs.exists(p)` | says what it is: `"file"`, `"directory"`, `"link"`, `"other"`, or `false` |
 | `Get-Item`, `Get-ItemProperty` | `fs.stat(p)` | identity too: volume and file ids |
+| `(Get-Item p).Attributes`, `attrib.exe` | `fs.attributes(p)`, `fs.set_attributes(p, { readonly = false })` | six named flags from 0.12; omitted flags preserved, final links not followed by default; [contract](fs.md#file-attributes) |
 | `New-Item -ItemType Directory -Force` | `fs.mkdir(p)` | parents made, existing fine |
 | `Remove-Item -Recurse -Force` | `fs.remove(p, { recursive = true })` | never follows a junction or symlink into its target |
 | `Move-Item`, `Copy-Item` | `fs.rename(a, b, { replace = true })`, `fs.copy(a, b)` | |

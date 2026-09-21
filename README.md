@@ -25,13 +25,11 @@ A repository declares its tasks once in `manifest.lua` and runs them with
 `archive`. The manual rides inside the executable: `kuu docs`. kuu runs on
 Windows 11 23H2 and later, and Windows Server 2025 and later, only.
 
-Version 0.11 uses two natural-number components (`N.N`), corrects the
-front-door release, and makes its first steps
-clearer: help demonstrates an inline query, and documentation search names
-the command to read each result's context. It includes fixes for process
-streams, file and HTTP operations, checker and ledger reporting, helper
-validation, and reproducible payload builds. See
-[upgrading to 0.11](docs/upgrading-0.11.md) for version, behavior, and schema changes.
+Version 0.12 focuses the ledger on execution history, adds Windows file
+attribute operations, and improves project inspection, declaration checks and
+task help. Its manual includes tested recipes for processes, environments,
+relocation, native helpers and recovery. Versions retain the two natural-number
+components (`N.N`) introduced in 0.11.
 
 A project runs through `kuu.exe`. `manifest.lua` declares the tasks and the tools they
 call, every crossing is recorded in a ledger under `.kuu/`, `kuu run --json`
@@ -42,22 +40,30 @@ needed. An unknown option is refused everywhere, and `check` reports what
 can be known without running, a project's own modules included. See
 [upgrading to 0.10](docs/upgrading-0.10.md).
 
+Normal
+task runs no longer scan the project tree or track file changes; source
+inspection remains available through checking and module inventory, with
+configurable exclusions. Existing 0.11 projects should read
+[Upgrading from 0.11](docs/upgrading-from-0.11.md), also available offline as
+`kuu docs upgrading-from-0.11`, before running tasks with the replacement.
+
 <!-- usage -->
 ```text
 usage: kuu FILE [arg ...]        run a Lua program file
        kuu - [arg ...]           run a program read from standard input
        kuu -e SCRIPT [arg ...]   run an inline script
        kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable
-       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua
+       kuu run [--json] [--dry-run] [--timings] [TASK [arg ...]]   a task from the nearest manifest.lua
        kuu list [--json]         those tasks
-       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
-       kuu capabilities [--json] what a program can reach from here, and what to read
+       kuu check [--json] [--timings] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running
+       kuu capabilities [--json] [--timings]   what a program can reach from here, and what to read
        kuu version | --version | --help
 
 Try a query now: all modules are available with -e; no file or manifest is needed.
   kuu -e "print(require('json').encode(require('sys').info()))"
 Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing
 kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.
+From signed 0.11: read kuu docs upgrading-from-0.11 before running project tasks.
 ```
 <!-- /usage -->
 
@@ -85,7 +91,7 @@ real repository adoption, with evidence and workarounds.
 The [cookbook](docs/cookbook.md) holds fourteen complete programs, the last
 four shaped by the front door, and the [stability statement](docs/stability.md)
 the future compatibility promise; the upgrading pages, from
-[0.11](docs/upgrading-0.11.md) back to [0.6](docs/upgrading-0.6.md), say what
+[0.11 to 0.12](docs/upgrading-from-0.11.md) back to [0.6](docs/upgrading-0.6.md), say what
 each release changed and what a project must do.
 
 ## Building

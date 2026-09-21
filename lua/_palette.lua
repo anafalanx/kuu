@@ -121,6 +121,7 @@ errors = {
   TASK    = { "noproject", "badvalue", "usage", "unknown", "cycle", "failed",
               "exit" },
   CHECK   = { "notfound" },
+  SCAN    = { "config" },
   CLI     = { "usage", "badvalue" },
 },
 
@@ -146,6 +147,11 @@ records = {
   Canon = {
     path = "string", volume = "Hex", file = "Hex", kind = "FsKind",
     links = "integer",
+  },
+  Attributes = {
+    attrs = "integer", readonly = "boolean", hidden = "boolean",
+    system = "boolean", archive = "boolean", temporary = "boolean",
+    not_content_indexed = "boolean",
   },
   Response = {
     status = "integer", headers = "table", rawheaders = "string",
@@ -194,6 +200,10 @@ modules = {
     exists = { result = "FsKind|boolean" },
     stat   = { options_at = 2, options = { follow = "boolean?" }, result = "Stat",
                errors = { "notfound", "dangling", "access", "oserror" } },
+    attributes = { options_at = 2, options = { follow = "boolean?" }, result = "Attributes",
+                   errors = { "notfound", "dangling", "access", "encoding", "badvalue", "usage", "oserror" } },
+    set_attributes = { options_at = 3, options = { follow = "boolean?" }, result = "boolean",
+                       errors = { "notfound", "dangling", "access", "encoding", "badvalue", "usage", "oserror" } },
     canon  = { result = "Canon", errors = { "notfound", "dangling", "access", "oserror" } },
     same   = { result = "boolean" },
     link   = { result = "table|boolean" },

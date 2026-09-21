@@ -25,13 +25,13 @@ local MARKER = "# Part III — the complete manual"
 -- project going, the palette, the recipes, and finally the record.
 local ORDER = {
   "index", "agent", "pitfalls", "capabilities",
-  "adopting", "task", "tools", "confined", "ledger", "check", "cli",
+  "adopting", "task", "tools", "confined", "ledger", "check", "scan", "cli",
   "proc", "fs", "http", "net", "sched", "json", "csv", "ini",
   "hash", "text", "re", "time", "archive", "log", "err",
   "mem", "sync", "sys", "reg", "env", "svc", "evt", "pty",
-  "powershell", "cookbook",
+  "powershell", "cookbook", "cleanup", "process-recipes", "working-directories", "project-environment", "relocation", "editor", "native-helper", "reconstruction",
   "inheritance", "roadmap", "shortcomings", "stability", "toolchain",
-  "upgrading-0.11", "upgrading-0.10", "upgrading-0.9", "upgrading-0.8", "upgrading-0.7", "upgrading-0.6",
+  "upgrading-from-0.11", "upgrading-0.11", "upgrading-0.10", "upgrading-0.9", "upgrading-0.8", "upgrading-0.7", "upgrading-0.6",
 }
 
 local function root()

@@ -64,6 +64,12 @@ the child could not be started, with these codes:
 | `usage` | raised: no command, a wrong argument shape, an unknown option — in the command table or in `limits` |
 | `oserror` | a job, pipe, or another launch resource could not be created |
 
+For complete task-level examples that preserve stderr, check truncation and
+distinguish accepted exits from timeout/limit/launch failures, read the
+[process recipes](process-recipes.md). A command table mixes argv and options;
+serialize its argument sequence as an explicit JSON array inside an object
+with separate `argv`, `cwd` and `env` fields.
+
 Unknown option names raise rather than pass silently, so a typo cannot
 become a run with the wrong settings.
 
@@ -72,6 +78,11 @@ become a run with the wrong settings.
 no time limit; zero requests an immediate timeout. `inherit` and `stream`
 default to false. Environment names are compared ignoring case: duplicates,
 empty names, `=`, and NUL are refused, as are NUL bytes in text values.
+
+An `env` table overlays the inherited environment; `false` removes a named
+variable. It does not start from an empty environment. For shared root-derived
+cache locations and fresh editor processes, see
+[the project environment recipe](project-environment.md).
 
 ## Limits
 
@@ -200,6 +211,10 @@ and forbid breakaway keep it, which is that environment's policy, not kuu's.
 kuu's own child jobs permit breakaway, so a program that kuu runs can itself
 detach a process, and only a process that asks to break away leaves; nothing
 escapes supervision by accident.
+
+The [editor verification recipe](editor.md) shows a detached native supervisor
+that owns and bounds its GUI child on a private desktop. Launch success and
+application readiness are separate results.
 
 ## proc.alive and proc.kill
 

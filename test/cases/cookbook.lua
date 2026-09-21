@@ -217,18 +217,29 @@ assert(starts == (initial == "running" and 0 or 1))
     -- needs exercising: a faked version field cannot stand in for it.
     local probe = root .. "/at-least.lua"
     assert(fs.write(probe, [[global none
-global <const> require, print, tostring, ipairs, table
+global <const> require, print, tostring, tonumber, ipairs, table
 local rt = require "rt"
+local major, minor = rt.version:match("^(%d+)%.(%d+)$")
+major, minor = tonumber(major), tonumber(minor)
 local out = {}
-for _, want in ipairs { {0}, {0, 9}, {0, 9, 0}, {0, 9, 1}, {0, 10}, {0, 10, 99},
-  {0, 11}, {0, 11, 0}, {0, 11, 1}, {0, 12}, {1}, {1, 0}, {0, 100} } do
+-- Derive the boundaries from the advertised release, so a version bump
+-- cannot turn a formerly future query into a stale expected failure.
+for _, want in ipairs { {0}, {major}, {major, minor}, {major, minor, 0},
+  {major, minor, 1}, {major, minor + 1}, {major + 1}, {major + 1, 0} } do
   out[#out + 1] = tostring(rt.version_at_least(table.unpack(want)))
+end
+if minor > 0 then
+  out[#out + 1] = tostring(rt.version_at_least(major, minor - 1, 99))
+elseif major > 0 then
+  out[#out + 1] = tostring(rt.version_at_least(major - 1, 999, 99))
+else
+  out[#out + 1] = tostring(rt.version_at_least(0, 0, 0))
 end
 print(table.concat(out, ","))
 ]]))
     r = T.kuu { probe }
     check("version_at_least orders integer pairs and preserves legacy three-argument guards",
-      r.code == 0 and r.out == "true,true,true,true,true,true,true,true,false,false,false,false,false\n", T.describe(r))
+      r.code == 0 and r.out == "true,true,true,true,false,false,false,false,true\n", T.describe(r))
 
     local bad = T.kuu { "-e", 'global none global <const> require require("rt").version_at_least("0.9")' }
     check("a version component that is not a number raises RT badvalue",

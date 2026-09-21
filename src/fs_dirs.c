@@ -354,6 +354,7 @@ double ku_fs_time_seconds(LONGLONG filetime)
 
 typedef struct walk_item {
     wchar_t *path;
+    char *relative; /* private collector: project-relative, '/' separators */
     int depth;
     int reparse;
     DWORD tag;
@@ -368,12 +369,18 @@ typedef struct walk {
     int skipped; /* stack index of the skipped (pruned) array */
     int links;   /* stack index of the links array */
     int errors;  /* stack index of the errors array */
+    int files;   /* private collector only; zero keeps fs.dirs unchanged */
     lua_Integer path_count, skipped_count, link_count, error_count;
+    lua_Integer file_count, enumerated;
     lua_Integer count, pruned, depthlimited, maxdepth;
     int depthcap;
     int unc;
     const char **prune;
     int prune_count;
+    const char **exclude_dirs;
+    const char **exclude_paths;
+    int exclude_dir_count, exclude_path_count;
+    const char *prefix;
 } walk;
 
 static void walk_error(walk *w, const wchar_t *path, DWORD error)
@@ -394,7 +401,7 @@ static void walk_error(walk *w, const wchar_t *path, DWORD error)
 }
 
 static void walk_link_row(walk *w, const char *shown, DWORD tag, int surrogate, const char *action,
-                          const wchar_t *full)
+                          const wchar_t *full, int is_directory)
 {
     lua_State *L = w->L;
     lua_createtable(L, 0, 6);
@@ -408,9 +415,13 @@ static void walk_link_row(walk *w, const char *shown, DWORD tag, int surrogate, 
     lua_setfield(L, -2, "surrogate");
     lua_pushstring(L, action);
     lua_setfield(L, -2, "action");
+    if (w->files) {
+        lua_pushstring(L, is_directory ? "directory" : "file");
+        lua_setfield(L, -2, "kind");
+    }
     if (ku_tag_is_name(tag)) {
-        const char *type = ku_fs_link_type(tag, 1);
-        char *target = ku_fs_link_target(full, 1);
+        const char *type = ku_fs_link_type(tag, is_directory);
+        char *target = ku_fs_link_target(full, is_directory);
         lua_pushstring(L, type != NULL ? type : "unknown");
         lua_setfield(L, -2, "type");
         if (target != NULL) {
@@ -422,6 +433,69 @@ static void walk_link_row(walk *w, const char *shown, DWORD tag, int surrogate, 
     lua_rawseti(L, w->links, ++w->link_count);
 }
 
+static char *walk_relative(const char *parent, const char *name)
+{
+    size_t plen = strlen(parent), nlen = strlen(name);
+    if (nlen > SIZE_MAX - plen - 2) {
+        return NULL;
+    }
+    char *result = (char *)malloc(plen + nlen + 2);
+    if (result != NULL) {
+        memcpy(result, parent, plen);
+        if (plen != 0) {
+            result[plen++] = '/';
+        }
+        memcpy(result + plen, name, nlen + 1);
+    }
+    return result;
+}
+
+static int walk_exact(const char *rule, const char *value)
+{
+    while (*rule && *value && fold((unsigned char)*rule) == fold((unsigned char)*value)) {
+        rule++;
+        value++;
+    }
+    return *rule == '\0' && *value == '\0';
+}
+
+/* Metadata comes from the same directory batch used to schedule children.
+ * No second enumeration, file stat, or content read is needed. */
+static void walk_file(walk *w, const walk_item *parent, const ku_child_entry *entry)
+{
+    lua_State *L = w->L;
+    wchar_t *full = ku_wpath_join(parent->path, wcslen(parent->path), entry->wname, entry->wlen);
+    char *relative = walk_relative(parent->relative, entry->name);
+    char *shown = full != NULL ? ku_wpath_show(full, w->unc) : NULL;
+    if (full == NULL || relative == NULL || shown == NULL) {
+        walk_error(w, parent->path, ERROR_NOT_ENOUGH_MEMORY);
+    } else if ((entry->attributes & FILE_ATTRIBUTE_REPARSE_POINT) && ku_tag_is_name(entry->tag)) {
+        walk_link_row(w, shown, entry->tag, (entry->tag & KU_TAG_SURROGATE) != 0, "nofollow", full, 0);
+    } else {
+        lua_createtable(L, 0, 7);
+        lua_pushstring(L, shown);
+        lua_setfield(L, -2, "path");
+        lua_pushstring(L, relative);
+        lua_setfield(L, -2, "relative");
+        lua_pushinteger(L, (lua_Integer)entry->size);
+        lua_setfield(L, -2, "size");
+        lua_pushnumber(L, ku_fs_time_seconds(entry->mtime));
+        lua_setfield(L, -2, "mtime");
+        lua_pushinteger(L, (lua_Integer)entry->attributes);
+        lua_setfield(L, -2, "attrs");
+        if (entry->attributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+            char hex[16];
+            snprintf(hex, sizeof hex, "0x%08lx", (unsigned long)entry->tag);
+            lua_pushstring(L, hex);
+            lua_setfield(L, -2, "reparse");
+        }
+        lua_rawseti(L, w->files, ++w->file_count);
+    }
+    free(shown);
+    free(relative);
+    free(full);
+}
+
 static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_tag)
 {
     lua_State *L = w->L;
@@ -431,7 +505,10 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
         return -1;
     }
     stack[0].path = _wcsdup(root);
-    if (stack[0].path == NULL) {
+    stack[0].relative = w->files ? _strdup(w->prefix) : NULL;
+    if (stack[0].path == NULL || (w->files && stack[0].relative == NULL)) {
+        free(stack[0].path);
+        free(stack[0].relative);
         free(stack);
         return -1;
     }
@@ -502,8 +579,14 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
              * since the scan must not be entered. */
             FILE_ATTRIBUTE_TAG_INFO info;
             memset(&info, 0, sizeof info);
-            if (GetFileInformationByHandleEx(h, FileAttributeTagInfo, &info, sizeof info) &&
-                (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+            BOOL classified = GetFileInformationByHandleEx(h, FileAttributeTagInfo, &info, sizeof info);
+            if (!classified && w->files) {
+                /* A classification failure cannot establish that descent is
+                 * safe. The collector keeps an explicit incomplete result. */
+                walk_error(w, it.path, GetLastError());
+                action = "failed";
+                stop = 1;
+            } else if (classified && (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
                 it.reparse = 1;
                 it.tag = info.ReparseTag;
                 it.surrogate = (it.tag & KU_TAG_SURROGATE) != 0;
@@ -525,6 +608,7 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
         }
         if (!stop) {
             ku_children kids;
+            w->enumerated++;
             int got = ku_fs_enumerate(h, &kids);
             CloseHandle(h);
             h = INVALID_HANDLE_VALUE;
@@ -548,6 +632,13 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
                  * depth-first pre-order in sibling order. */
                 size_t plen = wcslen(it.path);
                 size_t dropped = 0;
+                if (w->files) {
+                    for (size_t i = 0; i < kids.count; i++) {
+                        if (!(kids.items[i].attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                            walk_file(w, &it, &kids.items[i]);
+                        }
+                    }
+                }
                 for (size_t i = kids.count; i-- > 0;) {
                     ku_child_entry *k = &kids.items[i];
                     if (!(k->attributes & FILE_ATTRIBUTE_DIRECTORY)) {
@@ -564,7 +655,10 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
                         capacity = next;
                     }
                     wchar_t *child = ku_wpath_join(it.path, plen, k->wname, k->wlen);
-                    if (child == NULL) {
+                    char *relative = w->files ? walk_relative(it.relative, k->name) : NULL;
+                    if (child == NULL || (w->files && relative == NULL)) {
+                        free(child);
+                        free(relative);
                         dropped++;
                         continue;
                     }
@@ -575,8 +669,15 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
                             break;
                         }
                     }
+                    for (int p = 0; !pruned && p < w->exclude_dir_count; p++) {
+                        pruned = walk_exact(w->exclude_dirs[p], k->name);
+                    }
+                    for (int p = 0; !pruned && p < w->exclude_path_count; p++) {
+                        pruned = walk_exact(w->exclude_paths[p], relative);
+                    }
                     int reparse = (k->attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
                     stack[n].path = child;
+                    stack[n].relative = relative;
                     stack[n].depth = it.depth + 1;
                     stack[n].reparse = reparse;
                     stack[n].tag = reparse ? k->tag : 0;
@@ -595,17 +696,141 @@ static int walk_run(walk *w, const wchar_t *root, int root_reparse, DWORD root_t
             CloseHandle(h);
         }
         if (it.reparse) {
-            walk_link_row(w, shown, it.tag, it.surrogate, action, it.path);
+            walk_link_row(w, shown, it.tag, it.surrogate, action, it.path, 1);
         }
         free(shown);
         free(it.path);
+        free(it.relative);
     }
     free(stack);
     return 0;
 }
 
-/* fs.dirs(root [, { depth = n, prune = { "pattern", ... } }]) */
-int ku_fs_dirs(lua_State *L)
+/* Declarative rules are already-normalized exact names/paths. A separate
+ * legacy_prune option preserves mutable checker wildcard configuration.
+ * Validate the entire shape before owning native resources;
+ * raw access prevents metatables from manufacturing unanchored string values. */
+static const char *scan_string(lua_State *L, int index, int path, int allow_empty)
+{
+    size_t length = 0;
+    if (lua_type(L, index) != LUA_TSTRING) {
+        ku_err_raise(L, "FS", "badvalue", "scan rules and prefix must be strings");
+    }
+    const char *value = lua_tolstring(L, index, &length);
+    if (memchr(value, '\0', length) != NULL ||
+        !ku_utf8_valid((const unsigned char *)value, length)) {
+        ku_err_raise(L, "FS", "badvalue", "scan rules and prefix must be valid UTF-8 without NUL");
+    }
+    if (length == 0) {
+        if (!allow_empty) {
+            ku_err_raise(L, "FS", "badvalue", "scan rules must not be empty");
+        }
+        return value;
+    }
+    size_t start = 0;
+    for (size_t i = 0; i <= length; i++) {
+        unsigned char c = (unsigned char)value[i];
+        if (c == '/' || c == '\0') {
+            size_t component = i - start;
+            if ((c == '/' && !path) || component == 0 ||
+                (component == 1 && value[start] == '.') ||
+                (component == 2 && value[start] == '.' && value[start + 1] == '.')) {
+                ku_err_raise(L, "FS", "badvalue", "scan paths must be normalized relative paths");
+            }
+            start = i + 1;
+        } else if (c < 32 || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' ||
+                   c == '<' || c == '>' || c == '|') {
+            ku_err_raise(L, "FS", "badvalue", "scan rules require exact normalized directory names");
+        }
+    }
+    return value;
+}
+
+static int scan_rules(lua_State *L, int options, const char *field, const char **storage, int limit, int path)
+{
+    lua_pushstring(L, field);
+    lua_rawget(L, options);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return 0;
+    }
+    if (lua_type(L, -1) != LUA_TTABLE) {
+        return ku_err_raise(L, "FS", "badvalue", "%s must be an array of strings", field);
+    }
+    size_t count = lua_rawlen(L, -1);
+    if (count > (size_t)limit) {
+        return ku_err_raise(L, "FS", "badvalue", "at most %d %s rules are allowed", limit, field);
+    }
+    int array = lua_absindex(L, -1);
+    lua_pushnil(L);
+    while (lua_next(L, array) != 0) {
+        int integer = 0;
+        lua_Integer key = lua_tointegerx(L, -2, &integer);
+        if (lua_type(L, -2) != LUA_TNUMBER || !integer || key < 1 || (lua_Unsigned)key > count) {
+            return ku_err_raise(L, "FS", "badvalue", "%s must be a dense array of strings", field);
+        }
+        lua_pop(L, 1);
+    }
+    for (size_t i = 0; i < count; i++) {
+        lua_rawgeti(L, array, (lua_Integer)i + 1);
+        if (path < 0) {
+            /* Compatibility with callers mutating check.PRUNE: these are
+             * legacy basename wildcards, never declarative policy rules. */
+            size_t length = 0;
+            if (lua_type(L, -1) != LUA_TSTRING) {
+                return ku_err_raise(L, "FS", "badvalue", "%s patterns must be strings", field);
+            }
+            const char *pattern = lua_tolstring(L, -1, &length);
+            if (memchr(pattern, '\0', length) != NULL ||
+                !ku_utf8_valid((const unsigned char *)pattern, length)) {
+                return ku_err_raise(L, "FS", "badvalue", "%s patterns must be valid UTF-8 without NUL", field);
+            }
+            storage[i] = pattern;
+        } else {
+            storage[i] = scan_string(L, -1, path, 0);
+        }
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    return (int)count;
+}
+
+static void scan_options(lua_State *L, walk *w, const char **dirs, const char **paths, const char **legacy)
+{
+    w->prefix = "";
+    if (lua_isnoneornil(L, 2)) {
+        return;
+    }
+    if (lua_type(L, 2) != LUA_TTABLE) {
+        ku_err_raise(L, "FS", "badvalue", "scan options must be a table");
+    }
+    lua_pushnil(L);
+    while (lua_next(L, 2) != 0) {
+        size_t length = 0;
+        const char *key = lua_type(L, -2) == LUA_TSTRING ? lua_tolstring(L, -2, &length) : NULL;
+        if (key == NULL || memchr(key, '\0', length) != NULL ||
+            (strcmp(key, "prefix") != 0 && strcmp(key, "exclude_dirs") != 0 &&
+             strcmp(key, "exclude_paths") != 0 && strcmp(key, "legacy_prune") != 0)) {
+            ku_err_raise(L, "FS", "usage", "unknown scan option");
+        }
+        lua_pop(L, 1);
+    }
+    w->exclude_dir_count = scan_rules(L, 2, "exclude_dirs", dirs, 265, 0);
+    w->exclude_path_count = scan_rules(L, 2, "exclude_paths", paths, 256, 1);
+    w->prune_count = scan_rules(L, 2, "legacy_prune", legacy, 64, -1);
+    w->prune = legacy;
+    w->exclude_dirs = dirs;
+    w->exclude_paths = paths;
+    lua_pushliteral(L, "prefix");
+    lua_rawget(L, 2);
+    if (!lua_isnil(L, -1)) {
+        w->prefix = scan_string(L, -1, 1, 1);
+    }
+    lua_pop(L, 1);
+}
+
+/* fs.dirs and the private collector share the exact same native walker. */
+static int walk_collect(lua_State *L, int collect_files)
 {
     const char *root_utf8 = ku_check_cstring(L, 1, "FS", "path");
     walk w;
@@ -613,7 +838,10 @@ int ku_fs_dirs(lua_State *L)
     w.L = L;
     w.depthcap = -1;
     const char *prune_storage[64];
-    if (!lua_isnoneornil(L, 2)) {
+    const char *dir_storage[265], *path_storage[256];
+    if (collect_files) {
+        scan_options(L, &w, dir_storage, path_storage, prune_storage);
+    } else if (!lua_isnoneornil(L, 2)) {
         static const char *const options[] = {"depth", "prune", NULL};
         ku_check_options(L, 2, "FS", options);
         lua_getfield(L, 2, "depth");
@@ -673,7 +901,13 @@ int ku_fs_dirs(lua_State *L)
     FILE_ATTRIBUTE_TAG_INFO root_info;
     memset(&root_info, 0, sizeof root_info);
     BOOL ok = GetFileInformationByHandleEx(rh, FileAttributeTagInfo, &root_info, sizeof root_info);
+    DWORD root_info_error = ok ? 0 : GetLastError();
     CloseHandle(rh);
+    if (!ok && collect_files) {
+        ku_wpath_free(&root);
+        ku_fs_fail(&fail, root_info_error, "classify", root_utf8);
+        return ku_err_fail(L, fail.domain, fail.code, "%s", fail.message);
+    }
     if (!ok || !(root_info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
         ku_wpath_free(&root);
         return ku_err_fail(L, "FS", "badvalue", "'%s' is not a directory", root_utf8);
@@ -687,12 +921,23 @@ int ku_fs_dirs(lua_State *L)
     if (rawh != INVALID_HANDLE_VALUE) {
         FILE_ATTRIBUTE_TAG_INFO info;
         memset(&info, 0, sizeof info);
-        if (GetFileInformationByHandleEx(rawh, FileAttributeTagInfo, &info, sizeof info) &&
-            (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        BOOL classified = GetFileInformationByHandleEx(rawh, FileAttributeTagInfo, &info, sizeof info);
+        DWORD classify_error = classified ? 0 : GetLastError();
+        CloseHandle(rawh);
+        if (!classified && collect_files) {
+            ku_wpath_free(&root);
+            ku_fs_fail(&fail, classify_error, "classify", root_utf8);
+            return ku_err_fail(L, fail.domain, fail.code, "%s", fail.message);
+        }
+        if (classified && (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
             root_reparse = 1;
             root_tag = info.ReparseTag;
         }
-        CloseHandle(rawh);
+    } else if (collect_files) {
+        DWORD error = GetLastError();
+        ku_wpath_free(&root);
+        ku_fs_fail(&fail, error, "classify", root_utf8);
+        return ku_err_fail(L, fail.domain, fail.code, "%s", fail.message);
     }
     if (!root_reparse) {
         /* A cloud filter consumes its own reparse point on open, so the
@@ -719,8 +964,15 @@ int ku_fs_dirs(lua_State *L)
     w.links = 5;
     w.errors = 6;
     w.skipped = 7;
+    if (collect_files) {
+        lua_newtable(L);      /* 8: files */
+        w.files = 8;
+    }
     int status = walk_run(&w, root.text, root_reparse, root_tag);
     char *shown_root = ku_wpath_show(root.text, root.unc);
+    if (shown_root == NULL && collect_files && status == 0) {
+        walk_error(&w, root.text, ERROR_NOT_ENOUGH_MEMORY);
+    }
     ku_wpath_free(&root);
     if (status != 0) {
         free(shown_root);
@@ -745,6 +997,30 @@ int ku_fs_dirs(lua_State *L)
     lua_setfield(L, 3, "depthlimited");
     lua_pushinteger(L, w.maxdepth);
     lua_setfield(L, 3, "maxdepth");
+    if (collect_files) {
+        lua_pushvalue(L, w.files);
+        lua_setfield(L, 3, "files");
+        lua_pushinteger(L, w.enumerated);
+        lua_setfield(L, 3, "enumerated");
+    }
     lua_settop(L, 3);
+    return 1;
+}
+
+/* fs.dirs(root [, { depth = n, prune = { "pattern", ... } }]) */
+int ku_fs_dirs(lua_State *L)
+{
+    return walk_collect(L, 0);
+}
+
+static int scan_collect(lua_State *L)
+{
+    return walk_collect(L, 1);
+}
+
+int ku_open_scan_native(lua_State *L)
+{
+    static const luaL_Reg functions[] = {{"collect", scan_collect}, {NULL, NULL}};
+    luaL_newlib(L, functions);
     return 1;
 }

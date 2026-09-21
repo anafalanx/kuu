@@ -4,16 +4,42 @@
 nothing more.
 
 ```text
-kuu check [--json] [--fix [--adopt]] [PATH ...]
+kuu check [--json] [--timings] [--fix [--adopt]] [PATH ...]
 ```
 
 Without paths it checks every `.lua` file below the nearest project (the
 directory holding `manifest.lua`, or a `tasks.lua` not yet renamed, which it
 then says on standard error and as `notes` under `--json`), or below the
-current directory when there is no project, skipping `.git`, `.tools`,
-`build`, and `node_modules`. Paths may
+current directory when there is no project. Automatic discovery always skips
+`.git` and `.kuu`; by default it also skips `.tools`, `build`, `node_modules`,
+`.cache`, `.local`, `.venv`, and `__pycache__`. Paths may
 be files or directories; `require` names always resolve against the project
 root.
+
+The root's [`kuu.config.json`](scan.md) controls this scope. Its exact directory
+names and project-relative paths are excluded before descent; `defaults:false`
+restores visibility of the optional defaults. A maintained source directory
+called `build` or `.local` therefore needs an override or an explicit check.
+The command loads configuration once, including across a `--fix` recheck, and
+does not execute the manifest. A broken manifest can still be checked.
+
+Automatic discovery skips directory junctions, directory symlinks and other
+name-surrogate directory links the native walker refuses to enter. Discovered
+file symlinks are skipped too. Their targets are neither selected for checking
+nor rewritten by `--fix`. Ordinary filter/cloud reparse metadata does not by
+itself exclude a file or directory.
+
+An explicitly named ordinary file or subdirectory is checked even when an
+ancestor is a link or an excluded directory. A starting directory overrides
+its own exclusion; descendant exclusions still apply. A CLI argument naming the link itself is rejected with
+`CHECK notfound`, as before; name a file or ordinary subdirectory within it
+to check that content deliberately. The Lua `check.tree(dir, root)` API follows
+its explicitly supplied starting directory, including a linked root, and skips
+links discovered beneath it.
+
+These are discovery rules, not filesystem confinement: literal `require`
+resolution may still read module text through linked ancestors, and replacing
+an ancestor during checking is outside this guarantee.
 
 Four things are checked:
 
@@ -66,9 +92,10 @@ Name checking follows direct local require bindings and lexical scopes.
 Parameters, block locals, and loop variables can shadow an alias. If an
 alias is reassigned anywhere, its field accesses are skipped throughout
 that binding's scope, including captured uses in functions. This avoids
-claiming to know a value that control flow may replace. Aliases passed
-through another variable, function arguments, or a function result are not
-inferred. Shadowing or reassigning `require` likewise stops treating it as
+claiming to know a value that control flow may replace. Simple copied local
+bindings are followed where their origin remains known; passing a value through
+function arguments or arbitrary function results does not infer its identity.
+Shadowing or reassigning `require` likewise stops treating it as
 kuu's loader in that scope.
 
 A module indexed where it is required is followed too:
@@ -94,15 +121,44 @@ Error *domains* are not checked, only the codes within a domain kuu owns.
 says nothing about correctness.
 
 Beyond these, ordinary calls are not type-checked: argument counts, option
-values, and types still belong to runtime validation. Literal tool
-declarations are checked for the shapes needed to describe them below.
+values, and types still belong to runtime validation. Task and tool declarations
+add the bounded checks below.
+
+## Task and tool declarations
+
+The checker recognizes both `task "name" { ... }` and `task("name", { ... })`,
+and the corresponding `task.tool` forms. Simple local aliases of the module,
+tool constructor or saved curried constructor retain their identity until
+shadowing or reassignment makes them uncertain. Checked code is never executed.
+
+Literal names must follow the runtime rule: start with an ASCII letter or
+digit, then use letters, digits, `.`, `_` or `-`. `g++` is invalid; `cxx` is
+an example replacement chosen by a project, not a built-in tool.
+
+Visible declaration keys are checked even when another field is dynamic.
+For example, `task "build" { run = function() end, timeout = "5m" }` reports
+the misplaced `timeout` at its source line and points to `task.exec`,
+`task.defaults` or `task.tool`. A function body does not hide an unknown key.
+Independently known field types, array shapes, argument schemas and tool
+durations are checked when the literal supplies enough information. Dynamic
+values and fields whose final value is uncertain are left to runtime
+validation; the checker does not evaluate expressions to guess their values.
+A dynamic value may produce nil and omit a field, so it does not establish
+that an unknown key is actually present. Computed or repeated keys can also
+make the final value uncertain.
+
+Run `kuu check` first, then `kuu list` for manifest-loading validation. Listing
+executes top-level Lua and therefore requires a manifest that keeps work in
+task bodies. It is not a provisioning check or proof that tools exist.
 
 **The manifest's tools are checked the same way.** Each
 `task.tool "name" { ... }` in `manifest.lua` is read as the literal it is —
 nothing runs — and every `task.exec` or `task.command` written with a
 literal `tool = "name"`, in any file under the root, is held to it: a name
 the manifest does not declare is a `name` error with the nearest declared
-name suggested, and an argument that reads as an option name and is not in
+name suggested when the manifest's tool names are bounded. A dynamic tool
+name can provide or replace any declaration, so consumer tool-name and option
+checks are then left to runtime. An argument that reads as an option name and is not in
 the declaration's `args` is an `option` error, as for a palette call. The
 declaration itself is held to `task.tool`'s attributes, in the manifest or
 any other file and in either spelling: `outputt` is an `option` error with
@@ -193,9 +249,14 @@ path that is not there.
 
 ```typescript
 type CheckReport = {
-  ok: boolean; // true exactly when result.errors is zero
+  ok: boolean; // no file errors and no path-selection error
+  error?: { domain: "CHECK"; code: "notfound"; message: string };
   result: {
     root: string; // absolute path
+    scope: ScanScope; // normalized configured rules and provenance; see scan
+    scans: ScanReport[]; // one per actual directory collection, including --fix rechecks
+    complete: boolean; // every collection/source read succeeded; syntax findings do not change this
+    timings: CheckTimings;
     notes: string[]; // what was also said on standard error: a tasks.lua read as the manifest
     fixed?: { path: string; added: string[]; removed: string[] }[];   // --fix only
     unfixed?: { path: string; message: string }[];                    // --fix only
@@ -209,6 +270,12 @@ type CheckReport = {
     errors: number; // total error count
     warnings: number; // total warning count
   };
+};
+type CheckTimings = { setup: number; checking?: number; scan?: number; fixing?: number; total: number };
+type CheckConfigFailure = {
+  ok: false;
+  error: { domain: "SCAN"; code: "config"; message: string };
+  result: { root: string; complete: false; scans: []; timings: CheckTimings };
 };
 type CheckError =
   | { kind: "read" | "syntax" | "analysis"; line: number; message: string }
@@ -249,33 +316,93 @@ and `suggestion` is the nearest real spelling, omitted when none is close.
 `fixed` and `unfixed` are present only with `--fix`: the declarations that
 were rewritten, and the files that were left alone with the reason.
 
-Exit 0 or 1 produces this envelope, with no summary on stderr. Invalid
-command arguments or an explicitly named path that does not exist exit 2
-before a report is available and print a diagnostic on stderr, even with
-`--json`; `--help` prints usage and exits 0.
+`ScanScope` and `ScanReport` are defined on the [scan](scan.md) page. Scope
+includes mandatory/default/custom rules, their fingerprint and whether the
+configuration came from a file or defaults. A scan records its actual project
+root and starting directory, completeness, counts, errors and collection
+seconds. File counts in a scan include all collected metadata entries;
+`result.files` contains the Lua files actually checked. Deliberately skipped
+directories and non-followed links are separate counts, not read failures.
+An explicit-file-only invocation has `scans:[]`. A starting directory outside
+the project reports `path_rules_applied:false`: project-relative path rules
+do not apply there, while basename rules still do.
+
+Exit 0 or 1 produces this envelope, with no summary on stderr unless timings
+were requested. An explicitly named missing path exits 2 with `CHECK notfound`;
+JSON preserves any files and scans already collected, sets `complete:false`
+and adds the top-level error. If initial path selection fails, `--fix` writes nothing.
+Invalid command arguments still print a diagnostic on stderr before a report
+is available, even with `--json`. Invalid or unreadable scan configuration also
+exits 2, with a `SCAN config` diagnostic and the `CheckConfigFailure` shape
+under `--json`.
+`--help` prints usage and exits 0 without reading configuration.
+
+`timings` is always present in JSON, in wall-clock seconds. `--timings` adds
+one human-readable timing line on stderr, independently of `--json`:
+
+- `setup` covers command imports, argument parsing, project discovery and
+  configuration loading.
+- `checking` covers path selection, collection, source reads and static
+  checking, accumulated across initial and `--fix` rechecks.
+- `scan` covers directory collection only, nested within `checking`. It is
+  omitted when no directory was collected.
+- `fixing` covers the fixer and writes, excluding subsequent rechecking;
+  it is omitted when the fixer did not run.
+- `total` ends after report assembly, including all rechecks, before final
+  JSON serialization or human-report emission and flushing.
+
+Phases overlap; adding them does not produce total. The clock starts after the
+timing helper loads, before the other command imports. OS process startup and
+final emission can make external wall time larger without a promised bound.
+Unavailable phases are omitted. `--help` prints no timing line.
 
 In a program, `require("check").file(path, root)` returns
 `{path, errors, warnings, requires, tools}` with an absolute `path` and the
 same finding kinds; `tools` holds the manifest's declarations when the file
 is the manifest, and is empty otherwise. `check.tree(dir, root)` returns
-`{root, reports = {...}}`. Either spelling of `root` — backslashes, a
+`{root, reports = {...}, complete, scan}`. Either spelling of `root` — backslashes, a
 trailing slash, a relative path — is taken as `fs.absolute` spells it.
 An unreadable directory or incomplete listing contributes a `read` finding
 at the directory's path, with line 0 and the filesystem diagnostic. The
 remaining readable files are still checked, and the command exits 1.
+Intentionally skipped links do not produce read errors.
 Each public call reads the current manifest; a tree check shares its parsed
 declarations only for that operation, including a fresh pass after `--fix`.
+`check.tree` and `check.modules` each load scan configuration once per
+operation. `check.file` deliberately checks its named file without loading
+scan configuration, so it remains usable while that configuration is broken.
+A configuration failure makes `check.tree` return a `config_error` and one
+synthetic report at `kuu.config.json`, marked `configuration = true`, with a
+line-0 `config` finding carrying the error's `domain`, `code`, and message.
+Its `complete` is false and `scan` is omitted because collection never ran.
+
+The exported `check.PRUNE` table remains a compatibility hook. Changing it
+adds native wildcard exclusions to direct tree/inventory calls that load their
+own policy; it cannot remove
+mandatory or configured exclusions. Its untouched legacy default does not
+override `kuu.config.json`. Prefer the declarative configuration for project
+policy; its rules are exact names and paths, never wildcards. Commands retain
+their captured context: a manifest cannot change the current capabilities
+inventory by mutating `check.PRUNE`.
 
 The extraction above is reachable on its own. `check.exports(path)` is the set
 of names a module exports, read from its text, or nil when the text does not
 bound them; `check.modules(root)` returns
-`{root, files, modules = {{name, path, exports}, ...}, complete, errors}` -- every `.lua` file
+`{root, files, modules = {{name, path, exports}, ...}, complete, errors, scan}` -- every `.lua` file
 below the root that a `require` name could reach and whose exports it could
 bound, in name order, with `files` counting all discovered `.lua` files.
 Unicode names follow the loader's rules; a literal dot in a filename is not
 a directory separator, and a project file hidden by a bundled module is not
 advertised. `complete` is false if a listing or candidate file could not be
 read; `errors` is an array of `{path, message, win32?}` describing each failure.
+Invalid configuration also sets `complete = false`, returns `config_error`,
+omits `scan`, and leaves `files` at zero and `modules` empty. Its error entry carries
+`domain = "SCAN"` and `code = "config"` as well as the path and message.
+Inventory uses the same discovery rules as `check.tree`: discovered links
+are excluded from `files` and `modules`, while a deliberately supplied linked
+root is followed. Excluding links does not make an inventory incomplete.
+The `scan` report describes collection only: its `complete` can be true while
+a later candidate-module read makes the outer inventory `complete` false.
 [capabilities](capabilities.md) reports what it returns. `check.tools(root)`
 is the manifest's tool declarations as the checker reads them, in declaration
 order, only those the text bounds; `capabilities` lists the same tools from
@@ -288,3 +415,6 @@ named path that is neither a file nor a directory. Invalid command arguments
 use `CLI usage`. The checking module returns findings rather than `nil, err`;
 a file-read or directory-enumeration failure is a `read` finding containing the underlying `FS`
 diagnostic. Filesystem argument errors retain their original domain and code.
+The configuration loader's complete `SCAN` code set is `config`, for malformed,
+unsupported or unreadable `kuu.config.json`; the message identifies the field
+or read failure. Exclusions affect discovery, not runtime `require` resolution.

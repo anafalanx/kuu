@@ -95,6 +95,16 @@ return function(T)
     retrieved ~= nil and retrieved.code == 0 and retrieved.out:match("^## Reading and writing\n") ~= nil
       and contains(retrieved.out, "fs.read(") and not contains(retrieved.out, "## Facts about a path"),
     retrieved and T.describe(retrieved) or T.describe(r))
+  r = T.kuu { "docs", "search", "fs.set_attributes" }
+  check("attribute search names the retrievable API contract",
+    r.code == 0 and contains(r.out, "  Read: kuu docs fs file-attributes\n"), T.describe(r))
+  retrieved = T.kuu { "docs", "fs", "file-attributes" }
+  check("attribute section exposes mutation, link defaults and permission boundaries together",
+    retrieved.code == 0 and retrieved.out:match("^## File attributes\n") ~= nil
+      and contains(retrieved.out, "fs.set_attributes(path, { readonly = false, hidden = true })")
+      and contains(retrieved.out, "`follow=false`") and contains(retrieved.out, "not_content_indexed: boolean")
+      and contains(retrieved.out, "does **not** test write") and contains(retrieved.out, "`temporary=true`")
+      and not contains(retrieved.out, "## Making and removing"), T.describe(retrieved))
   r = T.kuu { "docs", "search", "## 2026-09-13" }
   check("a matching heading inside a fence points to its real enclosing section",
     r.code == 0 and contains(r.out, "  Read: kuu docs agent reporting-back\n")

@@ -27,7 +27,8 @@ if opts.help then
     "  kuu docs PAGE SECTION       one ## section of it, by its heading or its anchor; PAGE#anchor is the same\n",
     "  kuu docs search TEXT ...    the lines mentioning the words, joined by spaces, matched literally, ignoring case\n",
     "\nFor example: kuu docs search fs.read, then kuu docs fs reading-and-writing.\n",
-    "\nStart with agent, what is expected of you here; then pitfalls, once; index is the map.\n")
+    "\nStart with agent, what is expected of you here; then pitfalls, once; index is the map.\n",
+    "From signed 0.11: read kuu docs upgrading-from-0.11 before running project tasks.\n")
   os.exit(0)
 end
 
@@ -123,7 +124,8 @@ if #words == 0 then
       io.write(string.format("  %-15s %s\n", page.name, shorten(page.description, 62)))
     end
     io.write("\nkuu docs PAGE prints a page; kuu docs PAGE SECTION one section; kuu docs search TEXT finds lines.\n",
-      "Start with agent, what is expected of you here; then pitfalls, once; index is the map.\n")
+      "Start with agent, what is expected of you here; then pitfalls, once; index is the map.\n",
+      "From signed 0.11: read kuu docs upgrading-from-0.11 before running project tasks.\n")
   end
   os.exit(0)
 end

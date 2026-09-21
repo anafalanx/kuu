@@ -27,18 +27,28 @@ child's `env` option in [`proc`](proc.md) does the same for one child.
 `get` and `os.getenv` return `""` for an empty value and `nil` for an
 absent variable. Names and text values cannot contain NUL.
 
-The **persisted environment** is what Windows hands to new processes: the
-user's, under `HKCU\Environment`, and the machine's, under the Session
-Manager's key. `persist` and `forget` write there and broadcast
-`WM_SETTINGCHANGE`, so Explorer and every console opened afterwards see the
-change. Processes already running, kuu itself included, keep their copy:
-after `env.persist`, `env.get` still answers as before. A value holding a
+The **persisted environment** is the user's stored settings under
+`HKCU\Environment` and the machine's under the Session Manager's key.
+`persist` and `forget` write there and broadcast `WM_SETTINGCHANGE`, allowing
+programs such as Explorer to refresh their environment. This does not rewrite
+every running process's copy. A new child normally inherits its parent's live
+environment, so a console or editor started by an existing launcher may still
+receive the old values. See Microsoft's [environment inheritance](https://learn.microsoft.com/en-us/windows/win32/procthread/environment-variables)
+and [change notification](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-settingchange)
+contracts. Kuu keeps its live copy: after `env.persist`, `env.get` still
+answers as before. A value holding a
 `%` is stored as an expandstring, as Windows does for `Path`; `persisted`
 returns it unexpanded with its type, and `env.expand` expands it.
 
 To add a directory to the user's `Path`, read `env.persisted("Path")`,
 edit the string, and persist it back; nothing here edits `Path` for you,
 because appending blindly is how `Path` fills with duplicates.
+
+For project tools, pass a child `env` overlay instead of persisting machine or
+user settings. The [shared project environment](project-environment.md) recipe
+derives cache paths from the project root and supplies the same overlay to CLI
+tools and newly launched editors. An existing editor keeps its launch
+environment; launching a client that reuses it does not refresh that copy.
 
 ## Functions
 

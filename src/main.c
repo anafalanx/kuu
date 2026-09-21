@@ -47,15 +47,16 @@ static void usage(FILE *to)
           "       kuu - [arg ...]           run a program read from standard input\n"
           "       kuu -e SCRIPT [arg ...]   run an inline script\n"
           "       kuu docs [--json] [PAGE [SECTION] | search TEXT ...]   the manual, from inside the executable\n"
-          "       kuu run [--json] [--dry-run] [TASK [arg ...]]   a task from the nearest manifest.lua\n"
+          "       kuu run [--json] [--dry-run] [--timings] [TASK [arg ...]]   a task from the nearest manifest.lua\n"
           "       kuu list [--json]         those tasks\n"
-          "       kuu check [--json] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running\n"
-          "       kuu capabilities [--json] what a program can reach from here, and what to read\n"
+          "       kuu check [--json] [--timings] [--fix [--adopt]] [PATH ...]   syntax, globals, requires, palette names, without running\n"
+          "       kuu capabilities [--json] [--timings]   what a program can reach from here, and what to read\n"
           "       kuu version | --version | --help\n"
           "\nTry a query now: all modules are available with -e; no file or manifest is needed.\n"
           "  kuu -e \"print(require('json').encode(require('sys').info()))\"\n"
           "Find an API: kuu docs search fs.read; read its section: kuu docs fs reading-and-writing\n"
-          "kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.\n",
+          "kuu docs agent shows how to begin; then pitfalls, once; kuu docs index is the map.\n"
+          "From signed 0.11: read kuu docs upgrading-from-0.11 before running project tasks.\n",
           to);
 }
 
