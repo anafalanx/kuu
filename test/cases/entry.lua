@@ -76,6 +76,15 @@ return function(T)
   r = kuu { "-e", "print(select('#', ...), ...)", "a", "b c" }
   check("inline arguments arrive as ...", r.out == "2\ta\tb c\n", describe(r))
 
+  -- A new Lua thread holds about forty values; kuu 0.12 pushed the command
+  -- line onto it unchecked, and 43 arguments corrupted the heap.
+  do
+    local long = { "-e", "print(select('#', ...), (select(300, ...)))" }
+    for k = 1, 300 do long[#long + 1] = "a" .. k end
+    r = kuu(long)
+    check("a long command line arrives whole", r.code == 0 and r.out == "300\ta300\n", describe(r))
+  end
+
   r = kuu { "-e", "local rt = require('rt'); print(rt.version, rt.lua, rt.route, #rt.args, rt.args[2], rt.program, rt.exe ~= nil)", "x", "y" }
   check("rt module describes the launch",
     r.out == VERSION .. "\t" .. LUA .. "\teval\t2\ty\tnil\ttrue\n", describe(r))

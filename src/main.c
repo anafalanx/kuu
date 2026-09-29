@@ -134,6 +134,14 @@ static int run_program(const ku_launch *launch, const ku_program *program,
         ku_loop_free(loop);
         return KUU_EXIT_PROGRAM;
     }
+    /* A new thread has room for about forty values; a long command line
+     * needs more, and pushing past the room corrupts the heap. */
+    if (!lua_checkstack(co, launch->argc)) {
+        fprintf(stderr, "%s: STATE oserror: out of memory\n", KUU_NAME);
+        lua_close(L);
+        ku_loop_free(loop);
+        return KUU_EXIT_ENTRY;
+    }
     for (int i = 0; i < launch->argc; i++) {
         lua_pushstring(co, launch->argv[i]);
     }

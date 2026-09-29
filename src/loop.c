@@ -203,6 +203,11 @@ static void drain_ready(ku_loop *lp)
 
 int ku_driver_start(ku_loop *lp, ku_driver *driver, lua_State *co, int nargs)
 {
+    /* The thread is pushed on its own stack, above the function and its
+     * arguments; a caller that filled the stack leaves no slot for it. */
+    if (!lua_checkstack(co, 1)) {
+        return -1;
+    }
     driver->co = co;
     driver->finished = 0;
     driver->status = LUA_OK;
